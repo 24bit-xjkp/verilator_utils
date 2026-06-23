@@ -1,0 +1,23 @@
+set_project("verilator_utils")
+set_languages("c++latest")
+add_rules("mode.debug", "mode.release", "mode.releasedbg")
+set_defaultmode("release")
+add_requires("doctest", "verilator")
+add_packages("doctest", "verilator")
+add_toolchains("@verilator")
+set_exceptions("cxx")
+add_cxxflags("-Wno-deprecated-missing-comma-variadic-parameter", "-march=native")
+
+option("use_sanitizer")
+    set_default(false)
+    set_description("Enable sanitizer for unit tests")
+option_end()
+
+rule("verilator_include")
+    after_load(function (target)
+        target:add("includedirs", path.join(target:pkgenvs()["VERILATOR_ROOT"], "include"), {public = true})
+    end)
+rule_end()
+add_rules("verilator_include")
+
+includes("*/xmake.lua")

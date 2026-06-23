@@ -1,0 +1,17 @@
+﻿Diagnostics:
+  UnusedIncludes: None
+  ClangTidy:
+    Remove:
+    - performance-*
+    - readability-*
+    - clang-analyzer-*
+    - modernize-*
+    - cert-*
+    - portability-*
+    - cppcoreguidelines-*
+    - hicpp-*
+    - concurrency-*
+Hover:
+  ShowAKA: Yes
+Documentation:
+  CommentFormat: Doxygen
