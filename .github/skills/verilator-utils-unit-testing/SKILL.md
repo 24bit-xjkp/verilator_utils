@@ -22,12 +22,13 @@ argument-hint: 'Describe the component or behavior to test'
 - Practical example: `test/utils.cpp` maps to xmake test pattern `unit_test/utils` and doctest suite `verilator_utils/utils`.
 
 ## xmake Commands
-- Run a specific test after edits: `xmake test -r unit_test/<basename>`.
-- Run the utils tests: `xmake test -r unit_test/utils`.
+- Run a specific test after edits: `xmake test unit_test/<basename>`.
+- Run the utils tests: `xmake test unit_test/utils`.
 - Run all tests registered under the target: `xmake test unit_test/*`.
-- Use `-r` after changing C++ modules or test source so stale BMI/object files are rebuilt.
+- Use `-r` when build failed due to BMI/object files after changing C++ modules.
 - If a command exits with no useful output, check `xmake test --help` and verify the registered test pattern.
 - Use `xmake test -v unit_test/<basename>` to see the detail output of the test case.
+- Use `xmake run unit_test` to run the unit test program directly.
 
 ## doctest Style
 - Prefer doctest binary checks over boolean expressions:
@@ -54,7 +55,7 @@ argument-hint: 'Describe the component or behavior to test'
 2. Add or update tests in the smallest relevant `test/<basename>.cpp` file.
 3. Prefer deterministic values with obvious expected results.
 4. Add edge cases near the normal behavior they validate.
-5. Run `xmake test -r unit_test/<basename>`.
+5. Run `xmake test unit_test/<basename>`.
 6. Fix only failures related to the changed test or target behavior.
 7. Check diagnostics for the edited file before finishing.
 
