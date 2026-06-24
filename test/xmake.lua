@@ -19,6 +19,11 @@ target("unit_test")
         local name = path.basename(file)
         add_tests(name, {runargs = {"-ts=verilator_utils/" .. name}})
     end
+    after_load(function (target)
+        local verilator_root = target:pkgenvs()["VERILATOR_ROOT"];
+        target:add("files", path.join(verilator_root, "include", "verilated.cpp"))
+        target:add("files", path.join(verilator_root, "include", "verilated_threads.cpp"))
+    end)
 target_end()
 
 -- target("unit_test_rtl_edge_detector")
