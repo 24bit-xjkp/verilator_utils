@@ -42,7 +42,6 @@ TEST_SUITE("edge_detector")
 
         constexpr static auto verify{[](eval_scheduler& scheduler, port_t& port, bool rising, bool falling) static -> task
                                      {
-                                         auto handle{co_await task::get_handle_t{}};
                                          // 等一个上升沿才能被采样到
                                          co_await wait_for_verify(scheduler, port.clk, delay + 1);
 
@@ -94,7 +93,6 @@ TEST_SUITE("edge_detector")
                 co_await scheduler.wait_posedge(port.clk, 1);
                 co_await wait_for_eval_stage(scheduler, after_dut_eval);
                 do_verify(false, false);
-
 
                 co_await task_join(scheduler, verify_tasks);
                 // 避免波形被截断

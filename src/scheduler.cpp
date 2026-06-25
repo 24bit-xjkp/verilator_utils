@@ -433,7 +433,7 @@ export namespace verilator_utils
          */
         template <::verilator_utils::is_event_callback callback_t>
         inline edge_detector(callback_t&& event_callback, edge_enum edge_to_detect) :
-            callback{::std::forward<callback_t>(event_callback)}, previous_value{event_callback()}, edge_to_detect{edge_to_detect}
+            callback{::std::forward<callback_t>(event_callback)}, previous_value{callback()}, edge_to_detect{edge_to_detect}
         {
         }
 
