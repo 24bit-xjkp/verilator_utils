@@ -82,11 +82,7 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_EQ(moved.get_handle(), original_handle);
 
         ::verilator_utils::task assigned{[] -> ::verilator_utils::task { co_return; }()};
-        assigned = ::std::move(moved);
-        CHECK_FALSE(moved);
-        CHECK(assigned);
-        CHECK_EQ(assigned.get_handle(), original_handle);
-
+        original_handle = assigned.get_handle();
         auto detached_handle{assigned.detach()};
         CHECK_FALSE(assigned);
         CHECK_EQ(detached_handle, original_handle);
@@ -95,7 +91,6 @@ TEST_SUITE("verilator_utils/scheduler")
         auto destroy_task{[] -> ::verilator_utils::task { co_return; }()};
         destroy_task.destroy();
         CHECK_FALSE(destroy_task);
-        CHECK(destroy_task.done());
     }
 
     TEST_CASE("task records regular exceptions and ignores finish exceptions when rethrowing")
@@ -369,8 +364,8 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler.loop_until_empty();
 
         CHECK(stimulus_runner.done());
-        // 一个时钟周期4000fs，等待2个时钟周期
-        CHECK_EQ(resumed_times, 8000);
+        // 一个时钟周期4ps，等待2个时钟周期
+        CHECK_EQ(resumed_times, 8);
         clock_runner.destroy();
         stimulus_runner.get_promise().rethrow_exception();
     }
@@ -473,11 +468,13 @@ TEST_SUITE("verilator_utils/scheduler")
         auto reset_task{::verilator_utils::generate_reset(scheduler,
                                                           ::verilator_utils::bit_slice<::CData>{reset},
                                                           ::verilator_utils::bit_slice<::CData>{clk},
-                                                          1)};
-        auto reset_n_task{::verilator_utils::generate_reset_n(scheduler,
-                                                              ::verilator_utils::bit_slice<::CData>{reset_n},
-                                                              ::verilator_utils::bit_slice<::CData>{clk},
-                                                              1)};
+                                                          1,
+                                                          true)};
+        auto reset_n_task{::verilator_utils::generate_reset(scheduler,
+                                                            ::verilator_utils::bit_slice<::CData>{reset_n},
+                                                            ::verilator_utils::bit_slice<::CData>{clk},
+                                                            1,
+                                                            false)};
 
         ::verilator_utils::async_task clock_runner{scheduler, clock_task};
         ::verilator_utils::async_task reset_runner{scheduler, reset_task};
