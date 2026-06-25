@@ -230,7 +230,7 @@ export namespace verilator_utils
         inline ::std::size_t verilator_data_to_string_size(::std::size_t width)
         {
             // 0x前缀长度
-            constexpr auto prefix_size{2zu};
+            constexpr static auto prefix_size{2zu};
             return (width + 3) / 4 + prefix_size;
         }
 
@@ -248,7 +248,7 @@ export namespace verilator_utils
         inline iter_t verilator_data_format_to(iter_t iter, const type& data, ::std::size_t width)
         {
             /// 每个字的位宽
-            constexpr ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
+            constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
             if constexpr(::VlIsVlWide<type>::value)
             {
                 // 最高字中信号宽度

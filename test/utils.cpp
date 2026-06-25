@@ -22,7 +22,7 @@ TEST_SUITE("verilator_utils/utils")
 
     TEST_CASE("femtosecond arithmetic and comparison")
     {
-        constexpr auto duration{2_ns + 500_ps};
+        constexpr static auto duration{2_ns + 500_ps};
 
         CHECK_EQ(static_cast<::std::uint64_t>(duration), 2'500'000u);
         CHECK_EQ(static_cast<::std::uint64_t>(duration - 1_ns), 1'500'000u);
