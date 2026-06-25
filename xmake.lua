@@ -7,6 +7,7 @@ add_packages("doctest", "verilator")
 add_toolchains("@verilator")
 set_exceptions("cxx")
 add_cxxflags("-Wno-deprecated-missing-comma-variadic-parameter", "-march=native")
+set_policy("build.c++.modules.hide_dependencies", true)
 
 option("use_sanitizer")
     set_default(false)
