@@ -10,8 +10,8 @@
 
 namespace verilator_utils::detail
 {
-    extern "C++" int argc;
-    extern "C++" const char** argv;
+    extern "C++" inline int argc{};
+    extern "C++" inline const char** argv{};
 }  // namespace verilator_utils::detail
 
 int main(int argc, const char* argv[])
