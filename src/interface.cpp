@@ -4,3 +4,4 @@ export import :wrapper;
 export import :scheduler;
 export import :context;
 export import :task;
+export import :verilator;

@@ -1,8 +1,12 @@
 module;
-#include <doctest.h>
-#include <verilated.h>
+#include <doctest_fwd.hpp>
 export module verilator_utils:scheduler;
 import :wrapper;
+
+extern "C++"
+{
+#include <doctest.h>
+}
 
 export namespace verilator_utils
 {

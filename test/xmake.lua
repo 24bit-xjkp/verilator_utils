@@ -1,6 +1,7 @@
+set_policy("build.c++.modules", true)
 target("unit_test_main")
     set_default(false)
-    set_kind("object")
+    set_kind("static")
     add_files("main.cpp")
 target_end()
 
@@ -9,7 +10,6 @@ if get_config("use_sanitizer") then
     set_policy("build.sanitizer.undefined", true)
 end
 
-set_policy("build.c++.modules", true)
 target("unit_test")
     add_deps("verilator_utils", "unit_test_main")
     set_default(false)
@@ -29,6 +29,7 @@ target_end()
 target("unit_test_rtl_edge_detector")
     add_deps("unit_test_rtl_edge_detector_verilator", "verilator_utils_full")
     set_default(false)
-    add_files("rtl_edge_detector.cpp")
+    add_files("rtl_edge_detector.cpp", "rtl_edge_detector_verilator.cpp")
+    -- add_files("rtl_edge_detector.cpp")
     add_tests("rtl")
 target_end()

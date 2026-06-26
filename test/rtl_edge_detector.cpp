@@ -1,7 +1,12 @@
-#include <unit_test_rtl_edge_detector_verilator.h>
-#include <doctest.h>
+module;
+#include <doctest_fwd.hpp>
+module unit_test_rtl.edge_detector;
 import verilator_utils;
-import std;
+
+extern "C++"
+{
+#include <doctest.h>
+}
 
 TEST_SUITE("edge_detector")
 {

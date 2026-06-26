@@ -1,10 +1,15 @@
+module;
+#include <doctest_fwd.hpp>
+module unit_test;
+
+extern "C++"
+{
 #include <doctest.h>
-#include <verilated.h>
-import verilator_utils;
-import std;
+}
 
 TEST_SUITE("verilator_utils/wrapper")
 {
+
     TEST_CASE("slice concepts identify wrapper types")
     {
         static_assert(::verilator_utils::is_bit_slice<::verilator_utils::bit_slice<::CData>>);
@@ -339,7 +344,9 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(data[1][2][3], 0x5au);
         CHECK_EQ(static_cast<::std::uint64_t>(wrapper[1][2][3]), 0x5au);
 
-        ::VlUnpacked<::VlUnpacked<::CData, 2>, 2> data2{{{1, 2}, {3, 4}}};
+        ::VlUnpacked<::VlUnpacked<::CData, 2>, 2> data2{
+            {{1, 2}, {3, 4}}
+        };
         auto wrapper2{::verilator_utils::make_unpacked_array(data2, 4)};
         CHECK_EQ(::std::format("{}", wrapper2), "[[0x1, 0x2], [0x3, 0x4]]");
     }

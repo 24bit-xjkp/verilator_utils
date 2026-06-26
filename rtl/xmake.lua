@@ -5,6 +5,7 @@ add_toolchains("@verilator")
 
 target("unit_test_rtl_edge_detector_verilator")
     add_rules("verilator.shared")
+    add_deps("verilator_utils_fst")
     add_files("edge_detector.sv")
     set_default(false)
     add_values("verilator.flags", table.join(verilator_options, {"--top", "edge_detector"}))

@@ -1,7 +1,11 @@
+module;
+#include <doctest_fwd.hpp>
+module unit_test;
+
+extern "C++"
+{
 #include <doctest.h>
-#include <verilated.h>
-import verilator_utils;
-import std;
+}
 
 namespace
 {

@@ -1,18 +1,11 @@
 #ifdef __clang__
-    #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-W#warnings"
 #endif
+
 #define DOCTEST_CONFIG_IMPLEMENT
 #include <doctest.h>
-#ifdef __clang__
-    #pragma clang diagnostic pop
-#endif
-
-namespace verilator_utils::detail
-{
-    extern "C++" inline int argc{};
-    extern "C++" inline const char** argv{};
-}  // namespace verilator_utils::detail
+import std;
+import verilator_utils;
 
 int main(int argc, const char* argv[])
 {

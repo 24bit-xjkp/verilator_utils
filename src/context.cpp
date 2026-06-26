@@ -1,13 +1,12 @@
 module;
-#include <doctest.h>
-#include <verilated.h>
-#include <verilated_fst_c.h>
-#include "undefine_verilator_tracer_macros.hpp"
-#include <verilated_vcd_c.h>
-#include "undefine_verilator_tracer_macros.hpp"
-#include <verilated_saif_c.h>
+#include <doctest_fwd.hpp>
 export module verilator_utils:context;
 import :scheduler;
+
+extern "C++"
+{
+#include <doctest.h>
+}
 
 export namespace verilator_utils
 {
@@ -20,6 +19,37 @@ export namespace verilator_utils
     template <typename type>
     concept is_verilator_tracer = ::std::same_as<::VerilatedVcdC, type> || ::std::same_as<::VerilatedFstC, type> ||
                                   ::std::same_as<::VerilatedSaifC, type> || ::std::same_as<void, type>;
+
+    namespace detail
+    {
+        extern "C++"
+        {
+            /// 创建VCD波形文件记录器
+            ::std::unique_ptr<::VerilatedVcdC> create_tracer_vcd();
+
+            /// 创建FST波形文件记录器
+            ::std::unique_ptr<::VerilatedFstC> create_tracer_fst();
+
+            /// 创建SAIF波形文件记录器
+            ::std::unique_ptr<::VerilatedSaifC> create_tracer_saif();
+        }
+
+        template <::verilator_utils::is_verilator_tracer tracer_t>
+            requires (!::std::same_as<tracer_t, void>)
+        inline ::std::unique_ptr<tracer_t> create_tracer()
+        {
+            if constexpr(::std::same_as<::VerilatedVcdC, tracer_t>) { return ::verilator_utils::detail::create_tracer_vcd(); }
+            else if constexpr(::std::same_as<::VerilatedFstC, tracer_t>)
+            {
+                return ::verilator_utils::detail::create_tracer_fst();
+            }
+            else if constexpr(::std::same_as<::VerilatedSaifC, tracer_t>)
+            {
+                return ::verilator_utils::detail::create_tracer_saif();
+            }
+        }
+
+    }  // namespace detail
 
     /**
      * @brief DUT上下文类型
@@ -65,7 +95,8 @@ export namespace verilator_utils
             if constexpr(!::std::same_as<tracer_t, void>)
             {
                 context->traceEverOn(true);
-                tracer = ::std::make_unique<tracer_t>();
+                // tracer = ::std::make_unique<tracer_t>();
+                tracer = ::verilator_utils::detail::create_tracer<tracer_t>();
                 dut->trace(tracer.get(), trace_level);
                 if constexpr(::std::same_as<tracer_t, ::VerilatedVcdC>)
                 {
