@@ -1,5 +1,7 @@
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest.h>
+// make xmake happy
+import std.compat;
 
 #if _WIN32
     #include <wincon.h>

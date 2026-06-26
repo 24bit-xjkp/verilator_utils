@@ -1,7 +1,6 @@
 module;
 #include <doctest_fwd.hpp>
 module unit_test_rtl.edge_detector;
-import verilator_utils;
 
 extern "C++"
 {
