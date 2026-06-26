@@ -522,7 +522,7 @@ export namespace verilator_utils::detail
     using event_queue_t = ::std::vector<::verilator_utils::detail::event_queue_element>;
 
     /// 就绪队列类型
-    using ready_queue_t = ::std::queue<::std::coroutine_handle<::verilator_utils::task::promise_type>>;
+    using ready_queue_t = ::std::vector<::std::coroutine_handle<::verilator_utils::task::promise_type>>;
 
     /**
      * @brief 判断是否是task类型的引用
@@ -628,7 +628,7 @@ export namespace verilator_utils
                 {
                     if(auto&& [task_target_time, handle]{wait_queue.top()}; task_target_time == target_time)
                     {
-                        ready_queue.emplace(handle);
+                        ready_queue.emplace_back(handle);
                         wait_queue.pop();
                     }
                     else
@@ -651,7 +651,7 @@ export namespace verilator_utils
             {
                 if(iter->is_ready())
                 {
-                    ready_queue.emplace(iter->handle);
+                    ready_queue.emplace_back(iter->handle);
                     *iter = ::std::move(event_queue.back());
                     event_queue.pop_back();
                     end = event_queue.end();
@@ -673,19 +673,18 @@ export namespace verilator_utils
         inline bool ready_queue_eval()
         {
             bool any_coroutine_run{!ready_queue.empty()};
-            while(!ready_queue.empty())
+            auto i{0zu};
+            try
             {
-                try
-                {
-                    resume_coroutine(ready_queue.front());
-                }
-                catch(...)
-                {
-                    ready_queue.pop();
-                    throw;
-                }
-                ready_queue.pop();
+                for(; i != ready_queue.size(); ++i) { resume_coroutine(ready_queue[i]); }
             }
+            catch(...)
+            {
+                auto begin{ready_queue.begin()};
+                ready_queue.erase(begin, begin + static_cast<::std::ptrdiff_t>(i) + 1);
+                throw;
+            }
+            ready_queue.clear();
             return any_coroutine_run;
         }
 
@@ -815,7 +814,7 @@ export namespace verilator_utils
                                                      // 将其父协程放入队列，由调度器进行销毁
                                                      try
                                                      {
-                                                         scheduler.ready_queue.emplace(promise.parent);
+                                                         scheduler.ready_queue.emplace_back(promise.parent);
                                                      }
                                                      catch(...)
                                                      {
@@ -837,11 +836,8 @@ export namespace verilator_utils
             for(auto&& [_, handle]: event_queue) { do_destroy(*this, handle); }
             event_queue.clear();
 
-            while(!ready_queue.empty())
-            {
-                do_destroy(*this, ready_queue.front());
-                ready_queue.pop();
-            }
+            for(auto i{0zu}; i != ready_queue.size(); ++i) { do_destroy(*this, ready_queue[i]); }
+            ready_queue.clear();
         }
 
         /**
@@ -911,7 +907,7 @@ export namespace verilator_utils
          * @note 这不会改变协程的调用栈，即task::promise_type::parent不会改变
          */
         inline void add_task(::verilator_utils::detail::is_task_reference auto&& task) noexcept
-        { ready_queue.emplace(task.detach()); }
+        { ready_queue.emplace_back(task.detach()); }
 
         /**
          * @brief 向事件队列中注册一个事件和等待该事件的协程
