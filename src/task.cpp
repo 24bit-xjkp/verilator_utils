@@ -56,11 +56,42 @@ export namespace verilator_utils::detail
         inline static void await_resume() { throw ::verilator_utils::eval_finish_exception{}; }
     };
 
+    struct get_time_in_string_awaiter : ::verilator_utils::task::no_suspend_awaiter
+    {
+        using handle_t = ::verilator_utils::task::handle_t;
+        ::verilator_utils::eval_scheduler* scheduler;
+
+        inline void set_handle_impl(handle_t handle) { scheduler = handle.promise().check_scheduler(); }
+
+        inline ::std::string await_resume() const { return scheduler->time_in_string(); }
+    };
+
+    struct get_time_in_time_unit_awaiter : ::verilator_utils::task::no_suspend_awaiter
+    {
+        using handle_t = ::verilator_utils::task::handle_t;
+        ::verilator_utils::eval_scheduler* scheduler;
+
+        inline void set_handle_impl(handle_t handle) { scheduler = handle.promise().check_scheduler(); }
+
+        inline double await_resume() const { return scheduler->time_in_time_unit(); }
+    };
+
+    struct get_time_in_time_precision_awaiter : ::verilator_utils::task::no_suspend_awaiter
+    {
+        using handle_t = ::verilator_utils::task::handle_t;
+        ::verilator_utils::eval_scheduler* scheduler;
+
+        inline void set_handle_impl(handle_t handle) { scheduler = handle.promise().check_scheduler(); }
+
+        inline ::std::uint64_t await_resume() const { return scheduler->time_in_time_precision(); }
+    };
+
     /**
      * @brief 实现延迟功能的可等待体
      *
      */
     struct time_awaiter
+
     {
         using handle_t = ::verilator_utils::task::handle_t;
         /// 等待时间，单位为飞秒
@@ -258,6 +289,30 @@ export namespace verilator_utils
      */
     [[nodiscard]] inline ::verilator_utils::detail::eval_finish_awaiter eval_finish() noexcept
     { return ::verilator_utils::detail::eval_finish_awaiter{}; }
+
+    /**
+     * @brief 在任务中获取仿真时间字符串
+     *
+     * @return 可等待体
+     */
+    [[nodiscard]] inline ::verilator_utils::detail::get_time_in_string_awaiter get_time_in_string() noexcept
+    { return ::verilator_utils::detail::get_time_in_string_awaiter{}; }
+
+    /**
+     * @brief 在任务中获取仿真时间，单位为dut时间单位
+     *
+     * @return 可等待体
+     */
+    [[nodiscard]] inline ::verilator_utils::detail::get_time_in_time_unit_awaiter get_time_in_time_unit() noexcept
+    { return ::verilator_utils::detail::get_time_in_time_unit_awaiter{}; }
+
+    /**
+     * @brief 在任务中获取仿真时间，单位为dut时间精度
+     *
+     * @return 可等待体
+     */
+    [[nodiscard]] inline ::verilator_utils::detail::get_time_in_time_precision_awaiter get_time_in_time_precision() noexcept
+    { return ::verilator_utils::detail::get_time_in_time_precision_awaiter{}; }
 
     /**
      * @brief 等待指定时间
@@ -522,7 +577,7 @@ export namespace verilator_utils
          *
          * @note 若协程未完成，则将所有权交给调度器
          */
-        inline ~async_task() { detach(); }
+        inline ~async_task() noexcept { detach(); }
 
         inline async_task(const async_task&) noexcept = delete;
         inline async_task& operator= (const async_task&) noexcept = delete;
@@ -667,6 +722,7 @@ export namespace verilator_utils
                 callback{[tasks] { return all_tasks_done(tasks); }}, tasks{tasks}
             {
                 using namespace ::std::string_view_literals;
+                REQUIRE_FALSE_MESSAGE(tasks.empty(), "任务集合不能为空"sv);
                 auto scheduler{tasks.front().get_promise().check_scheduler()};
                 REQUIRE_MESSAGE(::std::ranges::all_of(tasks,
                                                       [scheduler](const ::verilator_utils::async_task& task) noexcept
@@ -696,10 +752,8 @@ export namespace verilator_utils
                 this_scheduler->register_event(callback, handle);
             }
 
-            /// 储存子任务中未处理的异常
-            using unhandled_exception_pair = ::std::pair<::verilator_utils::async_task&, ::std::exception_ptr>;
             /// 若子任务存在未处理的异常则抛出该向量
-            using unhandled_exception_vector = ::std::vector<unhandled_exception_pair>;
+            using unhandled_exception_vector = ::std::vector<::std::exception_ptr>;
 
             /**
              * @brief 恢复等待任务的执行
@@ -714,7 +768,7 @@ export namespace verilator_utils
                                               [](::verilator_utils::async_task& task) static noexcept
                                               { return task.get_promise().with_unhandled_exception(); }) |
                          ::std::views::transform([](::verilator_utils::async_task& task) static noexcept
-                                                 { return unhandled_exception_pair{task, task.get_promise().exception}; }) |
+                                                 { return task.get_promise().exception; }) |
                          ::std::ranges::to<unhandled_exception_vector>()};
 
                 if(!vec.empty())
@@ -739,18 +793,131 @@ export namespace verilator_utils
             /// 子任务视图
             ::std::span<::verilator_utils::async_task> tasks;
         };
+
+        /**
+         * @brief 等待任意异步任务完成用的可等待体
+         *
+         */
+        struct async_task_join_any_awaiter
+        {
+            inline async_task_join_any_awaiter(::std::span<::verilator_utils::async_task> tasks) :
+                callback{[this] { return any_tasks_done(); }}, tasks{tasks}, iter{tasks.end()}
+            {
+                using namespace ::std::string_view_literals;
+                REQUIRE_FALSE_MESSAGE(tasks.empty(), "任务集合不能为空"sv);
+                auto scheduler{tasks.front().get_promise().check_scheduler()};
+                REQUIRE_MESSAGE(::std::ranges::all_of(tasks,
+                                                      [scheduler](const ::verilator_utils::async_task& task) noexcept
+                                                      { return task.get_promise().scheduler == scheduler; }),
+                                "所有任务必须绑定同一个调度器"sv);
+            }
+
+            /**
+             * @brief 判断是否立即完成
+             *
+             * @return 所有子任务都已执行完则立即完成
+             */
+            inline bool await_ready() { return callback(); }
+
+            /**
+             * @brief 向调度器事件队列中注册等待事件，然后挂起协程
+             *
+             * @param handle 当前任务的协程柄
+             */
+            inline void await_suspend(::verilator_utils::async_task::handle_t handle)
+            {
+                using namespace ::std::string_view_literals;
+
+                auto this_scheduler{handle.promise().scheduler};
+                auto task_scheduler{tasks.front().get_promise().scheduler};
+                REQUIRE_MESSAGE(this_scheduler == task_scheduler, "所有任务必须绑定同一个调度器"sv);
+                this_scheduler->register_event(callback, handle);
+            }
+
+            /**
+             * @brief 恢复等待任务的执行
+             *
+             * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
+             * @throws 子任务中未处理的异常
+             */
+            inline void await_resume()
+            {
+                auto&& promise{iter->get_promise()};
+                promise.scheduler->throw_if_finish();
+                promise.rethrow_exception();
+            }
+
+        private:
+            /**
+             * @brief 判断是否所有子任务都执行完毕
+             *
+             * @return 是否所有子任务都执行完毕
+             */
+            inline bool any_tasks_done()
+            {
+                iter = ::std::ranges::find(tasks, true, [](::verilator_utils::async_task& task) { return task.done(); });
+                return iter != tasks.end();
+            }
+
+            /// 事件回调函数，判断子任务是否都完成
+            ::verilator_utils::default_event_callback callback;
+            /// 子任务视图
+            ::std::span<::verilator_utils::async_task> tasks;
+
+        protected:
+            /// 首个完成任务的迭代器
+            ::std::span<::verilator_utils::async_task>::iterator iter;
+        };
+
+        /**
+         * @brief 将任务集合中所有任务托管给调度器的可等待体
+         *
+         */
+        struct async_task_join_none_awaiter : ::std::suspend_always
+        {
+            inline async_task_join_none_awaiter(::std::span<::verilator_utils::async_task> tasks) : ::std::suspend_always{}
+            {
+                using namespace ::std::string_view_literals;
+                REQUIRE_FALSE_MESSAGE(tasks.empty(), "任务集合不能为空"sv);
+                auto scheduler{tasks.front().get_promise().check_scheduler()};
+                REQUIRE_MESSAGE(::std::ranges::all_of(tasks,
+                                                      [scheduler](const ::verilator_utils::async_task& task) noexcept
+                                                      { return task.get_promise().scheduler == scheduler; }),
+                                "所有任务必须绑定同一个调度器"sv);
+                ::std::ranges::for_each(tasks, [](::verilator_utils::async_task& task) { task.detach(); });
+            }
+        };
     }  // namespace detail
 
     /**
      * @brief 等待所有异步任务完成
      *
-     * @param scheduler 调度器引用
-     * @param tasks 异步任务视图
-     * @return task_join_awaiter 可等待体
+     * @param tasks 异步任务集合
+     * @return 可等待体
      */
     [[nodiscard]] inline ::verilator_utils::detail::async_task_join_all_awaiter
-        async_task_join(::std::span<::verilator_utils::async_task> tasks)
+        async_task_join_all(::std::span<::verilator_utils::async_task> tasks)
     { return ::verilator_utils::detail::async_task_join_all_awaiter{tasks}; }
+
+    /**
+     * @brief 等待任意异步任务完成
+     *
+     * @param tasks 异步任务集合
+     * @return 可等待体
+     */
+    [[nodiscard]] inline ::verilator_utils::detail::async_task_join_any_awaiter
+        async_task_join_any(::std::span<::verilator_utils::async_task> tasks)
+    { return ::verilator_utils::detail::async_task_join_any_awaiter{tasks}; }
+
+    /**
+     * @brief 将任务集合中所有任务托管给调度器
+     *
+     * @param tasks 异步任务集合
+     * @return 可等待体
+     */
+    [[nodiscard]] inline ::verilator_utils::detail::async_task_join_none_awaiter
+        async_task_join_none(::std::span<::verilator_utils::async_task> tasks)
+    { return ::verilator_utils::detail::async_task_join_none_awaiter{tasks}; }
 
     /**
      * @brief 异步任务池
@@ -804,15 +971,64 @@ export namespace verilator_utils
                 try
                 {
                     base_t::await_resume();
+                    pool.clear();
                 }
                 catch(...)
                 {
                     pool.clear();
                     throw;
                 }
-                pool.clear();
             }
         };
+
+        /**
+         * @brief 实现等待任务池中任意任务完成使用的可等待体
+         *
+         */
+        struct join_any_awaiter : ::verilator_utils::detail::async_task_join_any_awaiter
+        {
+            // 尽管pool_t和基类中的std::span引用了同一个范围，但为了复用代码，接受这一重复
+            using base_t = ::verilator_utils::detail::async_task_join_any_awaiter;
+            /// 任务池引用
+            pool_t& pool;
+
+            inline join_any_awaiter(pool_t& pool) : base_t{pool}, pool{pool} {}
+
+            inline void await_resume()
+            {
+                auto do_erase{[this]
+                              {
+                                  auto* ptr{::std::to_address(iter)};
+                                  ::std::destroy_at(ptr);
+                                  ::std::construct_at(ptr, ::std::move(pool.back()));
+                                  pool.pop_back();
+                              }};
+                try
+                {
+                    base_t::await_resume();
+                    do_erase();
+                }
+                catch(...)
+                {
+                    do_erase();
+                    throw;
+                }
+            }
+        };
+
+        /**
+         * @brief 判断任务池是否为空
+         *
+         * @return 任务池是否为空
+         */
+        inline bool empty() const { return pool.empty(); };
+
+        /**
+         * @brief 判断任务池是否可等待
+         *
+         * @return 任务池是否可等待
+         */
+        inline bool joinable() const { return !pool.empty(); };
 
         /**
          * @brief 等待任务池中所有任务完成
@@ -820,6 +1036,27 @@ export namespace verilator_utils
          * @return 可等待体
          */
         [[nodiscard]] inline join_all_awaiter join_all() { return join_all_awaiter{pool}; }
+
+        /**
+         * @brief 等待任务池中任意任务完成
+         *
+         * @return 可等待体
+         */
+        [[nodiscard]] inline join_any_awaiter join_any() { return join_any_awaiter{pool}; }
+
+        /**
+         * @brief 将池中所有任务托管给调度器
+         *
+         * @note 会挂起当前任务以便开始执行异步子任务
+         * @return 可等待体
+         */
+        [[nodiscard]] inline ::std::suspend_always join_none()
+        {
+            using namespace ::std::string_view_literals;
+            REQUIRE_MESSAGE(joinable(), "任务集合不能为空"sv);
+            pool.clear();
+            return ::std::suspend_always{};
+        }
     };
 
     namespace detail

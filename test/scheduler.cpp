@@ -604,7 +604,7 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(tasks[0].done());
         CHECK(tasks[1].done());
 
-        auto joiner{::verilator_utils::async_task_join(tasks)};
+        auto joiner{::verilator_utils::async_task_join_all(tasks)};
         CHECK(joiner.await_ready());
         CHECK_THROWS_AS(joiner.await_resume(),
                         ::verilator_utils::detail::async_task_join_all_awaiter::unhandled_exception_vector);
@@ -678,7 +678,7 @@ TEST_SUITE("verilator_utils/scheduler")
                           ::std::vector<::verilator_utils::async_task>& tasks,
                           bool& joined) -> ::verilator_utils::task
                        {
-                           co_await ::verilator_utils::async_task_join(tasks);
+                           co_await ::verilator_utils::async_task_join_all(tasks);
                            joined = true;
                        }(scheduler, tasks, joined)};
         ::verilator_utils::async_task join_runner{scheduler, ::std::move(join_task)};
