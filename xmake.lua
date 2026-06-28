@@ -15,6 +15,14 @@ option("use_sanitizer")
     set_description("Enable sanitizer for unit tests")
 option_end()
 
+option("use_lto")
+    set_default(false)
+    set_description("Enable link-time optimization when building")
+option_end()
+if get_config("use_lto") then
+    set_policy("build.optimization.lto", true)
+end
+
 rule("verilator_include")
     after_load(function (target)
         target:add("includedirs", path.join(target:pkgenvs()["VERILATOR_ROOT"], "include"), {public = true})
