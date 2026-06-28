@@ -1,6 +1,6 @@
 module;
 #include <verilator_fwd.hpp>
-export module unit_test_rtl.edge_detector:verilator;
+export module unit_test_rtl.edge_detector;
 import std;
 import std.compat;
 

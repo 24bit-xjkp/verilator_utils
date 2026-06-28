@@ -159,13 +159,13 @@ export namespace verilator_utils
         }
 
         /**
-         * @brief 执行初始化循环，然后执行调度器循环直到调度器队列为空，如果启用波形记录器，则记录波形
+         * @brief 执行初始化循环，然后执行调度器循环直到调度器队列为空或者仿真结束，如果启用波形记录器，则记录波形
          *
          */
-        inline void loop_until_empty()
+        inline void loop_until_finish()
         {
             initial_eval();
-            while(!scheduler->empty()) { loop_once(); }
+            while(!scheduler->empty() && !scheduler->is_finish()) { loop_once(); }
         }
     };
 }  // namespace verilator_utils

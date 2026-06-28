@@ -42,7 +42,7 @@ namespace
     };
 
     struct signal_state
-    { bool value{}; };
+    { ::CData value{}; };
 }  // namespace
 
 TEST_SUITE("verilator_utils/scheduler")
@@ -51,28 +51,32 @@ TEST_SUITE("verilator_utils/scheduler")
 
     TEST_CASE("task supports handle access and nested await")
     {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
         auto child{[] -> ::verilator_utils::task { co_return; }()};
 
         ::verilator_utils::task::handle_t parent_handle;
         auto parent{
             [](::verilator_utils::task& child, ::verilator_utils::task::handle_t& parent_handle) -> ::verilator_utils::task
             {
-                auto handle{co_await ::verilator_utils::task::get_handle_t{}};
+                auto handle{co_await ::verilator_utils::get_handle()};
                 CHECK(handle);
                 parent_handle = handle;
                 CHECK_EQ(handle.promise().status, ::verilator_utils::task::status_enum::running);
                 co_await child;
             }(child, parent_handle)};
+        auto expected_parent_handle{parent.get_handle()};
 
         CHECK(parent);
         CHECK(child);
         CHECK_EQ(parent.get_promise().status, ::verilator_utils::task::status_enum::initial_suspend);
         CHECK_EQ(child.get_promise().status, ::verilator_utils::task::status_enum::initial_suspend);
-        parent.resume();
-        CHECK_EQ(parent_handle, parent.get_handle());
-        CHECK(parent.done());
+        ::verilator_utils::async_task runner{scheduler, ::std::move(parent)};
+        scheduler.loop_until_finish();
+        CHECK_EQ(parent_handle, expected_parent_handle);
+        CHECK(runner.done());
         CHECK(child.done());
-        parent.rethrow_exception();
+        runner.get_promise().rethrow_exception();
     }
 
     TEST_CASE("task supports move construction assignment detach and destroy")
@@ -124,11 +128,11 @@ TEST_SUITE("verilator_utils/scheduler")
     TEST_CASE("edge_detector reports rising falling and both edges")
     {
         signal_state signal{};
-        ::verilator_utils::edge_detector rising_detector{[&signal] { return signal.value; },
+        ::verilator_utils::edge_detector rising_detector{::verilator_utils::bit_slice<::CData>{signal.value},
                                                          ::verilator_utils::edge_detector::rising};
-        ::verilator_utils::edge_detector falling_detector{[&signal] { return signal.value; },
+        ::verilator_utils::edge_detector falling_detector{::verilator_utils::bit_slice<::CData>{signal.value},
                                                           ::verilator_utils::edge_detector::falling};
-        ::verilator_utils::edge_detector both_detector{[&signal] { return signal.value; },
+        ::verilator_utils::edge_detector both_detector{::verilator_utils::bit_slice<::CData>{signal.value},
                                                        ::verilator_utils::edge_detector::both};
 
         CHECK_FALSE(rising_detector());
@@ -150,7 +154,8 @@ TEST_SUITE("verilator_utils/scheduler")
     TEST_CASE("edge_detector exposes and updates selected edge")
     {
         signal_state signal{};
-        ::verilator_utils::edge_detector detector{[&signal] { return signal.value; }, ::verilator_utils::edge_detector::rising};
+        ::verilator_utils::edge_detector detector{::verilator_utils::bit_slice<::CData>{signal.value},
+                                                  ::verilator_utils::edge_detector::rising};
 
         CHECK_EQ(detector.get_edge_to_detect(), ::verilator_utils::edge_detector::rising);
         CHECK_EQ(detector.set_edge_to_detect(::verilator_utils::edge_detector::falling),
@@ -174,16 +179,16 @@ TEST_SUITE("verilator_utils/scheduler")
 
         auto task{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
                   {
-                      co_await scheduler.wait_time(5);
+                      co_await ::verilator_utils::wait_time(5_ps);
                       CHECK_EQ(scheduler.time_in_time_precision(), 5u);
                       CHECK_EQ(scheduler.time_in_string(), "5ps");
-                      co_await scheduler.wait_time(2_ns);
+                      co_await ::verilator_utils::wait_time(2_ns);
                       CHECK_EQ(scheduler.time_in_time_precision(), 2'005u);
                       CHECK_EQ(scheduler.time_in_string(), "2.005ns");
                   }(scheduler)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
-        scheduler.loop_until_empty();
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
+        scheduler.loop_until_finish();
         CHECK(runner.done());
         runner.get_promise().rethrow_exception();
     }
@@ -195,18 +200,18 @@ TEST_SUITE("verilator_utils/scheduler")
 
         auto task{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
                   {
-                      co_await scheduler.wait_time(999_ps);
+                      co_await ::verilator_utils::wait_time(999_ps);
                       CHECK_EQ(scheduler.time_in_string(), "999ps");
-                      co_await scheduler.wait_time(1_ps);
+                      co_await ::verilator_utils::wait_time(1_ps);
                       CHECK_EQ(scheduler.time_in_string(), "1ns");
-                      co_await scheduler.wait_time(999_ns);
+                      co_await ::verilator_utils::wait_time(999_ns);
                       CHECK_EQ(scheduler.time_in_string(), "1us");
-                      co_await scheduler.wait_time(999'000_ns);
+                      co_await ::verilator_utils::wait_time(999'000_ns);
                       CHECK_EQ(scheduler.time_in_string(), "1ms");
                   }(scheduler)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
-        scheduler.loop_until_empty();
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
+        scheduler.loop_until_finish();
         CHECK(runner.done());
         runner.get_promise().rethrow_exception();
     }
@@ -218,14 +223,14 @@ TEST_SUITE("verilator_utils/scheduler")
 
         auto task{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
                   {
-                      co_await scheduler.wait_time(1'000_ns);
+                      co_await ::verilator_utils::wait_time(1'000_ns);
                       CHECK_EQ(scheduler.time_in_time_precision(), 1'000'000u);
                       CHECK_EQ(scheduler.time_in_time_unit(), doctest::Approx{1.0});
                       CHECK_EQ(scheduler.time_in_string(), "1us");
                   }(scheduler)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
-        scheduler.loop_until_empty();
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
+        scheduler.loop_until_finish();
         CHECK(runner.done());
         runner.get_promise().rethrow_exception();
     }
@@ -237,12 +242,12 @@ TEST_SUITE("verilator_utils/scheduler")
 
         auto task{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
                   {
-                      co_await scheduler.wait_time(2_ps);
+                      co_await ::verilator_utils::wait_time(2_ps);
                       CHECK_EQ(scheduler.time_in_time_precision(), 2u);
                   }(scheduler)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
-        scheduler.loop_until_empty();
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
+        scheduler.loop_until_finish();
         CHECK(runner.done());
     }
 
@@ -257,7 +262,7 @@ TEST_SUITE("verilator_utils/scheduler")
                        ::std::vector<::std::uint64_t>& observed_times,
                        ::std::vector<int>& completed_tasks) -> ::verilator_utils::task
                     {
-                        co_await scheduler.wait_time(3);
+                        co_await ::verilator_utils::wait_time(3_ps);
                         observed_times.push_back(scheduler.time_in_time_precision());
                         completed_tasks.push_back(1);
                     }(scheduler, observed_times, completed_tasks)};
@@ -265,7 +270,7 @@ TEST_SUITE("verilator_utils/scheduler")
                        ::std::vector<::std::uint64_t>& observed_times,
                        ::std::vector<int>& completed_tasks) -> ::verilator_utils::task
                     {
-                        co_await scheduler.wait_time(1);
+                        co_await ::verilator_utils::wait_time(1_ps);
                         observed_times.push_back(scheduler.time_in_time_precision());
                         completed_tasks.push_back(2);
                     }(scheduler, observed_times, completed_tasks)};
@@ -273,16 +278,16 @@ TEST_SUITE("verilator_utils/scheduler")
                        ::std::vector<::std::uint64_t>& observed_times,
                        ::std::vector<int>& completed_tasks) -> ::verilator_utils::task
                     {
-                        co_await scheduler.wait_time(3);
+                        co_await ::verilator_utils::wait_time(3_ps);
                         observed_times.push_back(scheduler.time_in_time_precision());
                         completed_tasks.push_back(3);
                     }(scheduler, observed_times, completed_tasks)};
 
         ::std::vector<::verilator_utils::async_task> tasks;
         tasks.reserve(3);
-        tasks.emplace_back(scheduler, task_a);
-        tasks.emplace_back(scheduler, task_b);
-        tasks.emplace_back(scheduler, task_c);
+        tasks.emplace_back(scheduler, ::std::move(task_a));
+        tasks.emplace_back(scheduler, ::std::move(task_b));
+        tasks.emplace_back(scheduler, ::std::move(task_c));
 
         scheduler.loop_once();
         CHECK_EQ(observed_times, ::std::vector<::std::uint64_t>{1u});
@@ -306,20 +311,20 @@ TEST_SUITE("verilator_utils/scheduler")
                      signal_state& signal,
                      bool& observed_ready) -> ::verilator_utils::task
                   {
-                      co_await scheduler.wait_event(
+                      co_await ::verilator_utils::wait_event(
                           [&]
                           {
-                              observed_ready = signal.value;
-                              return signal.value;
+                              observed_ready = signal.value != 0;
+                              return signal.value != 0;
                           });
                       CHECK(observed_ready);
-                      CHECK(signal.value);
+                      CHECK(signal.value != 0);
                   }(scheduler, signal, observed_ready)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
         scheduler.loop_once();
         CHECK_FALSE(runner.done());
-        signal.value = true;
+        signal.value = 1;
         scheduler.loop_once();
         CHECK(runner.done());
         runner.get_promise().rethrow_exception();
@@ -333,11 +338,11 @@ TEST_SUITE("verilator_utils/scheduler")
 
         auto task{[](::verilator_utils::eval_scheduler& scheduler, bool& resumed) -> ::verilator_utils::task
                   {
-                      co_await scheduler.wait_event([] { return true; });
+                      co_await ::verilator_utils::wait_event([] { return true; });
                       resumed = true;
                   }(scheduler, resumed)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
         scheduler.loop_once();
         CHECK(resumed);
         CHECK(runner.done());
@@ -345,32 +350,31 @@ TEST_SUITE("verilator_utils/scheduler")
         runner.get_promise().rethrow_exception();
     }
 
-    TEST_CASE("wait_for_stimulus waits for the requested falling edges")
+    TEST_CASE("wait_stimulus waits for the requested falling edges")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         ::CData clk{};
         ::std::uint64_t resumed_times;
 
-        auto clock_task{::verilator_utils::generate_clock(scheduler, ::verilator_utils::bit_slice<::CData>{clk}, 4_ps)};
+        auto clock_task{::verilator_utils::generate_clock(::verilator_utils::bit_slice<::CData>{clk}, 4_ps)};
         auto stimulus_task{[](::verilator_utils::eval_scheduler& scheduler,
                               ::verilator_utils::bit_slice<::CData> clk,
                               ::std::uint64_t& resumed_times) -> ::verilator_utils::task
                            {
-                               co_await ::verilator_utils::wait_for_stimulus(scheduler, clk, 2);
+                               co_await ::verilator_utils::wait_stimulus(clk, 2);
                                resumed_times = scheduler.time_in_time_precision();
-                               scheduler.finish();
+                               co_await ::verilator_utils::eval_finish();
                            }(scheduler, ::verilator_utils::bit_slice<::CData>{clk}, resumed_times)};
 
-        ::verilator_utils::async_task clock_runner{scheduler, clock_task};
-        ::verilator_utils::async_task stimulus_runner{scheduler, stimulus_task};
+        ::verilator_utils::async_task clock_runner{scheduler, ::std::move(clock_task)};
+        ::verilator_utils::async_task stimulus_runner{scheduler, ::std::move(stimulus_task)};
 
-        scheduler.loop_until_empty();
+        scheduler.loop_until_finish();
 
         CHECK(stimulus_runner.done());
         // 一个时钟周期4ps，等待2个时钟周期
         CHECK_EQ(resumed_times, 8);
-        clock_runner.destroy();
         stimulus_runner.get_promise().rethrow_exception();
     }
 
@@ -381,17 +385,18 @@ TEST_SUITE("verilator_utils/scheduler")
         bool seen_before_eval{};
         bool seen_after_eval{};
 
-        auto task{[](::verilator_utils::eval_scheduler& scheduler,
-                     bool& seen_before_eval,
-                     bool& seen_after_eval) -> ::verilator_utils::task
-                  {
-                      co_await scheduler.wait_stage(::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
-                      seen_before_eval = true;
-                      co_await scheduler.wait_stage(::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
-                      seen_after_eval = true;
-                  }(scheduler, seen_before_eval, seen_after_eval)};
+        auto task{
+            [](::verilator_utils::eval_scheduler& scheduler,
+               bool& seen_before_eval,
+               bool& seen_after_eval) -> ::verilator_utils::task
+            {
+                co_await ::verilator_utils::wait_eval_stage(::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
+                seen_before_eval = true;
+                co_await ::verilator_utils::wait_eval_stage(::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
+                seen_after_eval = true;
+            }(scheduler, seen_before_eval, seen_after_eval)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
         scheduler.loop_once();
         CHECK(seen_before_eval);
         CHECK(seen_after_eval);
@@ -443,17 +448,18 @@ TEST_SUITE("verilator_utils/scheduler")
         bool seen_before_eval{};
         bool seen_after_eval{};
 
-        auto task{[](::verilator_utils::eval_scheduler& scheduler,
-                     bool& seen_before_eval,
-                     bool& seen_after_eval) -> ::verilator_utils::task
-                  {
-                      co_await scheduler.wait_stage(::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
-                      seen_before_eval = true;
-                      co_await scheduler.wait_stage(::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
-                      seen_after_eval = true;
-                  }(scheduler, seen_before_eval, seen_after_eval)};
+        auto task{
+            [](::verilator_utils::eval_scheduler& scheduler,
+               bool& seen_before_eval,
+               bool& seen_after_eval) -> ::verilator_utils::task
+            {
+                co_await ::verilator_utils::wait_eval_stage(::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
+                seen_before_eval = true;
+                co_await ::verilator_utils::wait_eval_stage(::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
+                seen_after_eval = true;
+            }(scheduler, seen_before_eval, seen_after_eval)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
         scheduler.loop_once();
         CHECK(seen_before_eval);
         CHECK(seen_after_eval);
@@ -468,21 +474,19 @@ TEST_SUITE("verilator_utils/scheduler")
         ::CData reset{};
         ::CData reset_n{};
 
-        auto clock_task{::verilator_utils::generate_clock(scheduler, ::verilator_utils::bit_slice<::CData>{clk}, 4_ps)};
-        auto reset_task{::verilator_utils::generate_reset(scheduler,
-                                                          ::verilator_utils::bit_slice<::CData>{reset},
+        auto clock_task{::verilator_utils::generate_clock(::verilator_utils::bit_slice<::CData>{clk}, 4_ps)};
+        auto reset_task{::verilator_utils::generate_reset(::verilator_utils::bit_slice<::CData>{reset},
                                                           ::verilator_utils::bit_slice<::CData>{clk},
                                                           1,
                                                           true)};
-        auto reset_n_task{::verilator_utils::generate_reset(scheduler,
-                                                            ::verilator_utils::bit_slice<::CData>{reset_n},
+        auto reset_n_task{::verilator_utils::generate_reset(::verilator_utils::bit_slice<::CData>{reset_n},
                                                             ::verilator_utils::bit_slice<::CData>{clk},
                                                             1,
                                                             false)};
 
-        ::verilator_utils::async_task clock_runner{scheduler, clock_task};
-        ::verilator_utils::async_task reset_runner{scheduler, reset_task};
-        ::verilator_utils::async_task reset_n_runner{scheduler, reset_n_task};
+        ::verilator_utils::async_task clock_runner{scheduler, ::std::move(clock_task)};
+        ::verilator_utils::async_task reset_runner{scheduler, ::std::move(reset_task)};
+        ::verilator_utils::async_task reset_n_runner{scheduler, ::std::move(reset_n_task)};
 
         scheduler.loop_once();
         CHECK_EQ(clk, 1);
@@ -502,7 +506,7 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_EQ(reset_n, 1);
 
         scheduler.finish();
-        scheduler.loop_until_empty();
+        scheduler.loop_once();
         CHECK(clock_runner.done());
         clock_runner.get_promise().rethrow_exception();
         reset_runner.get_promise().rethrow_exception();
@@ -540,34 +544,34 @@ TEST_SUITE("verilator_utils/scheduler")
                      ::std::size_t& negedge_count,
                      ::std::size_t& alledge_count) -> ::verilator_utils::task
                   {
-                      co_await scheduler.wait_posedge([&] { return clk.value; }, 2);
+                      co_await ::verilator_utils::wait_posedge(::verilator_utils::bit_slice<::CData>{clk.value}, 2);
                       posedge_count = 2;
-                      co_await scheduler.wait_negedge([&] { return clk.value; }, 1);
+                      co_await ::verilator_utils::wait_negedge(::verilator_utils::bit_slice<::CData>{clk.value}, 1);
                       negedge_count = 1;
-                      co_await scheduler.wait_alledge([&] { return clk.value; }, 2);
+                      co_await ::verilator_utils::wait_alledge(::verilator_utils::bit_slice<::CData>{clk.value}, 2);
                       alledge_count = 2;
                   }(scheduler, clk, posedge_count, negedge_count, alledge_count)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
         scheduler.loop_once();
         CHECK_EQ(posedge_count, 0u);
-        clk.value = true;
+        clk.value = 1;
         scheduler.loop_once();
         CHECK_EQ(posedge_count, 0u);
-        clk.value = false;
+        clk.value = 0;
         scheduler.loop_once();
         CHECK_EQ(posedge_count, 0u);
-        clk.value = true;
+        clk.value = 1;
         scheduler.loop_once();
         CHECK_EQ(posedge_count, 2u);
         CHECK_EQ(negedge_count, 0u);
-        clk.value = false;
+        clk.value = 0;
         scheduler.loop_once();
         CHECK_EQ(negedge_count, 1u);
-        clk.value = true;
+        clk.value = 1;
         scheduler.loop_once();
         CHECK_EQ(alledge_count, 0u);
-        clk.value = false;
+        clk.value = 0;
         scheduler.loop_once();
         CHECK_EQ(alledge_count, 2u);
         CHECK(runner.done());
@@ -578,28 +582,32 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
 
-        auto ok_task{
-            [](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
-            { co_await scheduler.wait_stage(::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval); }(scheduler)};
+        auto ok_task{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
+                     {
+                         co_await ::verilator_utils::wait_eval_stage(
+                             ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
+                     }(scheduler)};
         auto failing_task{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
                           {
-                              co_await scheduler.wait_stage(::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
+                              co_await ::verilator_utils::wait_eval_stage(
+                                  ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
                               throw ::std::runtime_error{"boom"};
                               co_return;
                           }(scheduler)};
 
         ::std::vector<::verilator_utils::async_task> tasks;
         tasks.reserve(2);
-        tasks.emplace_back(scheduler, ok_task);
-        tasks.emplace_back(scheduler, failing_task);
+        tasks.emplace_back(scheduler, ::std::move(ok_task));
+        tasks.emplace_back(scheduler, ::std::move(failing_task));
 
         scheduler.loop_once();
         CHECK(tasks[0].done());
         CHECK(tasks[1].done());
 
-        auto joiner{::verilator_utils::task_join(scheduler, tasks)};
+        auto joiner{::verilator_utils::async_task_join(tasks)};
         CHECK(joiner.await_ready());
-        CHECK_THROWS_AS(joiner.await_resume(), ::verilator_utils::task_join_awaiter::unhandled_exception_vector);
+        CHECK_THROWS_AS(joiner.await_resume(),
+                        ::verilator_utils::detail::async_task_join_all_awaiter::unhandled_exception_vector);
     }
 
     TEST_CASE("async_task can be awaited and propagates child exceptions")
@@ -610,26 +618,26 @@ TEST_SUITE("verilator_utils/scheduler")
         bool observed_exception{};
 
         auto child_task{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
-                        { co_await scheduler.wait_time(1); }(scheduler)};
-        ::verilator_utils::async_task child{scheduler, child_task};
+                        { co_await ::verilator_utils::wait_time(1_ps); }(scheduler)};
+        ::verilator_utils::async_task child{scheduler, ::std::move(child_task)};
         auto watcher_task{[](::verilator_utils::async_task& child, bool& observed_completion) -> ::verilator_utils::task
                           {
                               co_await child;
                               observed_completion = true;
                           }(child, observed_completion)};
-        ::verilator_utils::async_task watcher{scheduler, watcher_task};
+        ::verilator_utils::async_task watcher{scheduler, ::std::move(watcher_task)};
 
-        scheduler.loop_until_empty();
+        scheduler.loop_until_finish();
         CHECK(observed_completion);
         CHECK(watcher.done());
         watcher.get_promise().rethrow_exception();
 
         auto failing_task{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
                           {
-                              co_await scheduler.wait_time(1);
+                              co_await ::verilator_utils::wait_time(1_ps);
                               throw ::std::runtime_error{"async child failure"};
                           }(scheduler)};
-        ::verilator_utils::async_task failing_child{scheduler, failing_task};
+        ::verilator_utils::async_task failing_child{scheduler, ::std::move(failing_task)};
         auto failing_watcher_task{
             [](::verilator_utils::async_task& failing_child, bool& observed_exception) -> ::verilator_utils::task
             {
@@ -642,9 +650,9 @@ TEST_SUITE("verilator_utils/scheduler")
                     observed_exception = true;
                 }
             }(failing_child, observed_exception)};
-        ::verilator_utils::async_task failing_watcher{scheduler, failing_watcher_task};
+        ::verilator_utils::async_task failing_watcher{scheduler, ::std::move(failing_watcher_task)};
 
-        scheduler.loop_until_empty();
+        scheduler.loop_until_finish();
         CHECK(observed_exception);
         CHECK(failing_watcher.done());
         failing_watcher.get_promise().rethrow_exception();
@@ -657,25 +665,25 @@ TEST_SUITE("verilator_utils/scheduler")
         bool joined{};
 
         auto child_a{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
-                     { co_await scheduler.wait_time(1); }(scheduler)};
+                     { co_await ::verilator_utils::wait_time(1_ps); }(scheduler)};
         auto child_b{[](::verilator_utils::eval_scheduler& scheduler) -> ::verilator_utils::task
-                     { co_await scheduler.wait_time(2); }(scheduler)};
+                     { co_await ::verilator_utils::wait_time(2_ps); }(scheduler)};
 
         ::std::vector<::verilator_utils::async_task> tasks;
         tasks.reserve(2);
-        tasks.emplace_back(scheduler, child_a);
-        tasks.emplace_back(scheduler, child_b);
+        tasks.emplace_back(scheduler, ::std::move(child_a));
+        tasks.emplace_back(scheduler, ::std::move(child_b));
 
         auto join_task{[](::verilator_utils::eval_scheduler& scheduler,
                           ::std::vector<::verilator_utils::async_task>& tasks,
                           bool& joined) -> ::verilator_utils::task
                        {
-                           co_await ::verilator_utils::task_join(scheduler, tasks);
+                           co_await ::verilator_utils::async_task_join(tasks);
                            joined = true;
                        }(scheduler, tasks, joined)};
-        ::verilator_utils::async_task join_runner{scheduler, join_task};
+        ::verilator_utils::async_task join_runner{scheduler, ::std::move(join_task)};
 
-        scheduler.loop_until_empty();
+        scheduler.loop_until_finish();
         CHECK(joined);
         CHECK(join_runner.done());
         CHECK(::std::ranges::all_of(tasks, [](::verilator_utils::async_task& task) { return task.done(); }));
@@ -692,7 +700,7 @@ TEST_SUITE("verilator_utils/scheduler")
                   {
                       try
                       {
-                          co_await scheduler.wait_time(10);
+                          co_await ::verilator_utils::wait_time(10_ps);
                       }
                       catch(const ::verilator_utils::eval_finish_exception&)
                       {
@@ -701,9 +709,9 @@ TEST_SUITE("verilator_utils/scheduler")
                       }
                   }(scheduler, resumed)};
 
-        ::verilator_utils::async_task runner{scheduler, task};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
         scheduler.finish();
-        scheduler.loop_until_empty();
+        scheduler.loop_once();
         CHECK(resumed);
         CHECK(runner.done());
         CHECK(runner.get_promise().is_eval_finish_exception);

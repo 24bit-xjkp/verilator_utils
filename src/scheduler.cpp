@@ -29,6 +29,12 @@ export namespace verilator_utils
     };
 
     /**
+     * @brief 基于协程的电路评估调度器
+     *
+     */
+    struct eval_scheduler;
+
+    /**
      * @brief 同步任务类型
      *
      */
@@ -39,17 +45,16 @@ export namespace verilator_utils
         using handle_t = ::std::coroutine_handle<promise_type>;
 
         /**
-         * @brief 在协程内获取协程柄，不会挂起协程
+         * @brief 永不挂起的可等待体
          *
-         * @code {.cpp}
-         * task foo()
-         * {
-         *     auto handle{co_await task::get_handleTt{}};
-         * }
-         * @endcode
          */
-        struct get_handle_t
+        struct no_suspend_awaiter : ::std::suspend_never
         {
+            inline void set_handle(this auto&& self, handle_t handle) noexcept(noexcept(self.set_handle_impl(handle)))
+                requires requires() {
+                    { self.set_handle_impl(handle) } -> ::std::same_as<void>;
+                }
+            { self.set_handle_impl(handle); }
         };
 
         /**
@@ -80,6 +85,8 @@ export namespace verilator_utils
             /// - 为nullptr表示没有父协程
             /// - 非nullptr表示该协程为子协程，生命周期由父协程管理
             handle_t parent{};
+            /// 调度器指针，用于实现隐式的调度器传递
+            ::verilator_utils::eval_scheduler* scheduler{};
             /// 任务是否是通过抛出仿真结束异常结束的
             bool is_eval_finish_exception{};
             /// 协程状态
@@ -125,28 +132,9 @@ export namespace verilator_utils
             /**
              * @brief 协程最终挂起
              *
-             * @return 挂起协程，若存在父协程则跳转到父协程执行
+             * @return 挂起协程，若存在父协程则将父协程放入就绪队列
              */
-            inline auto final_suspend() noexcept
-            {
-                using type_erased_handle = ::std::coroutine_handle<>;
-
-                struct finial_awaiter
-                {
-                    type_erased_handle handle_to_resume{};
-
-                    inline bool await_ready() const noexcept { return false; }
-
-                    inline type_erased_handle await_suspend(type_erased_handle) const noexcept { return handle_to_resume; }
-
-                    inline void await_resume() const noexcept {}
-                };
-
-                status = status_enum::finial_suspend;
-                // 存在父协程且为同步协程则恢复父协程，否则无操作
-                return finial_awaiter{parent && !is_async ? static_cast<type_erased_handle>(parent)
-                                                          : static_cast<type_erased_handle>(::std::noop_coroutine())};
-            }
+            inline ::std::suspend_always final_suspend() noexcept;
 
             /**
              * @brief 协程返回空值
@@ -200,41 +188,6 @@ export namespace verilator_utils
             inline bool is_root_coroutine() const { return !is_async && parent == nullptr; }
 
             /**
-             * @brief 实现无挂起的协程柄获取
-             *
-             * @return 可等待体
-             */
-            inline auto await_transform(::verilator_utils::task::get_handle_t) noexcept
-            {
-                struct get_handle_awaiter
-                {
-                    handle_t handle;
-
-                    /**
-                     * @brief 判断是否立即就绪
-                     *
-                     * @return true 立即就绪以避免挂起协程
-                     */
-                    inline static bool await_ready() noexcept { return true; }
-
-                    /**
-                     * @brief 挂起协程
-                     *
-                     */
-                    inline void await_suspend(handle_t) noexcept {}
-
-                    /**
-                     * @brief 恢复任务执行
-                     *
-                     * @return handle_t 当前任务的协程柄
-                     */
-                    inline handle_t await_resume() const noexcept { return handle; }
-                };
-
-                return get_handle_awaiter{handle_t::from_promise(*this)};
-            }
-
-            /**
              * @brief 转发可等待体
              *
              * @tparam type 可等待体类型
@@ -242,8 +195,27 @@ export namespace verilator_utils
              * @return auto&& 转发的可等待体对象
              */
             template <typename type>
-            inline auto&& await_transform(type&& awaiter) noexcept
-            { return ::std::forward<type>(awaiter); }
+            inline auto&& await_transform(type&& awaiter)
+            {
+                if constexpr(::std::derived_from<type, no_suspend_awaiter>)
+                {
+                    // 通过set_handle向可等待体传递协程柄
+                    awaiter.set_handle(handle_t::from_promise(*this));
+                }
+                return ::std::forward<type>(awaiter);
+            }
+
+            /**
+             * @brief 检查任务是否绑定到调度器
+             *
+             * @return 已绑定则返回调度器指针，否则断言失败
+             */
+            inline ::verilator_utils::eval_scheduler* check_scheduler() const
+            {
+                using namespace ::std::string_view_literals;
+                REQUIRE_MESSAGE(scheduler != nullptr, "任务必须绑定调度器"sv);
+                return scheduler;
+            }
         };
 
         /**
@@ -357,6 +329,7 @@ export namespace verilator_utils
             inline handle_t await_suspend(handle_t parent) const noexcept
             {
                 subhandle.promise().parent = parent;
+                subhandle.promise().scheduler = parent.promise().scheduler;
                 return subhandle;
             }
 
@@ -407,10 +380,7 @@ export namespace verilator_utils
      */
     struct edge_detector
     {
-    private:
-        ::verilator_utils::default_event_callback callback;
-        bool previous_value;
-
+    public:
         /**
          * @brief 要检测的边沿类型
          *
@@ -423,9 +393,8 @@ export namespace verilator_utils
             falling = 2,
             /// 双边沿
             both = rising | falling
-        } edge_to_detect;
+        };
 
-    public:
         using enum edge_enum;
 
         /**
@@ -435,9 +404,9 @@ export namespace verilator_utils
          * @param event_callback 事件回调函数
          * @param edge_to_detect 要检测的边沿
          */
-        template <::verilator_utils::is_event_callback callback_t>
-        inline edge_detector(callback_t&& event_callback, edge_enum edge_to_detect) :
-            callback{::std::forward<callback_t>(event_callback)}, previous_value{callback()}, edge_to_detect{edge_to_detect}
+        inline edge_detector(const ::verilator_utils::is_bit_slice auto& bit, edge_enum edge_to_detect) :
+            callback{[bit]() { return static_cast<bool>(bit); }}, previous_value{static_cast<bool>(bit)},
+            edge_to_detect{edge_to_detect}
         {
         }
 
@@ -473,6 +442,11 @@ export namespace verilator_utils
          */
         inline edge_enum set_edge_to_detect(edge_enum new_edge_to_detect)
         { return ::std::exchange(edge_to_detect, new_edge_to_detect); }
+
+    private:
+        ::verilator_utils::default_event_callback callback;
+        bool previous_value;
+        edge_enum edge_to_detect;
     };
 }  // namespace verilator_utils
 
@@ -535,10 +509,6 @@ export namespace verilator_utils::detail
 
 export namespace verilator_utils
 {
-    /**
-     * @brief 基于协程的电路评估调度器
-     *
-     */
     struct eval_scheduler
     {
         /**
@@ -547,11 +517,12 @@ export namespace verilator_utils
          */
         enum class eval_stage_enum : ::std::uint8_t
         {
+            // 未注明的阶段可进行等待
             // --- 初始化阶段 ---
 
             /// 尚未开始评估
             not_begin,
-            /// 初始评估后
+            /// 初始评估后，该阶段不进行协程调度
             after_initial_eval,
 
             // --- 仿真循环阶段 ---
@@ -564,7 +535,7 @@ export namespace verilator_utils
             on_dut_eval,
             /// 电路评估后
             after_dut_eval,
-            /// 一轮评估完成
+            /// 一轮评估完成，该阶段不进行协程调度，不可等待
             eval_end
         };
         /// 协程柄类型
@@ -599,16 +570,16 @@ export namespace verilator_utils
          */
         inline static void resume_coroutine(handle_t handle)
         {
+            auto&& promise{handle.promise()};
+            // 非根协程执行完承诺可能已销毁，需要先保存一份结果
+            bool is_root_coroutine{promise.is_root_coroutine()};
             handle.resume();
-            if(handle.done())
+            // 协程为根协程时执行销毁和异常传播
+            if(is_root_coroutine && handle.done())
             {
-                // 协程为根协程时执行销毁和异常传播
-                if(auto&& promise{handle.promise()}; promise.is_root_coroutine())
-                {
-                    // 借用task的raii确保在异常时销毁handle
-                    ::verilator_utils::task _{handle};
-                    promise.rethrow_exception();
-                }
+                // 借用task的raii确保在异常时销毁handle
+                ::verilator_utils::task _{handle};
+                promise.rethrow_exception();
             }
         }
 
@@ -764,6 +735,13 @@ export namespace verilator_utils
         { return static_cast<double>(time_in_time_precision()) / time_precision_per_time_unit; }
 
         /**
+         * @brief 获取dut时间精度，单位为飞秒
+         *
+         * @return dut时间精度
+         */
+        inline ::std::uint64_t get_time_precision_fs() const noexcept { return time_precision_fs; }
+
+        /**
          * @brief 获取当前时间，已根据时间单位转换为字符串格式并添加时间单位后缀
          *
          * @return 当前时间的字符串表示
@@ -879,12 +857,12 @@ export namespace verilator_utils
         }
 
         /**
-         * @brief 循环直到调度器为空
+         * @brief 循环直到调度器为空或仿真结束
          *
          */
-        inline void loop_until_empty()
+        inline void loop_until_finish()
         {
-            while(!empty()) { loop_once(); }
+            while(!empty() && !is_finish()) { loop_once(); }
         }
 
         /**
@@ -902,15 +880,7 @@ export namespace verilator_utils
         }
 
         /**
-         * @brief 向调度器中添加任务
-         *
-         * @note 这不会改变协程的调用栈，即task::promise_type::parent不会改变
-         */
-        inline void add_task(::verilator_utils::detail::is_task_reference auto&& task) noexcept
-        { ready_queue.emplace_back(task.detach()); }
-
-        /**
-         * @brief 向事件队列中注册一个事件和等待该事件的协程
+         * @brief 向事件队列中注册一个事件
          *
          * @param callback 事件回调函数
          * @param handle 协程柄
@@ -919,224 +889,58 @@ export namespace verilator_utils
         { event_queue.emplace_back(&callback, handle); }
 
         /**
-         * @brief 实现延迟功能的可等待体
-         *
-         */
-        struct time_awaiter
-        {
-            /// 调度器对象引用
-            eval_scheduler& scheduler;
-            /// 目标时间点
-            ::std::uint64_t target_time;
-
-            /**
-             * @brief 判断是否立即就绪
-             *
-             * @return false 不支持delta延迟，永远不会立即就绪
-             */
-            inline static bool await_ready() noexcept { return false; }
-
-            /**
-             * @brief 挂起等待，将当前任务加入等待队列
-             *
-             * @param handle 当前协程的句柄
-             */
-            inline void await_suspend(handle_t handle) const { scheduler.wait_queue.emplace(target_time, handle); }
-
-            /**
-             * @brief 恢复等待任务的执行
-             *
-             * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
-             */
-            inline void await_resume() { scheduler.throw_if_finish(); }
-        };
-
-        /**
-         * @brief 等待指定时间
+         * @brief 向等待队列中注册一个等待时间
          *
          * @note 不支持delta延迟，等待时间不能为0
-         * @param time_to_wait 等待时间，单位为时间精度，不能为0
-         * @return time_awaiter 可等待体
+         * @param time_to_wait 等待时间，单位为飞秒，不能为0
+         * @param handle 协程柄
          */
-        inline time_awaiter wait_time(::std::uint64_t time_to_wait)
+        inline void register_wait(::verilator_utils::femtosecond_t time_to_wait, handle_t handle)
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_MESSAGE(time_to_wait != 0, "不支持delta延迟，等待时间不能为0"sv);
-            return time_awaiter{*this, time_to_wait + dut->contextp()->time()};
-        }
-
-        /**
-         * @brief 等待指定时间
-         *
-         * @param time_to_wait 等待的时间，单位为飞秒，为0表示delta延迟
-         * @return time_awaiter 可等待体
-         */
-        inline time_awaiter wait_time(::verilator_utils::femtosecond_t time_to_wait)
-        {
-            using namespace ::std::string_view_literals;
-            REQUIRE_MESSAGE(time_to_wait.rep != 0, "不支持delta延迟，等待时间不能为0"sv);
+            using namespace ::verilator_utils::literals;
+            REQUIRE_MESSAGE(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
             auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
             REQUIRE_MESSAGE(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
-            return time_awaiter{*this, time_to_wait_in_time_precision + dut->contextp()->time()};
+            wait_queue.emplace(time_to_wait_in_time_precision + dut->contextp()->time(), handle);
         }
 
         /**
-         * @brief 实现事件触发功能的可等待体
+         * @brief 向就绪队列中注册一个协程
          *
+         * @param handle 协程柄
          */
-        struct event_awaiter
+        inline void register_ready(handle_t handle) noexcept
         {
-            /// 调度器对象引用
-            eval_scheduler& scheduler;
-            /// 事件回调，用于判断事件是否触发
-            ::verilator_utils::default_event_callback event_callback;
-
-            /**
-             * @brief 判断是否立即就绪
-             *
-             * @return 是否立即就绪
-             */
-            inline bool await_ready() { return event_callback(); }
-
-            /**
-             * @brief 挂起等待，将当前任务加入事件队列
-             *
-             * @param handle 当前协程的句柄
-             */
-            inline void await_suspend(handle_t handle) { scheduler.event_queue.emplace_back(&event_callback, handle); }
-
-            /**
-             * @brief 恢复等待任务的执行
-             *
-             * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
-             */
-            inline void await_resume() { scheduler.throw_if_finish(); }
-        };
-
-        /**
-         * @brief 等待事件触发
-         *
-         * @tparam callback_t 事件回调类型
-         * @param callback 事件回调函数
-         * @return event_awaiter 可等待体
-         */
-        template <::verilator_utils::is_event_callback callback_t>
-        inline event_awaiter wait_event(callback_t&& callback)
-        { return event_awaiter{*this, ::std::forward<callback_t>(callback)}; }
-
-        /**
-         * @brief 等待特定评估阶段
-         *
-         * @param target_stage 目标评估阶段
-         * @return event_awaiter 可等待体
-         *
-         * @code {.cpp}
-         * task foo(eval_scheduler& scheduler)
-         * {
-         *     // 明确等待到电路评估后，用于对电路的输出进行检查
-         *     co_await scheduler.wait_stage(eval_scheduler::eval_stage_enum::after_dut_eval);
-         * }
-         * @endcode
-         */
-        inline event_awaiter wait_stage(eval_stage_enum target_stage)
-        {
-            return wait_event([this, target_stage] { return eval_stage == target_stage; });
+            try
+            {
+                ready_queue.emplace_back(handle);
+            }
+            catch(...)
+            {
+                ::std::terminate();
+            }
         }
 
         /**
-         * @brief 等待上升沿
+         * @brief 向调度器中添加任务
          *
-         * @param callback 事件回调函数
-         * @param edge_to_wait 要等待到边沿数量
-         * @return event_awaiter 可等待体
+         * @param task 要添加的任务
+         * @note 这不会改变协程的调用栈，即task::promise_type::parent不会改变
          */
-        inline event_awaiter wait_posedge(::verilator_utils::default_event_callback callback, ::std::size_t edge_to_wait = 1)
+        inline void add_task(::verilator_utils::task task) noexcept
         {
-            REQUIRE_NE(edge_to_wait, 0);
-            using edge_detector_t = ::verilator_utils::edge_detector;
-            return wait_event(
-                [edge_detector = edge_detector_t{::std::move(callback), edge_detector_t::rising}, edge_to_wait] mutable
-                {
-                    edge_to_wait -= edge_detector();
-                    return edge_to_wait == 0;
-                });
-        }
-
-        /**
-         * @brief 等待上升沿
-         *
-         * @param bit 信号位切片
-         * @param edge_to_wait 要等待到边沿数量
-         * @return event_awaiter 可等待体
-         */
-        inline event_awaiter wait_posedge(auto&& bit, ::std::size_t edge_to_wait = 1)
-            requires (::verilator_utils::is_bit_slice<::std::remove_cvref_t<decltype(bit)>>)
-        {
-            return wait_posedge([bit] { return static_cast<bool>(bit); }, edge_to_wait);
-        }
-
-        /**
-         * @brief 等待下降沿
-         *
-         * @param callback 事件回调函数
-         * @param edge_to_wait 要等待到边沿数量
-         * @return event_awaiter 可等待体
-         */
-        inline event_awaiter wait_negedge(::verilator_utils::default_event_callback callback, ::std::size_t edge_to_wait = 1)
-        {
-            REQUIRE_NE(edge_to_wait, 0);
-            using edge_detector_t = ::verilator_utils::edge_detector;
-            return wait_event(
-                [edge_detector = edge_detector_t{::std::move(callback), edge_detector_t::falling}, edge_to_wait] mutable
-                {
-                    edge_to_wait -= edge_detector();
-                    return edge_to_wait == 0;
-                });
-        }
-
-        /**
-         * @brief 等待下降沿
-         *
-         * @param bit 信号位切片
-         * @param edge_to_wait 要等待到边沿数量
-         * @return event_awaiter 可等待体
-         */
-        inline event_awaiter wait_negedge(auto&& bit, ::std::size_t edge_to_wait = 1)
-            requires (::verilator_utils::is_bit_slice<::std::remove_cvref_t<decltype(bit)>>)
-        {
-            return wait_negedge([bit] { return static_cast<bool>(bit); }, edge_to_wait);
-        }
-
-        /**
-         * @brief 等待双边沿
-         *
-         * @param callback 事件回调函数
-         * @param edge_to_wait 要等待到边沿数量
-         * @return event_awaiter 可等待体
-         */
-        inline event_awaiter wait_alledge(::verilator_utils::default_event_callback callback, ::std::size_t edge_to_wait = 1)
-        {
-            REQUIRE_NE(edge_to_wait, 0);
-            using edge_detector_t = ::verilator_utils::edge_detector;
-            return wait_event(
-                [edge_detector = edge_detector_t{::std::move(callback), edge_detector_t::both}, edge_to_wait] mutable
-                {
-                    edge_to_wait -= edge_detector();
-                    return edge_to_wait == 0;
-                });
-        }
-
-        /**
-         * @brief 等待双边沿
-         *
-         * @param bit 信号位切片
-         * @param edge_to_wait 要等待到边沿数量
-         * @return event_awaiter 可等待体
-         */
-        inline event_awaiter wait_alledge(auto&& bit, ::std::size_t edge_to_wait = 1)
-            requires (::verilator_utils::is_bit_slice<::std::remove_cvref_t<decltype(bit)>>)
-        {
-            return wait_alledge([bit] { return static_cast<bool>(bit); }, edge_to_wait);
+            // 向task中添加调度器
+            task.get_promise().scheduler = this;
+            register_ready(task.detach());
         }
     };
+
+    auto ::verilator_utils::task::promise_type::final_suspend() noexcept -> ::std::suspend_always
+    {
+
+        status = status_enum::finial_suspend;
+        if(parent) { scheduler->register_ready(parent); }
+        return ::std::suspend_always{};
+    }
 }  // namespace verilator_utils
