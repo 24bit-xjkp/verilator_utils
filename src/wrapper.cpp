@@ -264,23 +264,6 @@ export namespace verilator_utils
         }
 
         /**
-         * @brief 相等运算符
-         *
-         * @param other 十六进制包装器对象
-         * @return 是否相等
-         */
-        inline friend bool operator== (const vector_slice& self, const ::verilator_utils::hex_wrapper_t& other)
-        {
-            REQUIRE_EQ(self.width(), other.width);
-            auto temp{static_cast<cast_type>(self)};
-            if constexpr(is_vl_wide) { return wide_to_uint64(temp) == other.value; }
-            else
-            {
-                return static_cast<::std::uint64_t>(temp) == other.value;
-            }
-        }
-
-        /**
          * @brief 赋值运算符, 从其他向量切片赋值
          *
          * @tparam other_type 其他向量切片的类型

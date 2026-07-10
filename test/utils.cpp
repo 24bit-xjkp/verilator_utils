@@ -88,43 +88,4 @@ TEST_SUITE("verilator_utils/utils")
             static_assert(type_traits::n == 1);
         }
     }
-
-    TEST_CASE("hex wrapper formats values with signal width")
-    {
-        ::verilator_utils::hex_wrapper_t zero{0u, 1};
-        CHECK_EQ(zero.to_string(), "0x0");
-
-        ::verilator_utils::hex_wrapper_t one_byte{0xau, 1};
-        CHECK_EQ(one_byte.to_string(), "0xa");
-        one_byte.width = 4;
-        CHECK_EQ(one_byte.to_string(), "0xa");
-        one_byte.width = 5;
-        CHECK_EQ(one_byte.to_string(), "0x0a");
-        one_byte.width = 8;
-        CHECK_EQ(one_byte.to_string(), "0x0a");
-
-        ::verilator_utils::hex_wrapper_t two_bytes{0xabu, 16};
-        CHECK_EQ(two_bytes.to_string(), "0x00ab");
-
-        ::verilator_utils::hex_wrapper_t full_word{0xffffffffu, 32};
-        CHECK_EQ(full_word.to_string(), "0xffffffff");
-
-        ::VlWide<2> wide_value{0x89abcdefu, 0x1u};
-        CHECK_EQ(::verilator_utils::detail::verilator_data_to_string(wide_value, 40), "0x0189abcdef");
-
-        ::VlWide<2> word_aligned_wide_value{0xffffffffu, 0xffffffffu};
-        CHECK_EQ(::verilator_utils::detail::verilator_data_to_string(word_aligned_wide_value, 64), "0xffffffffffffffff");
-
-        ::VlWide<3> partially_used_wide_value{0x89abcdefu, 0x1u, 0xffffffffu};
-        CHECK_EQ(::verilator_utils::detail::verilator_data_to_string(partially_used_wide_value, 40), "0x0189abcdef");
-    }
-
-    TEST_CASE("std format supports hex wrapper")
-    {
-        CHECK_EQ(::std::format("{}", ::verilator_utils::hex_wrapper_t{0u, 1}), "0x0");
-        CHECK_EQ(::std::format("{}", ::verilator_utils::hex_wrapper_t{0xau, 4}), "0xa");
-        CHECK_EQ(::std::format("{}", ::verilator_utils::hex_wrapper_t{0xau, 5}), "0x0a");
-        CHECK_EQ(::std::format("value={}", ::verilator_utils::hex_wrapper_t{0xabu, 16}), "value=0x00ab");
-        CHECK_EQ(::std::format("{}", ::verilator_utils::hex_wrapper_t{0xffffffffu, 32}), "0xffffffff");
-    }
 }

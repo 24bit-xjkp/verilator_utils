@@ -257,20 +257,6 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(destination_bits.to_string(), "0x012389abcdef");
     }
 
-    TEST_CASE("vector slice compares against hex wrapper and std format")
-    {
-        ::IData scalar_data{0x0000'0abcu};
-        ::VlWide<2> wide_data{0x89ab'cdefu, 0x0000'0123u};
-        ::verilator_utils::vector_slice<::IData> scalar_slice{scalar_data, 11, 0};
-        ::verilator_utils::vector_slice<::VlWide<2>> wide_slice{wide_data, 47, 0};
-
-        CHECK_EQ(scalar_slice, ::verilator_utils::hex_wrapper_t{0xabc, 12});
-        CHECK_EQ(wide_slice, ::verilator_utils::hex_wrapper_t{0x0123'89ab'cdef, 48});
-        CHECK_EQ(::std::format("{}", scalar_slice), "0xabc");
-        CHECK_EQ(::std::format("{}", wide_slice), "0x012389abcdef");
-        CHECK_EQ(::std::format("{}", ::verilator_utils::bit_slice<::IData>{scalar_data, 11}), "0x1");
-    }
-
     TEST_CASE("unpacked array exposes sliced elements as span and supports assignment")
     {
         ::VlUnpacked<::CData, 3> data{};

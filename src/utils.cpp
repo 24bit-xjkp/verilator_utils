@@ -290,54 +290,7 @@ export namespace verilator_utils
             return result;
         }
     }  // namespace detail
-
-    /**
-     * @brief 十六进制包装器，用于将数值按信号宽度格式化输出
-     *
-     */
-    struct hex_wrapper_t
-    {
-        ::std::uint64_t value;
-        ::std::size_t width;
-
-        inline hex_wrapper_t(::std::uint64_t value, ::std::size_t width) : value{value}, width{width} { REQUIRE_NE(width, 0); }
-
-        inline operator ::std::uint64_t () const
-        {
-            auto mask{-1zu >> (64 - width)};
-            return value & mask;
-        }
-
-        /**
-         * @brief 转换为字符串表示
-         *
-         * @return 字符串表示
-         */
-        inline ::std::string to_string() const { return ::verilator_utils::detail::verilator_data_to_string(value, width); }
-    };
 }  // namespace verilator_utils
-
-export namespace std
-{
-    template <>
-    struct formatter<::verilator_utils::hex_wrapper_t>
-    {
-        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
-
-        template <typename iter_t, typename char_t>
-        inline static auto format(const ::verilator_utils::hex_wrapper_t& value, ::std::basic_format_context<iter_t, char_t>& ctx)
-        { return ::verilator_utils::detail::verilator_data_format_to(ctx.out(), value.value, value.width); }
-    };
-}  // namespace std
-
-export namespace doctest
-{
-    template <>
-    struct StringMaker<::verilator_utils::hex_wrapper_t>
-    {
-        inline static ::doctest::String convert(const ::verilator_utils::hex_wrapper_t& value) { return value.to_string(); }
-    };
-}  // namespace doctest
 
 export namespace verilator_utils::detail
 {
