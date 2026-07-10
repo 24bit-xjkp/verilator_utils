@@ -21,8 +21,8 @@ target("unit_test")
     end
     after_load(function (target)
         local verilator_root = target:pkgenvs()["VERILATOR_ROOT"];
-        target:add("files", path.join(verilator_root, "include", "verilated.cpp"))
-        target:add("files", path.join(verilator_root, "include", "verilated_threads.cpp"))
+        target:add("files", path.join(verilator_root, "include", "verilated.cpp"), {warnings = "none"})
+        target:add("files", path.join(verilator_root, "include", "verilated_threads.cpp"), {warnings = "none"})
     end)
 target_end()
 
