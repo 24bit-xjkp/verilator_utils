@@ -8,3 +8,5 @@ extern "C++"
 {
 #include <unit_test_rtl_edge_detector_verilator.h>
 }
+
+#include <verilator_bwd.hpp>

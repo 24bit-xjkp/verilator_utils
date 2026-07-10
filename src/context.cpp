@@ -95,7 +95,6 @@ export namespace verilator_utils
             if constexpr(!::std::same_as<tracer_t, void>)
             {
                 context->traceEverOn(true);
-                // tracer = ::std::make_unique<tracer_t>();
                 tracer = ::verilator_utils::detail::create_tracer<tracer_t>();
                 dut->trace(tracer.get(), trace_level);
                 if constexpr(::std::same_as<tracer_t, ::VerilatedVcdC>)

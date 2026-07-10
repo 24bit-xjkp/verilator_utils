@@ -14,6 +14,8 @@ extern "C++"
 #include <verilated_saif_c.h>
 }
 
+#include <verilator_bwd.hpp>
+
 export namespace verilator_utils::verilator
 {
     using ::CData;
