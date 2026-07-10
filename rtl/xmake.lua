@@ -1,4 +1,4 @@
-local verilator_options = {"-Wall", "--trace-fst", {"--x-assign", "unique"}, {"-x-initial", "unique"}}
+local verilator_options = {"-Wall", "--trace-fst", {"--x-assign", "unique"}, {"-x-initial", "unique"}, "--coverage"}
 set_warnings("none")
 add_toolchains("@verilator")
 

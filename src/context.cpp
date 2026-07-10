@@ -67,22 +67,25 @@ export namespace verilator_utils
         // 若不使用波形记录器，则使用std::size_t占位
         using actual_tracer_t = ::std::conditional_t<::std::same_as<tracer_t, void>, ::std::size_t, tracer_t>;
         ::std::unique_ptr<actual_tracer_t> tracer{};
+        bool coverage{};
 
     public:
         /**
          * @brief 构造一个DUT上下文对象
          *
+         * @param coverage 是否启用覆盖率记录
          * @param time_unit 时间单位，默认值为ns
          * @param time_precision 时间精度，默认值为ps
+         * @param trace_level 跟踪级别，默认值为0
          * @param argc 命令行参数数量，默认为detail::argc
          * @param argv 命令行参数数组，默认为detail::argv
-         * @param trace_level 跟踪级别，默认值为0
          */
-        inline dut_context(::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,
+        inline dut_context(bool coverage,
+                           ::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,
                            ::verilator_utils::verilator_time_unit time_precision = ::verilator_utils::verilator_time_unit::ps,
+                           int trace_level = 0,
                            int argc = ::verilator_utils::detail::argc,
-                           const char** argv = ::verilator_utils::detail::argv,
-                           int trace_level = 0)
+                           const char** argv = ::verilator_utils::detail::argv) : coverage{coverage}
         {
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
             context = ::std::make_unique<::VerilatedContext>();
@@ -110,9 +113,15 @@ export namespace verilator_utils
                     tracer->open(::std::format("{}.saif", current_test.m_name).data());
                 }
             }
+
+            if(coverage) { context->coverageFilename(::std::format("{}.dat", current_test.m_name)); }
         }
 
-        inline ~dut_context() noexcept { dut->final(); }
+        inline ~dut_context() noexcept
+        {
+            dut->final();
+            if(coverage) { context->coveragep()->write(); }
+        }
 
         /**
          * @brief DUT上下文对象中子组件的数量

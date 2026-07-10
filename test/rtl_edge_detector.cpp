@@ -33,7 +33,7 @@ TEST_SUITE("edge_detector")
 
     TEST_CASE("edge_detector")
     {
-        dut_context_t dut_context{verilator_time_unit::ns, verilator_time_unit::ps_10};
+        dut_context_t dut_context{true, verilator_time_unit::ns, verilator_time_unit::ps_10};
         auto&& [context, dut, scheduler, _]{dut_context};
         port_t port{dut};
 

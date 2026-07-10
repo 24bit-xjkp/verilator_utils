@@ -7,6 +7,7 @@ import std.compat;
 extern "C++"
 {
 #include <verilated.h>
+#include <verilated_cov.h>
 #include <verilated_vcd_c.h>
 #include "undefine_verilator_tracer_macros.hpp"
 #include <verilated_fst_c.h>
@@ -25,6 +26,7 @@ export namespace verilator_utils::verilator
     using ::QData;
     using ::SData;
     using ::VerilatedContext;
+    using ::VerilatedCovContext;
     using ::VerilatedFstC;
     using ::VerilatedModel;
     using ::VerilatedSaifC;
