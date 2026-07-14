@@ -184,6 +184,318 @@ export namespace verilator_utils::literals
     { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000u)}; }
 }  // namespace verilator_utils::literals
 
+namespace verilator_utils
+{
+    namespace detail
+    {
+        /**
+         * @brief 十六进制
+         *
+         */
+        struct data_format_hex_t
+        {
+            /**
+             * @brief 获取格式支持的最大宽度
+             *
+             * @return 最大宽度
+             */
+            constexpr inline static ::std::size_t min_width() noexcept { return 1; }
+
+            /**
+             * @brief 获取格式支持的最小宽度
+             *
+             * @return 最小宽度
+             */
+            constexpr inline static ::std::size_t max_width() noexcept { return -1zu; }
+        };
+
+        /**
+         * @brief 二进制
+         *
+         */
+        struct data_format_bin_t
+        {
+            /**
+             * @brief 获取格式支持的最大宽度
+             *
+             * @return 最大宽度
+             */
+            constexpr inline static ::std::size_t min_width() noexcept { return 1; }
+
+            /**
+             * @brief 获取格式支持的最小宽度
+             *
+             * @return 最小宽度
+             */
+            constexpr inline static ::std::size_t max_width() noexcept { return -1zu; }
+        };
+
+        /**
+         * @brief 有符号十进制
+         * 存储在std::uint64_t中，格式为[前导0][二进制补码]
+         */
+        struct data_format_signed_t
+        {
+            /**
+             * @brief 获取格式支持的最小宽度
+             *
+             * @return 最小宽度
+             */
+            constexpr inline static ::std::size_t min_width() noexcept { return 2; }
+
+            /**
+             * @brief 获取格式支持的最大宽度
+             *
+             * @return 最大宽度
+             */
+            constexpr inline static ::std::size_t max_width() noexcept { return 64; }
+        };
+
+        /**
+         * @brief 无符号十进制
+         * 存储在std::uint64_t中，格式为[前导0][数据]
+         */
+        struct data_format_unsigned_t
+        {
+            /**
+             * @brief 获取格式支持的最小宽度
+             *
+             * @return 最小宽度
+             */
+            constexpr inline static ::std::size_t min_width() noexcept { return 1; }
+
+            /**
+             * @brief 获取格式支持的最大宽度
+             *
+             * @return 最大宽度
+             */
+            constexpr inline static ::std::size_t max_width() noexcept { return 64; }
+        };
+
+        /**
+         * @brief 单精度浮点数
+         * 存储在std::uint64_t中，格式为[前导0][float格式数据]
+         */
+        struct data_format_float_t
+        {
+            /// 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+            bool format_as_hex{};
+
+            /**
+             * @brief 获取数据宽度
+             *
+             * @return 数据宽度
+             */
+            constexpr inline static ::std::size_t width() noexcept { return 32; }
+        };
+
+        /**
+         * @brief 双精度浮点数
+         * 存储在std::uint64_t中，格式为[double格式数据]
+         */
+        struct data_format_double_t
+        {
+            /// 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+            bool format_as_hex{};
+
+            /**
+             * @brief 获取数据宽度
+             *
+             * @return 数据宽度
+             */
+            constexpr inline static ::std::size_t width() noexcept { return 64; }
+        };
+
+        /**
+         * @brief 无符号定点数
+         * 存储在std::uint64_t中，格式为[前导0][整数部分][小数部分]
+         */
+        struct data_format_unsigned_fixed_point_t
+        {
+            /// 整数位数
+            ::std::uint8_t integer_bit;
+            /// 小数位数
+            ::std::uint8_t fractional_bit;
+            /// 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+            bool format_as_hex;
+
+            constexpr inline data_format_unsigned_fixed_point_t(::std::uint8_t integer_bit,
+                                                                ::std::uint8_t fractional_bit,
+                                                                bool format_as_hex = false) :
+                integer_bit{integer_bit}, fractional_bit{fractional_bit}, format_as_hex{format_as_hex}
+            {
+            }
+
+            /**
+             * @brief 获取格式支持的最小宽度
+             *
+             * @return 最小宽度
+             */
+            constexpr inline static ::std::size_t min_width() noexcept { return 1; }
+
+            /**
+             * @brief 获取格式支持的最大宽度
+             *
+             * @return 最大宽度
+             */
+            constexpr inline static ::std::size_t max_width() noexcept
+            {
+                // 定点数会转化为double处理，能无损失的表示的最大位数为double尾数位数
+                return ::std::numeric_limits<double>::digits - 1;
+            }
+
+            /**
+             * @brief 获取定点数宽度
+             *
+             * @return 定点数宽度
+             */
+            constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit; }
+        };
+
+        /**
+         * @brief 有符号定点数，即补码表示
+         * 存储在std::uint64_t中，格式为[前导0][符号][整数部分，补码][小数部分，补码]
+         */
+        struct data_format_signed_fixed_point_t
+        {
+            /// 整数位数
+            ::std::uint8_t integer_bit;
+            /// 小数位数
+            ::std::uint8_t fractional_bit;
+            /// 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+            bool format_as_hex;
+
+            constexpr inline data_format_signed_fixed_point_t(::std::uint8_t integer_bit,
+                                                              ::std::uint8_t fractional_bit,
+                                                              bool format_as_hex = false) :
+                integer_bit{integer_bit}, fractional_bit{fractional_bit}, format_as_hex{format_as_hex}
+            {
+            }
+
+            /**
+             * @brief 获取格式支持的最小宽度
+             *
+             * @return 最小宽度
+             */
+            constexpr inline static ::std::size_t min_width() noexcept { return 2; }
+
+            /**
+             * @brief 获取格式支持的最大宽度
+             *
+             * @return 最大宽度
+             */
+            constexpr inline static ::std::size_t max_width() noexcept
+            {
+                // 定点数会转化为double处理，能无损失的表示的最大位数为double尾数位数+符号位
+                return ::std::numeric_limits<double>::digits;
+            }
+
+            /**
+             * @brief 获取定点数宽度
+             *
+             * @return 定点数宽度
+             */
+            constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
+        };
+
+        /**
+         * @brief 采用符号-幅值表示的定点数，即原码表示
+         * 存储在std::uint64_t中，格式为[前导0][符号][整数部分，原码][小数部分，原码]
+         */
+        struct data_format_sign_mag_t
+        {
+            /// 整数位数
+            ::std::uint8_t integer_bit;
+            /// 小数位数
+            ::std::uint8_t fractional_bit;
+            /// 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+            bool format_as_hex;
+
+            constexpr inline data_format_sign_mag_t(::std::uint8_t integer_bit,
+                                                    ::std::uint8_t fractional_bit,
+                                                    bool format_as_hex = false) :
+                integer_bit{integer_bit}, fractional_bit{fractional_bit}, format_as_hex{format_as_hex}
+            {
+            }
+
+            /**
+             * @brief 获取格式支持的最小宽度
+             *
+             * @return 最小宽度
+             */
+            constexpr inline static ::std::size_t min_width() noexcept { return 2; }
+
+            /**
+             * @brief 获取格式支持的最大宽度
+             *
+             * @return 最大宽度
+             */
+            constexpr inline static ::std::size_t max_width() noexcept
+            {
+                // 定点数会转化为double处理，能无损失的表示的最大位数为double尾数位数+符号位
+                return ::std::numeric_limits<double>::digits + 1;
+            }
+
+            /**
+             * @brief 获取定点数宽度
+             *
+             * @return 定点数宽度
+             */
+            constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
+        };
+    }  // namespace detail
+
+    export namespace data_format
+    {
+        /// 十六进制
+        constexpr inline ::verilator_utils::detail::data_format_hex_t hex{};
+        /// 二进制
+        constexpr inline ::verilator_utils::detail::data_format_bin_t bin{};
+        /// 有符号十进制
+        constexpr inline ::verilator_utils::detail::data_format_signed_t dec_signed{};
+        /// 无符号十进制
+        constexpr inline ::verilator_utils::detail::data_format_unsigned_t dec_unsigned{};
+        /// 单精度浮点数
+        constexpr inline ::verilator_utils::detail::data_format_float_t real_float{};
+        /// 双精度浮点数
+        constexpr inline ::verilator_utils::detail::data_format_double_t real_double{};
+        /// 无符号定点数
+        using unsigned_fixed_point = ::verilator_utils::detail::data_format_unsigned_fixed_point_t;
+        /// 有符号定点数
+        using signed_fixed_point = ::verilator_utils::detail::data_format_signed_fixed_point_t;
+        /// 符号-幅值定点数
+        using sign_mag = ::verilator_utils::detail::data_format_sign_mag_t;
+
+        /// 数据格式类型
+        using format = ::std::variant<::std::monostate,
+                                      ::verilator_utils::detail::data_format_hex_t,
+                                      ::verilator_utils::detail::data_format_bin_t,
+                                      ::verilator_utils::detail::data_format_signed_t,
+                                      ::verilator_utils::detail::data_format_unsigned_t,
+                                      ::verilator_utils::detail::data_format_float_t,
+                                      ::verilator_utils::detail::data_format_double_t,
+                                      ::verilator_utils::detail::data_format_unsigned_fixed_point_t,
+                                      ::verilator_utils::detail::data_format_signed_fixed_point_t,
+                                      ::verilator_utils::detail::data_format_sign_mag_t>;
+    }  // namespace data_format
+
+    namespace detail
+    {
+        /**
+         * @brief 判断是否是宽度可变的数据格式
+         * hex, bin, signed和unsigned是可变宽度的
+         * @param format 要判断的格式
+         * @return 是否宽度可变
+         */
+        constexpr inline bool is_variable_width_format(::verilator_utils::data_format::format format) noexcept
+        {
+            constexpr static auto hex_index{1zu};
+            constexpr static auto unsigned_index{4zu};
+            return format.index() >= hex_index && format.index() <= unsigned_index;
+        }
+    }  // namespace detail
+}  // namespace verilator_utils
+
 export namespace verilator_utils
 {
     /**
@@ -215,81 +527,6 @@ export namespace verilator_utils
         using value_type = type;
         constexpr inline static ::std::size_t n{size};
     };
-
-    /**
-     * @brief 将Verilator数据类型转化到底层C++数据类型
-     *
-     * @tparam type Verilator数据类型
-     */
-    template <::verilator_utils::is_verilator_data_type type>
-    using verilator_type_to_underlying = ::std::conditional_t<::VlIsVlWide<type>::value, ::EData, type>;
-
-    namespace detail
-    {
-        /**
-         * @brief 转换verilator数据对象为字符串的最大长度
-         *
-         * @param width 宽度
-         * @return 字符串最大长度
-         */
-        inline ::std::size_t verilator_data_to_string_size(::std::size_t width)
-        {
-            // 0x前缀长度
-            constexpr static auto prefix_size{2zu};
-            return (width + 3) / 4 + prefix_size;
-        }
-
-        /**
-         * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
-         *
-         * @tparam iter_t 输出迭代器类型
-         * @tparam type 数据类型
-         * @param iter 输出缓冲区迭代器
-         * @param data 数据对象
-         * @param width 宽度
-         * @return 更新后的迭代器
-         */
-        template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
-        inline iter_t verilator_data_format_to(iter_t iter, const type& data, ::std::size_t width)
-        {
-            /// 每个字的位宽
-            constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
-            if constexpr(::VlIsVlWide<type>::value)
-            {
-                // 最高字中信号宽度
-                auto left_word_width{width % word_width};
-                if(left_word_width == 0) { left_word_width = word_width; }
-                auto begin{data.data()};
-                auto end{data.data() + (width + word_width - 1) / word_width};
-                iter = ::std::format_to(iter, "{:#0{}x}", *(--end), (left_word_width + 3) / 4 + 2);
-                for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
-                {
-                    iter = ::std::format_to(iter, "{:08x}", value);
-                }
-                return iter;
-            }
-            else
-            {
-                return ::std::format_to(iter, "{:#0{}x}", data, (width + 3) / 4 + 2);
-            }
-        }
-
-        /**
-         * @brief 转换verilator数据对象为字符串表示
-         *
-         * @param data 数据对象
-         * @param width 宽度，要求数据有效位在[0, width-1]范围内，超出部分为0
-         * @return ::std::string 字符串表示
-         */
-        inline ::std::string verilator_data_to_string(const ::verilator_utils::is_verilator_data_type auto& data,
-                                                      ::std::size_t width)
-        {
-            ::std::string result{};
-            result.reserve(::verilator_utils::detail::verilator_data_to_string_size(width));
-            ::verilator_utils::detail::verilator_data_format_to(::std::back_inserter(result), data, width);
-            return result;
-        }
-    }  // namespace detail
 }  // namespace verilator_utils
 
 export namespace verilator_utils::detail

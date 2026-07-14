@@ -8,6 +8,86 @@ extern "C++"
 #include <doctest.h>
 }
 
+namespace verilator_utils::detail
+{
+    /**
+     * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+     *
+     * @tparam iter_t 输出迭代器类型
+     * @tparam type 数据类型
+     * @param iter 输出缓冲区迭代器
+     * @param data 数据对象
+     * @param width 宽度
+     * @return 更新后的迭代器
+     */
+    template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
+    inline iter_t verilator_data_format_to_hex(iter_t iter, const type& data, ::std::size_t width)
+    {
+        /// 每个字的位宽
+        constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
+        /// 每个十六进制位的位宽
+        constexpr static ::std::size_t digit_width{4zu};
+        // 0x前缀长度
+        constexpr static auto prefix_size{2zu};
+        if constexpr(::VlIsVlWide<type>::value)
+        {
+            // 最高字中信号宽度
+            auto left_word_width{width % word_width};
+            if(left_word_width == 0) { left_word_width = word_width; }
+            auto begin{data.data()};
+            auto end{data.data() + (width + word_width - 1) / word_width};
+            iter = ::std::format_to(iter, "{:#0{}x}", *(--end), (left_word_width + digit_width - 1) / digit_width + prefix_size);
+            for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
+            {
+                iter = ::std::format_to(iter, "{:0{}x}", value, word_width / digit_width);
+            }
+            return iter;
+        }
+        else
+        {
+            return ::std::format_to(iter, "{:#0{}x}", data, (width + digit_width - 1) / digit_width + prefix_size);
+        }
+    }
+
+    /**
+     * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+     *
+     * @tparam iter_t 输出迭代器类型
+     * @tparam type 数据类型
+     * @param iter 输出缓冲区迭代器
+     * @param data 数据对象
+     * @param width 宽度
+     * @return 更新后的迭代器
+     */
+    template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
+    inline iter_t verilator_data_format_to_bin(iter_t iter, const type& data, ::std::size_t width)
+    {
+        /// 每个字的位宽
+        constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
+        // 0b前缀长度
+        constexpr static auto prefix_size{2zu};
+        if constexpr(::VlIsVlWide<type>::value)
+        {
+            // 最高字中信号宽度
+            auto left_word_width{width % word_width};
+            if(left_word_width == 0) { left_word_width = word_width; }
+            auto begin{data.data()};
+            auto end{data.data() + (width + word_width - 1) / word_width};
+            iter = ::std::format_to(iter, "{:#0{}b}", *(--end), left_word_width + prefix_size);
+            for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
+            {
+                iter = ::std::format_to(iter, "{:0{}b}", value, word_width);
+            }
+            return iter;
+        }
+        else
+        {
+            return ::std::format_to(iter, "{:#0{}b}", data, width + prefix_size);
+        }
+    }
+
+}  // namespace verilator_utils::detail
+
 export namespace verilator_utils
 {
     /**
@@ -115,6 +195,8 @@ export namespace verilator_utils
     public:
         /// 可转换的目标类型
         using cast_type = std::conditional_t<is_vl_wide, value_type, ::std::uint64_t>;
+        /// 能转换到的C++基础数据类型
+        using underlying_type = ::std::variant<::std::uint64_t, ::std::int64_t, float, double>;
 
         /**
          * @brief 构造一个向量切片对象，索引为闭区间
@@ -122,53 +204,87 @@ export namespace verilator_utils
          * @param data 数据引用
          * @param left_bound_index 索引上界
          * @param right_bound_index 索引下界
+         * @param format 数据格式
          */
-        inline explicit vector_slice(value_type& data, ::std::size_t left_bound_index, ::std::size_t right_bound_index) :
-            data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}
-        { REQUIRE_GE(left_bound, right_bound); }
+        inline explicit vector_slice(value_type& data,
+                                     ::std::size_t left_bound_index,
+                                     ::std::size_t right_bound_index,
+                                     ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
+            data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}, data_format{format}
+        {
+            REQUIRE_GE(left_bound, right_bound);
+            check_format(data_format);
+        }
 
         /**
          * @brief 构造一个向量切片对象
          *
          * @param data 数据引用
          * @param width 宽度
+         * @param format 数据格式
          */
-        inline explicit vector_slice(value_type& data, ::std::size_t width) : data{data}, left_bound{width - 1}, right_bound{0}
-        { REQUIRE_NE(width, 0); }
+        inline explicit vector_slice(value_type& data,
+                                     ::std::size_t width,
+                                     ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
+            data{data}, left_bound{width - 1}, right_bound{0}, data_format{format}
+        {
+            REQUIRE_NE(width, 0);
+            check_format(data_format);
+        }
 
         /**
          * @brief 获取位宽
          *
-         * @return std::size_t 位宽
+         * @return 位宽
          */
         constexpr inline ::std::size_t width() const noexcept { return left_bound - right_bound + 1; }
 
         /**
-         * @brief 下标运算符，用于访问向量切片的指定位
+         * @brief 获取数据类型
          *
+         * @return 数据类型
+         */
+        constexpr inline ::verilator_utils::data_format::format format() const noexcept { return data_format; }
+
+        /**
+         * @brief 下标运算符，用于访问向量切片的指定位
+         * 索引为当前切片范围内的相对索引，范围为[0, width() - 1]
          * @param index 索引值
          * @return bit_slice 对应位的包装对象
          */
         inline bit_slice<type> operator[] (::std::size_t index) const noexcept
         {
-            REQUIRE_LE(index, left_bound);
-            REQUIRE_GE(index, right_bound);
-            return bit_slice<type>{data, index};
+            REQUIRE_LE(index, width() - 1);
+            return bit_slice<type>{data, index + right_bound};
         }
 
         /**
          * @brief 下标运算符，用于访问向量切片的指定切片
-         *
+         * 索引为当前切片范围内的相对索引，范围为[0, width() - 1]
          * @param left_bound_index 左边界索引
          * @param right_bound_index 右边界索引
-         * @return vector_slice 向量切片的包装对象
+         * @param format 数据格式，为std::monostate表示使用当前对象的数据格式
+         * @return 向量切片的包装对象
          */
-        inline vector_slice<type> operator[] (::std::size_t left_bound_index, ::std::size_t right_bound_index) const noexcept
+        inline vector_slice
+            operator[] (::std::size_t left_bound_index,
+                        ::std::size_t right_bound_index,
+                        ::verilator_utils::data_format::format format = ::verilator_utils::data_format::format{}) const noexcept
         {
             REQUIRE_GE(left_bound_index, right_bound_index);
-            REQUIRE_GE(right_bound_index, right_bound);
-            REQUIRE_LE(left_bound_index, left_bound);
-            return vector_slice{data, left_bound_index, right_bound_index};
+            REQUIRE_LE(right_bound_index, left_bound);
+            REQUIRE_LE(left_bound_index, width() - 1);
+            if(!::verilator_utils::detail::is_variable_width_format(data_format) &&
+               left_bound_index - right_bound_index + 1 != width())
+            {
+                using namespace ::std::string_view_literals;
+                REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::std::monostate>(format),
+                                      "当前对象的数据格式是固定宽度的，必须传入新的格式才能创建不同宽度的切片"sv);
+            }
+            return vector_slice{data,
+                                left_bound_index + right_bound,
+                                right_bound_index + right_bound,
+                                ::std::holds_alternative<::std::monostate>(format) ? data_format : format};
         }
 
         /**
@@ -351,14 +467,171 @@ export namespace verilator_utils
         }
 
         /**
+         * @brief 转化为具有给定数据类型的切片对象
+         *
+         * @param format 数据类型
+         * @return 新切片对象
+         */
+        inline vector_slice convert(::verilator_utils::data_format::format format)
+        {
+            check_format(format);
+            return vector_slice{data, left_bound, right_bound, format};
+        }
+
+        /**
+         * @brief 转化为C++基础数据类型
+         * 整数转化为std::uint64_t，浮点数按格式转化为float或double，定点数转化为double
+         * @return C++基础数据类型
+         */
+        inline underlying_type to_underlying() const
+        {
+            REQUIRE_GE(64, width());
+            ::std::uint64_t aligned_value{};
+            if constexpr(is_vl_wide) { aligned_value = wide_to_uint64(static_cast<cast_type>(*this)); }
+            else
+            {
+                aligned_value = static_cast<::std::uint64_t>(*this);
+            }
+
+            return data_format.visit(
+                [aligned_value, width = width()](auto format) noexcept -> underlying_type
+                {
+                    using format_t = decltype(format);
+
+                    if constexpr(::std::same_as<format_t, ::std::monostate>)
+                    {
+                        ::std::unreachable();
+                        return underlying_type{};
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_hex_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_bin_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_t>)
+                    {
+                        return underlying_type{aligned_value};
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_t>)
+                    {
+                        auto shift{64zu - width};
+                        auto sign_extended_value{static_cast<::std::int64_t>(aligned_value << shift) >> shift};
+                        return underlying_type{sign_extended_value};
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_float_t>)
+                    {
+                        auto temp{static_cast<::std::uint32_t>(aligned_value)};
+                        return underlying_type{::std::bit_cast<float>(temp)};
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_double_t>)
+                    {
+                        return underlying_type{::std::bit_cast<double>(aligned_value)};
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_fixed_point_t>)
+                    {
+                        return underlying_type{::std::ldexp(static_cast<double>(aligned_value), -format.fractional_bit)};
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_fixed_point_t>)
+                    {
+                        auto shift{64zu - format.width()};
+                        auto signed_value{static_cast<::std::int64_t>(aligned_value << shift) >> shift};
+                        return underlying_type{::std::ldexp(static_cast<double>(signed_value), -format.fractional_bit)};
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_t>)
+                    {
+                        auto sign_bit_index{format.width() - 1};
+                        auto sign{aligned_value >> sign_bit_index};
+                        auto magnitude_mask{(1zu << sign_bit_index) - 1zu};
+                        auto magnitude{::std::ldexp(static_cast<double>(aligned_value & magnitude_mask), -format.fractional_bit)};
+                        return underlying_type{sign ? -magnitude : magnitude};
+                    }
+                    else
+                    {
+                        static_assert(false, "未实现所有格式的转化");
+                    }
+                });
+        }
+
+        /**
+         * @brief 将向量切片格式化输出到缓冲区上
+         *
+         * @tparam iter_t 迭代器类型
+         * @param iter 迭代器
+         * @return 格式化后缓冲区迭代器
+         */
+        template <typename iter_t>
+        inline iter_t format_to(iter_t iter) const
+        {
+            return data_format.visit(
+                [this, iter](auto format) -> iter_t
+                {
+                    using format_t = decltype(format);
+                    if constexpr(::std::same_as<format_t, ::std::monostate>)
+                    {
+                        ::std::unreachable();
+                        return iter;
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_hex_t>)
+                    {
+                        auto aligned_value{static_cast<cast_type>(*this)};
+                        return ::verilator_utils::detail::verilator_data_format_to_hex(iter, aligned_value, width());
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_bin_t>)
+                    {
+                        auto aligned_value{static_cast<cast_type>(*this)};
+                        return ::verilator_utils::detail::verilator_data_format_to_bin(iter, aligned_value, width());
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_t>)
+                    {
+                        auto underlying_data{this->to_underlying()};
+                        return ::std::format_to(iter, "{}", ::std::get<::std::int64_t>(underlying_data));
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_t>)
+                    {
+                        auto underlying_data{this->to_underlying()};
+                        return ::std::format_to(iter, "{}", ::std::get<::std::uint64_t>(underlying_data));
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_float_t>)
+                    {
+                        auto underlying_data{this->to_underlying()};
+                        return ::std::format_to(iter, format.format_as_hex ? "{:a}" : "{}", ::std::get<float>(underlying_data));
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_double_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_fixed_point_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_fixed_point_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_t>)
+                    {
+                        auto underlying_data{this->to_underlying()};
+                        return ::std::format_to(iter, format.format_as_hex ? "{:a}" : "{}", ::std::get<double>(underlying_data));
+                    }
+                    else
+                    {
+                        static_assert(false, "未实现所有格式的转化");
+                    }
+                });
+        }
+
+        /**
          * @brief 转换为字符串表示
          *
          * @return 字符串表示
          */
         inline ::std::string to_string() const
         {
-            auto temp{static_cast<cast_type>(*this)};
-            return ::verilator_utils::detail::verilator_data_to_string(temp, width());
+            ::std::string result{};
+            // 0b和0x前缀的长度
+            constexpr static auto prefix_size{2zu};
+            if(::std::holds_alternative<::verilator_utils::detail::data_format_hex_t>(data_format))
+            {
+                /// 每个十六进制位的位宽
+                constexpr static ::std::size_t digit_width{4zu};
+                auto total_len{(width() + digit_width - 1) / digit_width + prefix_size};
+                result.reserve(total_len);
+            }
+            else if(::std::holds_alternative<::verilator_utils::detail::data_format_bin_t>(data_format))
+            {
+                auto total_len{width() + prefix_size};
+                result.reserve(total_len);
+            }
+            format_to(::std::back_inserter(result));
+            return result;
         }
 
     private:
@@ -370,6 +643,40 @@ export namespace verilator_utils
         ::std::size_t left_bound;
         /// 右边界索引
         ::std::size_t right_bound;
+        /// 数据类型
+        ::verilator_utils::data_format::format data_format;
+
+        /**
+         * @brief 检查数据格式是否合法
+         *
+         * @param format 要检查的数据格式
+         */
+        inline void check_format(::verilator_utils::data_format::format format) const
+        {
+            format.visit(
+                [width = width()](auto format)
+                {
+                    if constexpr(::std::same_as<decltype(format), ::std::monostate>)
+                    {
+                        using namespace ::std::string_view_literals;
+                        REQUIRE_MESSAGE(false, "必须设置数据类型"sv);
+                    }
+                    else if constexpr(requires() {
+                                          { format.min_width() } -> ::std::same_as<::std::size_t>;
+                                          { format.max_width() } -> ::std::same_as<::std::size_t>;
+                                      })
+                    {
+                        auto min_width{format.min_width()};
+                        auto max_width{format.max_width()};
+                        REQUIRE_GE(width, min_width);
+                        REQUIRE_LE(width, max_width);
+                    }
+                    else
+                    {
+                        REQUIRE_EQ(width, format.width());
+                    }
+                });
+        }
 
         constexpr inline static ::std::uint64_t scalar_mask(::std::size_t width, ::std::size_t right_bound) noexcept
         {
@@ -444,13 +751,23 @@ export namespace verilator_utils
          *
          * @return std::size_t 元素的切片宽度
          */
-        inline ::std::size_t width() const noexcept { return data_width; }
+        inline ::std::size_t width() const noexcept { return data.front().width(); }
+
+        /**
+         * @brief 获取数据类型
+         *
+         * @return 数据类型
+         */
+        constexpr inline ::verilator_utils::data_format::format format() const noexcept { return data.front().format(); }
 
     private:
         template <::std::size_t... indexes>
-        explicit inline unpacked_array(unpacked_array_type& data, ::std::size_t width, ::std::index_sequence<indexes...>) :
+        explicit inline unpacked_array(unpacked_array_type& data,
+                                       ::std::size_t width,
+                                       ::verilator_utils::data_format::format format,
+                                       ::std::index_sequence<indexes...>) :
             // clang-format off
-            data{actual_value_type{data.m_storage[indexes], width}...}, data_width{width}
+            data{actual_value_type{data.m_storage[indexes], width, format}...}
         // clang-format on
         {
         }
@@ -458,7 +775,6 @@ export namespace verilator_utils
         using actual_value_type = ::verilator_utils::vector_slice<value_type>;
         using cast_type = actual_value_type::cast_type;
         ::std::array<actual_value_type, n> data;
-        ::std::size_t data_width;
 
     public:
         /**
@@ -466,9 +782,12 @@ export namespace verilator_utils
          *
          * @param data 数据对象
          * @param width 元素的切片宽度
+         * @param format 数据类型
          */
-        explicit inline unpacked_array(unpacked_array_type& data, ::std::size_t width) :
-            unpacked_array(data, width, ::std::make_index_sequence<n>{})
+        explicit inline unpacked_array(unpacked_array_type& data,
+                                       ::std::size_t width,
+                                       ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
+            unpacked_array{data, width, format, ::std::make_index_sequence<n>{}}
         {
         }
 
@@ -476,7 +795,7 @@ export namespace verilator_utils
          * @brief 获取数组中的元素
          *
          * @param index 元素索引
-         * @return vector_slice<value_type>& 元素引用
+         * @return 元素引用
          */
         actual_value_type& operator[] (::std::size_t index) noexcept { return data[index]; }
 
@@ -497,7 +816,6 @@ export namespace verilator_utils
 
         inline unpacked_array& operator= (const unpacked_array& other)
         {
-            REQUIRE_EQ(data_width, other.data_width);
             ::std::ranges::copy(other.data, data.begin());
             return *this;
         }
@@ -508,7 +826,7 @@ export namespace verilator_utils
 
         inline bool operator== (const unpacked_array& other) const
         {
-            REQUIRE_EQ(data_width, other.data_width);
+            REQUIRE_EQ(width(), other.width());
             return data == other.data;
         }
 
@@ -616,10 +934,7 @@ export namespace std
         template <typename iter_t, typename char_t>
         inline static auto format(const ::verilator_utils::vector_slice<value_type>& value,
                                   ::std::basic_format_context<iter_t, char_t>& ctx)
-        {
-            auto aligned_value{static_cast<typename ::verilator_utils::vector_slice<value_type>::cast_type>(value)};
-            return ::verilator_utils::detail::verilator_data_format_to(ctx.out(), aligned_value, value.width());
-        }
+        { return value.format_to(ctx.out()); }
     };
 
     template <typename type, ::std::size_t n>
