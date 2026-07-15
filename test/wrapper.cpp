@@ -121,9 +121,93 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(static_cast<::std::uint64_t>(low_nibble), 0x8u);
         CHECK_EQ(low_nibble.to_string(), "0x8");
 
-        CHECK_EQ(static_cast<::std::uint64_t>(byte_slice[8]), 0u);
-        CHECK_EQ(static_cast<::std::uint64_t>(byte_slice[9]), 1u);
-        CHECK_EQ(static_cast<::std::uint64_t>(byte_slice[11, 8]), 0x6u);
+        CHECK_EQ(static_cast<::std::uint64_t>(byte_slice[0]), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(byte_slice[1]), 1u);
+        CHECK_EQ(static_cast<::std::uint64_t>(byte_slice[3, 0]), 0x6u);
+    }
+
+    TEST_CASE("vector slice formats binary and integer values")
+    {
+        ::CData data{0b1010'0110u};
+        ::verilator_utils::vector_slice<::CData> binary{data, 8, ::verilator_utils::data_format::bin};
+        ::verilator_utils::vector_slice<::CData> unsigned_value{data, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::vector_slice<::CData> signed_value{data, 8, ::verilator_utils::data_format::dec_signed};
+
+        CHECK_EQ(binary.format().index(), 2u);
+        CHECK_EQ(binary.to_string(), "0b10100110");
+        CHECK_EQ(::std::format("{}", binary), "0b10100110");
+        CHECK_EQ(::std::get<::std::uint64_t>(binary.to_underlying()), 0xa6u);
+        CHECK_EQ(unsigned_value.to_string(), "166");
+        CHECK_EQ(::std::get<::std::uint64_t>(unsigned_value.to_underlying()), 166u);
+        CHECK_EQ(signed_value.to_string(), "-90");
+        CHECK_EQ(::std::get<::std::int64_t>(signed_value.to_underlying()), -90);
+    }
+
+    TEST_CASE("vector slice formats floating point values")
+    {
+        ::IData float_data{::std::bit_cast<::std::uint32_t>(1.5F)};
+        ::QData double_data{::std::bit_cast<::std::uint64_t>(-2.25)};
+        ::verilator_utils::vector_slice<::IData> float_value{float_data, 32, ::verilator_utils::data_format::real_float};
+        ::verilator_utils::vector_slice<::QData> double_value{double_data, 64, ::verilator_utils::data_format::real_double};
+        ::verilator_utils::vector_slice<::IData> hex_float_value{
+            float_data,
+            32,
+            ::std::remove_cvref_t<decltype(::verilator_utils::data_format::real_float)>{true}};
+
+        CHECK_EQ(::std::get<float>(float_value.to_underlying()), 1.5F);
+        CHECK_EQ(float_value.to_string(), "1.5");
+        CHECK_EQ(::std::get<double>(double_value.to_underlying()), -2.25);
+        CHECK_EQ(double_value.to_string(), "-2.25");
+        CHECK_EQ(hex_float_value.to_string(), "1.8p+0");
+    }
+
+    TEST_CASE("vector slice formats fixed point values")
+    {
+        ::CData unsigned_data{0b0110u};
+        ::CData signed_data{0b1110u};
+        ::CData sign_magnitude_data{0b1101u};
+        using unsigned_format = ::verilator_utils::data_format::unsigned_fixed_point;
+        using signed_format = ::verilator_utils::data_format::signed_fixed_point;
+        using sign_magnitude_format = ::verilator_utils::data_format::sign_mag;
+
+        ::verilator_utils::vector_slice<::CData> unsigned_value{
+            unsigned_data,
+            4,
+            unsigned_format{2, 2}
+        };
+        ::verilator_utils::vector_slice<::CData> signed_value{
+            signed_data,
+            4,
+            signed_format{2, 1}
+        };
+        ::verilator_utils::vector_slice<::CData> sign_magnitude_value{
+            sign_magnitude_data,
+            4,
+            sign_magnitude_format{2, 1}
+        };
+
+        CHECK_EQ(::std::get<double>(unsigned_value.to_underlying()), 1.5);
+        CHECK_EQ(unsigned_value.to_string(), "1.5");
+        CHECK_EQ(::std::get<double>(signed_value.to_underlying()), -1.0);
+        CHECK_EQ(signed_value.to_string(), "-1");
+        CHECK_EQ(::std::get<double>(sign_magnitude_value.to_underlying()), -2.5);
+        CHECK_EQ(sign_magnitude_value.to_string(), "-2.5");
+    }
+
+    TEST_CASE("vector slice conversion changes format and preserves range")
+    {
+        ::IData data{0x0000'00a6u};
+        ::verilator_utils::vector_slice<::IData> value{data, 7, 0};
+        auto converted{value.convert(::verilator_utils::data_format::dec_unsigned)};
+        auto nested{value[3, 0]};
+        auto nested_with_format{value[3, 0, ::verilator_utils::data_format::dec_unsigned]};
+
+        CHECK_EQ(converted.width(), 8u);
+        CHECK_EQ(converted.format().index(), 4u);
+        CHECK_EQ(converted.to_string(), "166");
+        CHECK_EQ(nested.width(), 4u);
+        CHECK_EQ(nested.to_string(), "0x6");
+        CHECK_EQ(nested_with_format.to_string(), "6");
     }
 
     TEST_CASE("vector slice reads ranges from every scalar data type")
@@ -282,6 +366,17 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(wrapper.to_string(), "[0xab, 0xcd, 0xef]");
         static_assert(::std::formattable<verilator_utils::vector_slice<unsigned char>, char>);
         CHECK_EQ(::std::format("{}", wrapper), "[0xab, 0xcd, 0xef]");
+    }
+
+    TEST_CASE("unpacked array propagates element format")
+    {
+        ::VlUnpacked<::CData, 3> data{0xau, 0xbu, 0xcu};
+        ::verilator_utils::unpacked_array<::CData, 3> wrapper{data, 8, ::verilator_utils::data_format::dec_unsigned};
+
+        CHECK_EQ(wrapper.format().index(), 4u);
+        CHECK_EQ(wrapper[0].format().index(), 4u);
+        CHECK_EQ(wrapper.to_string(), "[10, 11, 12]");
+        CHECK_EQ(::std::format("{}", wrapper), "[10, 11, 12]");
     }
 
     TEST_CASE("unpacked array supports wide elements and wrapper copy")

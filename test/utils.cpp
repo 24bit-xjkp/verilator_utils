@@ -52,9 +52,6 @@ TEST_SUITE("verilator_utils/utils")
         static_assert(::verilator_utils::is_verilator_data_type<::VlWide<1>>);
         static_assert(!::verilator_utils::is_verilator_data_type<int>);
         static_assert(!::verilator_utils::is_verilator_data_type<const ::CData>);
-
-        static_assert(::std::same_as<::verilator_utils::verilator_type_to_underlying<::CData>, ::CData>);
-        static_assert(::std::same_as<::verilator_utils::verilator_type_to_underlying<::VlWide<2>>, ::EData>);
     }
 
     TEST_CASE("verilator unpacked array type traits identify supported types")
