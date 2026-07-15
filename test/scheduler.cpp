@@ -330,6 +330,42 @@ TEST_SUITE("verilator_utils/scheduler")
         runner.get_promise().rethrow_exception();
     }
 
+    TEST_CASE("event queue wakes multiple ready tasks in one evaluation")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool event_ready{};
+        ::std::vector<int> resumed_tasks;
+
+        auto make_task{[](::verilator_utils::eval_scheduler& scheduler,
+                          bool& event_ready,
+                          ::std::vector<int>& resumed_tasks,
+                          int task_id) -> ::verilator_utils::task
+                       {
+                           co_await ::verilator_utils::wait_event([&event_ready] { return event_ready; });
+                           resumed_tasks.push_back(task_id);
+                       }};
+
+        auto task_a{make_task(scheduler, event_ready, resumed_tasks, 1)};
+        auto task_b{make_task(scheduler, event_ready, resumed_tasks, 2)};
+        ::verilator_utils::async_task runner_a{scheduler, ::std::move(task_a)};
+        ::verilator_utils::async_task runner_b{scheduler, ::std::move(task_b)};
+
+        scheduler.loop_once();
+        CHECK(resumed_tasks.empty());
+        event_ready = true;
+        scheduler.loop_once();
+
+        CHECK_EQ(resumed_tasks.size(), 2u);
+        CHECK(::std::ranges::contains(resumed_tasks, 1));
+        CHECK(::std::ranges::contains(resumed_tasks, 2));
+        CHECK(runner_a.done());
+        CHECK(runner_b.done());
+        CHECK(scheduler.empty());
+        runner_a.get_promise().rethrow_exception();
+        runner_b.get_promise().rethrow_exception();
+    }
+
     TEST_CASE("event waits that are immediately ready do not enter the scheduler queue")
     {
         scheduler_fixture fixture{};

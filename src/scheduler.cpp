@@ -618,19 +618,18 @@ export namespace verilator_utils
         inline bool event_queue_eval()
         {
             bool any_coroutine_ready{};
-            for(auto iter{event_queue.begin()}, end{event_queue.end()}; iter != end;)
+            for(auto index{0zu}; index != event_queue.size();)
             {
-                if(iter->is_ready())
+                if(auto&& ref{event_queue[index]}; ref.is_ready())
                 {
-                    ready_queue.emplace_back(iter->handle);
-                    *iter = event_queue.back();
+                    ready_queue.emplace_back(ref.handle);
+                    ref = event_queue.back();
                     event_queue.pop_back();
-                    end = event_queue.end();
                     any_coroutine_ready = true;
                 }
                 else
                 {
-                    ++iter;
+                    ++index;
                 }
             }
 
