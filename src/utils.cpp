@@ -520,6 +520,15 @@ export namespace verilator_utils
     template <typename type>
     concept is_verilator_unpacked_array_type = ::IsVlUnpacked<type>::value;
 
+    /**
+     * @brief 检查类型是否为verilator数据格式可转换到的C++基本数据类型
+     *
+     * @tparam type 要检查的类型
+     */
+    template <typename type>
+    concept is_cpp_underlying_type = ::std::same_as<type, ::std::int64_t> || ::std::same_as<type, ::std::uint64_t> ||
+                                     ::std::same_as<type, float> || ::std::same_as<type, double>;
+
     template <typename type>
     struct verilator_unpacked_array_type_traits
     {

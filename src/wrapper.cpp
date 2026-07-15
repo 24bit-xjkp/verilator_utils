@@ -387,6 +387,41 @@ export namespace verilator_utils
         }
 
         /**
+         * @brief 三路比较运算符
+         *
+         * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
+         */
+        template <::verilator_utils::is_cpp_underlying_type underlying_type>
+        inline friend ::std::partial_ordering operator<=> (const vector_slice& self, underlying_type value)
+        {
+            using namespace ::std::string_view_literals;
+            constexpr static auto bin_index{2zu};
+            REQUIRE_MESSAGE(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+            return self.to_underlying().visit([value](auto underlying_value) noexcept -> ::std::partial_ordering
+                                              { return compare_underlying(underlying_value, value); });
+        }
+
+        /**
+         * @brief 三路比较运算符
+         *
+         * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
+         */
+        inline friend ::std::partial_ordering operator<=> (const vector_slice& self, const vector_slice& other)
+        {
+            using namespace ::std::string_view_literals;
+            constexpr static auto bin_index{2zu};
+            REQUIRE_MESSAGE(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+            REQUIRE_MESSAGE(other.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+            return self.to_underlying().visit(
+                [other_to_underlying = other.to_underlying()](auto self_underlying_value) noexcept -> ::std::partial_ordering
+                {
+                    return other_to_underlying.visit(
+                        [self_underlying_value](auto other_underlying_value) noexcept -> ::std::partial_ordering
+                        { return compare_underlying(self_underlying_value, other_underlying_value); });
+                });
+        }
+
+        /**
          * @brief 赋值运算符, 从其他向量切片赋值
          *
          * @tparam other_type 其他向量切片的类型
@@ -644,6 +679,21 @@ export namespace verilator_utils
         }
 
     private:
+        template <::verilator_utils::is_cpp_underlying_type left_type, ::verilator_utils::is_cpp_underlying_type right_type>
+        constexpr inline static ::std::partial_ordering compare_underlying(left_type left, right_type right) noexcept
+        {
+            if constexpr(::std::integral<left_type> && ::std::integral<right_type>)
+            {
+                if(::std::cmp_less(left, right)) { return ::std::partial_ordering::less; }
+                if(::std::cmp_greater(left, right)) { return ::std::partial_ordering::greater; }
+                return ::std::partial_ordering::equivalent;
+            }
+            else
+            {
+                return left <=> right;
+            }
+        }
+
         /// 每个字的位宽
         constexpr inline static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
         /// 数据引用
