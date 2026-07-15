@@ -87,6 +87,7 @@ export namespace verilator_utils
                            int argc = ::verilator_utils::detail::argc,
                            const char** argv = ::verilator_utils::detail::argv) : coverage{coverage}
         {
+            // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
             context = ::std::make_unique<::VerilatedContext>();
             dut = ::std::make_unique<dut_t>(context.get(), current_test.m_test_suite);
@@ -115,7 +116,13 @@ export namespace verilator_utils
             }
 
             if(coverage) { context->coverageFilename(::std::format("{}.dat", current_test.m_name)); }
+            // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
+
+        inline dut_context(const dut_context&) = delete;
+        inline dut_context& operator=(const dut_context&) = delete;
+        inline dut_context(dut_context&&) noexcept = default;
+        inline dut_context& operator=(dut_context&&) noexcept = default;
 
         inline ~dut_context() noexcept
         {

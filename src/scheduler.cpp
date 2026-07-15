@@ -70,7 +70,7 @@ export namespace verilator_utils
             /// 协程正在执行，和是否被挂起无关
             running,
             /// 协程执行完毕
-            finial_suspend
+            finial_suspend,
         };
 
         /**
@@ -168,7 +168,7 @@ export namespace verilator_utils
              *
              * @return 是否存在未处理异常
              */
-            inline bool with_unhandled_exception() const noexcept { return exception && !is_eval_finish_exception; }
+            [[nodiscard]] inline bool with_unhandled_exception() const noexcept { return exception && !is_eval_finish_exception; }
 
             /**
              * @brief 重新抛出协程中抛出的异常
@@ -185,7 +185,7 @@ export namespace verilator_utils
              *
              * @return 是否为根协程
              */
-            inline bool is_root_coroutine() const { return !is_async && parent == nullptr; }
+            [[nodiscard]] inline bool is_root_coroutine() const { return !is_async && parent == nullptr; }
 
             /**
              * @brief 转发可等待体
@@ -210,7 +210,7 @@ export namespace verilator_utils
              *
              * @return 已绑定则返回调度器指针，否则断言失败
              */
-            inline ::verilator_utils::eval_scheduler* check_scheduler() const
+            [[nodiscard]] inline ::verilator_utils::eval_scheduler* check_scheduler() const
             {
                 using namespace ::std::string_view_literals;
                 REQUIRE_MESSAGE(scheduler != nullptr, "任务必须绑定调度器"sv);
@@ -252,14 +252,14 @@ export namespace verilator_utils
          *
          * @return 是否可同步
          */
-        inline bool joinable() const noexcept { return static_cast<bool>(handle); }
+        [[nodiscard]] inline bool joinable() const noexcept { return static_cast<bool>(handle); }
 
         /**
          * @brief 检查任务是否完成
          *
          * @return 任务是否完成
          */
-        inline bool done() const noexcept { return handle.done(); }
+        [[nodiscard]] inline bool done() const noexcept { return handle.done(); }
 
         /**
          * @brief 恢复任务执行
@@ -286,14 +286,14 @@ export namespace verilator_utils
          *
          * @return 任务的协程句柄
          */
-        inline handle_t get_handle() const noexcept { return handle; }
+        [[nodiscard]] inline handle_t get_handle() const noexcept { return handle; }
 
         /**
          * @brief 获取任务的promise对象
          *
          * @return 任务的promise对象引用
          */
-        inline task::promise_type& get_promise() const noexcept { return handle.promise(); }
+        [[nodiscard]] inline task::promise_type& get_promise() const noexcept { return handle.promise(); }
 
         /**
          * @brief 销毁任务的协程句柄
@@ -318,7 +318,7 @@ export namespace verilator_utils
              *
              * @return 子任务是否完成
              */
-            inline bool await_ready() const noexcept { return subhandle.done(); }
+            [[nodiscard]] inline bool await_ready() const noexcept { return subhandle.done(); }
 
             /**
              * @brief 挂起当前任务并跳转到子任务执行，等待子任务完成后恢复当前任务执行
@@ -326,7 +326,7 @@ export namespace verilator_utils
              * @param parent 当前任务的协程句柄
              * @return 子任务的协程句柄
              */
-            inline handle_t await_suspend(handle_t parent) const noexcept
+            [[nodiscard]] inline handle_t await_suspend(handle_t parent) const noexcept
             {
                 subhandle.promise().parent = parent;
                 subhandle.promise().scheduler = parent.promise().scheduler;
@@ -392,7 +392,7 @@ export namespace verilator_utils
             /// 下降沿
             falling = 2,
             /// 双边沿
-            both = rising | falling
+            both = rising | falling,
         };
 
         using enum edge_enum;
@@ -432,7 +432,7 @@ export namespace verilator_utils
          *
          * @return 要检测的边沿类型
          */
-        inline edge_enum get_edge_to_detect() const { return edge_to_detect; }
+        [[nodiscard]] inline edge_enum get_edge_to_detect() const { return edge_to_detect; }
 
         /**
          * @brief 设置要检测的边沿类型
@@ -472,7 +472,7 @@ export namespace verilator_utils::detail
     /// 等待队列类型
     using wait_queue_t = ::std::priority_queue<::verilator_utils::detail::wait_queue_element,
                                                ::std::vector<::verilator_utils::detail::wait_queue_element>,
-                                               ::std::greater<::verilator_utils::detail::wait_queue_element>>;
+                                               ::std::greater<>>;
 
     /**
      * @brief 事件队列的元素类型
@@ -485,7 +485,7 @@ export namespace verilator_utils::detail
         /// 协程柄
         ::std::coroutine_handle<::verilator_utils::task::promise_type> handle;
 
-        inline bool is_ready() const
+        [[nodiscard]] inline bool is_ready() const
         {
             REQUIRE_NE(event_callback, nullptr);
             return (*event_callback)();
@@ -536,7 +536,7 @@ export namespace verilator_utils
             /// 电路评估后
             after_dut_eval,
             /// 一轮评估完成，该阶段不进行协程调度，不可等待
-            eval_end
+            eval_end,
         };
         /// 协程柄类型
         using handle_t = ::std::coroutine_handle<::verilator_utils::task::promise_type>;
@@ -623,7 +623,7 @@ export namespace verilator_utils
                 if(iter->is_ready())
                 {
                     ready_queue.emplace_back(iter->handle);
-                    *iter = ::std::move(event_queue.back());
+                    *iter = event_queue.back();
                     event_queue.pop_back();
                     end = event_queue.end();
                     any_coroutine_ready = true;
@@ -670,6 +670,7 @@ export namespace verilator_utils
         template <::std::derived_from<::VerilatedModel> dut_t>
         inline eval_scheduler(dut_t& dut) noexcept
         {
+            // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             this->dut = &dut;
             dut_eval = [](::VerilatedModel* dut) { static_cast<dut_t*>(dut)->eval(); };
             auto&& context{*dut.contextp()};
@@ -677,21 +678,28 @@ export namespace verilator_utils
             auto time_unit{context.timeunit()};
             time_precision_fs = static_cast<::std::uint64_t>(::std::pow(10, 15 + time_precision));
             time_precision_per_time_unit = static_cast<::std::uint64_t>(::std::pow(10, time_unit - time_precision));
+            // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
+
+        inline eval_scheduler(const eval_scheduler&) = delete;
+        inline eval_scheduler& operator= (const eval_scheduler&) = delete;
+        inline eval_scheduler(eval_scheduler&&) noexcept = default;
+        inline eval_scheduler& operator= (eval_scheduler&&) noexcept = default;
 
         /**
          * @brief 检查调度器是否为空
          *
          * @return 调度器是否为空
          */
-        inline bool empty() const noexcept { return wait_queue.empty() && event_queue.empty() && ready_queue.empty(); }
+        [[nodiscard]] inline bool empty() const noexcept
+        { return wait_queue.empty() && event_queue.empty() && ready_queue.empty(); }
 
         /**
          * @brief 检查仿真是否结束
          *
          * @return 仿真是否结束
          */
-        inline bool is_finish() const noexcept { return dut->contextp()->gotFinish(); }
+        [[nodiscard]] inline bool is_finish() const noexcept { return dut->contextp()->gotFinish(); }
 
         /**
          * @brief 标记仿真结束
@@ -724,14 +732,14 @@ export namespace verilator_utils
          *
          * @return 当前时间
          */
-        inline ::std::uint64_t time_in_time_precision() const noexcept { return dut->contextp()->time(); }
+        [[nodiscard]] inline ::std::uint64_t time_in_time_precision() const noexcept { return dut->contextp()->time(); }
 
         /**
          * @brief 获取当前时间，单位为dut时间单位
          *
          * @return 当前时间
          */
-        inline double time_in_time_unit() const noexcept
+        [[nodiscard]] inline double time_in_time_unit() const noexcept
         { return static_cast<double>(time_in_time_precision()) / time_precision_per_time_unit; }
 
         /**
@@ -739,14 +747,14 @@ export namespace verilator_utils
          *
          * @return dut时间精度
          */
-        inline ::std::uint64_t get_time_precision_fs() const noexcept { return time_precision_fs; }
+        [[nodiscard]] inline ::std::uint64_t get_time_precision_fs() const noexcept { return time_precision_fs; }
 
         /**
          * @brief 获取当前时间，已根据时间单位转换为字符串格式并添加时间单位后缀
          *
          * @return 当前时间的字符串表示
          */
-        inline ::std::string time_in_string() const
+        [[nodiscard]] inline ::std::string time_in_string() const
         {
             auto time_in_fs{time_in_time_precision() * time_precision_fs};
             using namespace ::std::string_view_literals;
@@ -779,32 +787,34 @@ export namespace verilator_utils
          */
         inline ~eval_scheduler() noexcept
         {
-            constexpr static auto do_destroy{[](eval_scheduler& scheduler, handle_t handle) static noexcept
-                                             {
-                                                 if(auto&& promise{handle.promise()}; promise.is_root_coroutine())
-                                                 {
-                                                     // 根协程直接销毁
-                                                     handle.destroy();
-                                                 }
-                                                 else if(!promise.is_async)
-                                                 {
-                                                     // 同步非根协程的父协程不在调度队列中
-                                                     // 将其父协程放入队列，由调度器进行销毁
-                                                     try
-                                                     {
-                                                         scheduler.ready_queue.emplace_back(promise.parent);
-                                                     }
-                                                     catch(...)
-                                                     {
-                                                         ::std::terminate();
-                                                     }
-                                                     //  销毁子协程本身
-                                                     handle.destroy();
-                                                 }
-                                                 // 异步非根协程的父协程在调度队列中
-                                                 // 在处理其父协程时由父协程进行销毁
-                                                 // 此处无需进行唤醒或销毁
-                                             }};
+            constexpr static auto do_destroy{
+                [](eval_scheduler& scheduler, handle_t handle) static noexcept
+                {
+                    if(auto&& promise{handle.promise()}; promise.is_root_coroutine())
+                    {
+                        // 根协程直接销毁
+                        handle.destroy();
+                    }
+                    else if(!promise.is_async)
+                    {
+                        // 同步非根协程的父协程不在调度队列中
+                        // 将其父协程放入队列，由调度器进行销毁
+                        try
+                        {
+                            scheduler.ready_queue.emplace_back(promise.parent);
+                        }
+                        catch(...)
+                        {
+                            ::std::terminate();
+                        }
+                        //  销毁子协程本身
+                        handle.destroy();
+                    }
+                    // 异步非根协程的父协程在调度队列中
+                    // 在处理其父协程时由父协程进行销毁
+                    // 此处无需进行唤醒或销毁
+                },
+            };
             while(!wait_queue.empty())
             {
                 do_destroy(*this, wait_queue.top().handle);
@@ -823,7 +833,7 @@ export namespace verilator_utils
          *
          * @return eval_stage_enum 评估阶段枚举
          */
-        inline eval_stage_enum get_eval_stage() const noexcept { return eval_stage; }
+        [[nodiscard]] inline eval_stage_enum get_eval_stage() const noexcept { return eval_stage; }
 
         /**
          * @brief 执行一轮评估

@@ -158,14 +158,14 @@ export namespace verilator_utils
          *
          * @return std::size_t 位宽
          */
-        constexpr inline ::std::size_t width() const noexcept { return 1; }
+        [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return 1; }
 
         /**
          * @brief 转换为字符串表示
          *
          * @return 字符串表示
          */
-        inline ::std::string to_string() const { return ::std::format("{:#x}", ::std::uint64_t{*this}); }
+        [[nodiscard]] inline ::std::string to_string() const { return ::std::format("{:#x}", ::std::uint64_t{*this}); }
 
     private:
         /// 数据引用
@@ -232,19 +232,24 @@ export namespace verilator_utils
             check_format(data_format);
         }
 
+        inline vector_slice(const vector_slice&) = default;
+        inline vector_slice(vector_slice&&) = default;
+        inline vector_slice& operator= (vector_slice&&) = default;
+        inline ~vector_slice() = default;
+
         /**
          * @brief 获取位宽
          *
          * @return 位宽
          */
-        constexpr inline ::std::size_t width() const noexcept { return left_bound - right_bound + 1; }
+        [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return left_bound - right_bound + 1; }
 
         /**
          * @brief 获取数据类型
          *
          * @return 数据类型
          */
-        constexpr inline ::verilator_utils::data_format::format format() const noexcept { return data_format; }
+        [[nodiscard]] constexpr inline ::verilator_utils::data_format::format format() const noexcept { return data_format; }
 
         /**
          * @brief 下标运算符，用于访问向量切片的指定位
@@ -281,10 +286,12 @@ export namespace verilator_utils
                 REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::std::monostate>(format),
                                       "当前对象的数据格式是固定宽度的，必须传入新的格式才能创建不同宽度的切片"sv);
             }
-            return vector_slice{data,
-                                left_bound_index + right_bound,
-                                right_bound_index + right_bound,
-                                ::std::holds_alternative<::std::monostate>(format) ? data_format : format};
+            return vector_slice{
+                data,
+                left_bound_index + right_bound,
+                right_bound_index + right_bound,
+                ::std::holds_alternative<::std::monostate>(format) ? data_format : format,
+            };
         }
 
         /**
@@ -390,7 +397,7 @@ export namespace verilator_utils
         inline vector_slice& operator= (const ::verilator_utils::vector_slice<other_type>& other)
         {
             REQUIRE_EQ(width(), other.width());
-            auto aligned_value{static_cast<typename ::verilator_utils::vector_slice<other_type>::cast_type>(other)};
+            auto aligned_value{static_cast<::verilator_utils::vector_slice<other_type>::cast_type>(other)};
             if constexpr(is_vl_wide)
             {
                 value_type temp{};
@@ -421,7 +428,7 @@ export namespace verilator_utils
         }
 
         inline vector_slice& operator= (const value_type& value)
-            requires (is_vl_wide)
+            requires (is_vl_wide)  // NOLINT(readability-redundant-parentheses)
         {
             assign_aligned_value(value);
             return *this;
@@ -438,7 +445,7 @@ export namespace verilator_utils
         inline friend bool operator== (const vector_slice& self, const ::verilator_utils::vector_slice<other_type>& other)
         {
             REQUIRE_EQ(self.width(), other.width());
-            auto aligned_other{static_cast<typename ::verilator_utils::vector_slice<other_type>::cast_type>(other)};
+            auto aligned_other{static_cast<::verilator_utils::vector_slice<other_type>::cast_type>(other)};
             if constexpr(is_vl_wide)
             {
                 auto aligned_value{static_cast<cast_type>(self)};
@@ -483,7 +490,7 @@ export namespace verilator_utils
          * 整数转化为std::uint64_t，浮点数按格式转化为float或double，定点数转化为double
          * @return C++基础数据类型
          */
-        inline underlying_type to_underlying() const
+        [[nodiscard]] inline underlying_type to_underlying() const
         {
             REQUIRE_GE(64, width());
             ::std::uint64_t aligned_value{};
@@ -613,7 +620,7 @@ export namespace verilator_utils
          *
          * @return 字符串表示
          */
-        inline ::std::string to_string() const
+        [[nodiscard]] inline ::std::string to_string() const
         {
             ::std::string result{};
             // 0b和0x前缀的长度
@@ -693,7 +700,7 @@ export namespace verilator_utils
         }
 
         inline void assign_aligned_value(const value_type& aligned_value) noexcept
-            requires (is_vl_wide)
+            requires (is_vl_wide)  // NOLINT(readability-redundant-parentheses)
         {
             auto words{(width() + word_width - 1u) / word_width};
             for(auto word_index{0zu}; word_index < words; ++word_index)
@@ -751,21 +758,21 @@ export namespace verilator_utils
          *
          * @return std::size_t 元素的切片宽度
          */
-        inline ::std::size_t width() const noexcept { return data.front().width(); }
+        [[nodiscard]] inline ::std::size_t width() const noexcept { return data.front().width(); }
 
         /**
          * @brief 获取数据类型
          *
          * @return 数据类型
          */
-        constexpr inline ::verilator_utils::data_format::format format() const noexcept { return data.front().format(); }
+        [[nodiscard]] inline ::verilator_utils::data_format::format format() const noexcept { return data.front().format(); }
 
     private:
         template <::std::size_t... indexes>
         explicit inline unpacked_array(unpacked_array_type& data,
                                        ::std::size_t width,
                                        ::verilator_utils::data_format::format format,
-                                       ::std::index_sequence<indexes...>) :
+                                       ::std::index_sequence<indexes...> /* unused */) :
             // clang-format off
             data{actual_value_type{data.m_storage[indexes], width, format}...}
         // clang-format on
@@ -790,6 +797,11 @@ export namespace verilator_utils
             unpacked_array{data, width, format, ::std::make_index_sequence<n>{}}
         {
         }
+
+        inline unpacked_array(const unpacked_array&) = default;
+        inline unpacked_array(unpacked_array&&) = default;
+        inline unpacked_array& operator= (unpacked_array&&) = default;
+        inline ~unpacked_array() = default;
 
         /**
          * @brief 获取数组中的元素
@@ -816,6 +828,7 @@ export namespace verilator_utils
 
         inline unpacked_array& operator= (const unpacked_array& other)
         {
+            REQUIRE_EQ(width(), other.width());
             ::std::ranges::copy(other.data, data.begin());
             return *this;
         }
@@ -835,7 +848,7 @@ export namespace verilator_utils
          *
          * @return 字符串表示
          */
-        inline ::std::string to_string() const { return ::std::format("{}", data); }
+        [[nodiscard]] inline ::std::string to_string() const { return ::std::format("{}", data); }
     };
 
     /**

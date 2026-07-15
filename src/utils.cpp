@@ -129,6 +129,8 @@ export namespace verilator_utils
 
 export namespace verilator_utils::literals
 {
+    // NOLINTBEGIN(google-runtime-float)
+
     /**
      * @brief 飞秒时间字面值运算符
      *
@@ -182,6 +184,8 @@ export namespace verilator_utils::literals
      */
     consteval inline ::verilator_utils::femtosecond_t operator""_ns (long double rep) noexcept
     { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000u)}; }
+
+    // NOLINTEND(google-runtime-float)
 }  // namespace verilator_utils::literals
 
 namespace verilator_utils
@@ -349,7 +353,7 @@ namespace verilator_utils
              *
              * @return 定点数宽度
              */
-            constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit; }
+            [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit; }
         };
 
         /**
@@ -395,7 +399,7 @@ namespace verilator_utils
              *
              * @return 定点数宽度
              */
-            constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
+            [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
         };
 
         /**
@@ -441,7 +445,7 @@ namespace verilator_utils
              *
              * @return 定点数宽度
              */
-            constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
+            [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
         };
     }  // namespace detail
 

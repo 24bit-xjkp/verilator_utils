@@ -11,5 +11,12 @@ int main(int argc, const char* argv[])
 {
     ::verilator_utils::detail::argc = argc;
     ::verilator_utils::detail::argv = argv;
-    return ::doctest::Context{argc, argv}.run();
+    try
+    {
+        return ::doctest::Context{argc, argv}.run();
+    }
+    catch(...)
+    {
+        ::std::terminate();
+    }
 }

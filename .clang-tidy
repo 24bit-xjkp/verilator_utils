@@ -22,6 +22,7 @@ Checks: >
   -readability-redundant-member-init,
   -readability-redundant-inline-specifier,
   -readability-math-missing-parentheses,
+  -readability-trailing-comma,
   cert-*,
   -cert-int09-c,
   -cert-dcl37-c,
@@ -42,6 +43,7 @@ Checks: >
   -cppcoreguidelines-avoid-const-or-ref-data-members,
   -cppcoreguidelines-non-private-member-variables-in-classes,
   -cppcoreguidelines-avoid-reference-coroutine-parameters,
+  -cppcoreguidelines-pro-bounds-avoid-unchecked-container-access,
   misc-*,
   -misc-include-cleaner,
   -misc-use-internal-linkage,
@@ -53,8 +55,11 @@ Checks: >
   hicpp-*,
   -hicpp-uppercase-literal-suffix,
   -hicpp-explicit-conversions,
+  -hicpp-exception-baseclass,
   portability-*,
-  -portability-avoid-pragma-once
+  -portability-avoid-pragma-once,
+  -bugprone-std-exception-baseclass
+
 WarningsAsErrors: ''
 UseColor: true
 HeaderFilterRegex: '^(?!.*\.(h)$).*' # 过滤.h文件，避免第三方库产生大量警告

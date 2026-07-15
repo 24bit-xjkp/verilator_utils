@@ -11,6 +11,7 @@ extern "C++"
 #include <verilated_vcd_c.h>
 #include "undefine_verilator_tracer_macros.hpp"
 #include <verilated_fst_c.h>
+// NOLINTNEXTLINE(readability-duplicate-include)
 #include "undefine_verilator_tracer_macros.hpp"
 #include <verilated_saif_c.h>
 }
