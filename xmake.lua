@@ -15,6 +15,18 @@ option("use_sanitizer")
     set_description("Enable sanitizer for unit tests")
 option_end()
 
+option("use_std_harden")
+    set_default(false)
+    set_description("Enable c++ standard library harden")
+option_end()
+if get_config("use_std_harden") then
+    if is_mode("debug") then
+        add_defines("_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG", "_GLIBCXX_DEBUG")
+    else
+        add_defines("_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST", "_GLIBCXX_ASSERTIONS")
+    end
+end
+
 option("use_lto")
     set_default(false)
     set_description("Enable link-time optimization when building")
