@@ -587,26 +587,28 @@ export namespace verilator_utils
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_t>)
                     {
-                        auto underlying_data{this->to_underlying()};
+                        auto underlying_data{to_underlying()};
                         return ::std::format_to(iter, "{}", ::std::get<::std::int64_t>(underlying_data));
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_t>)
                     {
-                        auto underlying_data{this->to_underlying()};
+                        auto underlying_data{to_underlying()};
                         return ::std::format_to(iter, "{}", ::std::get<::std::uint64_t>(underlying_data));
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_float_t>)
                     {
-                        auto underlying_data{this->to_underlying()};
-                        return ::std::format_to(iter, format.format_as_hex ? "{:a}" : "{}", ::std::get<float>(underlying_data));
+                        auto underlying_data{to_underlying()};
+                        if(format.format_as_hex) { return ::std::format_to(iter, "{:a}", ::std::get<float>(underlying_data)); }
+                        return ::std::format_to(iter, "{}", ::std::get<float>(underlying_data));
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_double_t> ||
                                       ::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_fixed_point_t> ||
                                       ::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_fixed_point_t> ||
                                       ::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_t>)
                     {
-                        auto underlying_data{this->to_underlying()};
-                        return ::std::format_to(iter, format.format_as_hex ? "{:a}" : "{}", ::std::get<double>(underlying_data));
+                        auto underlying_data{to_underlying()};
+                        if(format.format_as_hex) { return ::std::format_to(iter, "{:a}", ::std::get<double>(underlying_data)); }
+                        return ::std::format_to(iter, "{}", ::std::get<double>(underlying_data));
                     }
                     else
                     {
