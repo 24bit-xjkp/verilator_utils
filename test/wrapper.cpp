@@ -194,6 +194,51 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(sign_magnitude_value.to_string(), "-2.5");
     }
 
+    TEST_CASE("vector slice compares integer formats with underlying values")
+    {
+        ::CData unsigned_data{42u};
+        ::CData signed_data{0xf6u};
+        ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
+
+        CHECK_LT(unsigned_value, ::std::uint64_t{43});
+        CHECK_LE(unsigned_value, ::std::uint64_t{42});
+        CHECK_GE(unsigned_value, ::std::uint64_t{42});
+        CHECK_GT(unsigned_value, ::std::uint64_t{41});
+        CHECK_LT(signed_value, ::std::int64_t{-9});
+        CHECK_GT(signed_value, ::std::int64_t{-11});
+    }
+
+    TEST_CASE("vector slice compares floating point formats with partial ordering")
+    {
+        ::IData finite_data{::std::bit_cast<::std::uint32_t>(1.5F)};
+        ::IData nan_data{::std::bit_cast<::std::uint32_t>(::std::numeric_limits<float>::quiet_NaN())};
+        ::verilator_utils::vector_slice<::IData> finite_value{finite_data, 32, ::verilator_utils::data_format::real_float};
+        ::verilator_utils::vector_slice<::IData> nan_value{nan_data, 32, ::verilator_utils::data_format::real_float};
+
+        CHECK_LT(finite_value, 2.0F);
+        CHECK_GT(finite_value, 1.0F);
+        CHECK_EQ(finite_value <=> 1.5F, ::std::partial_ordering::equivalent);
+        CHECK_EQ(nan_value <=> 0.0F, ::std::partial_ordering::unordered);
+    }
+
+    TEST_CASE("vector slices compare values represented by their formats")
+    {
+        ::CData lower_data{10u};
+        ::CData equal_data{10u};
+        ::CData higher_data{11u};
+        ::CData signed_data{0xffu};
+        ::verilator_utils::vector_slice<::CData> lower{lower_data, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::vector_slice<::CData> equal{equal_data, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::vector_slice<::CData> higher{higher_data, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
+
+        CHECK_LT(lower, higher);
+        CHECK_GT(higher, lower);
+        CHECK_EQ(lower <=> equal, ::std::partial_ordering::equivalent);
+        CHECK_LT(signed_value, lower);
+    }
+
     TEST_CASE("vector slice conversion changes format and preserves range")
     {
         ::IData data{0x0000'00a6u};
