@@ -8,86 +8,6 @@ extern "C++"
 #include <doctest.h>
 }
 
-namespace verilator_utils::detail
-{
-    /**
-     * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
-     *
-     * @tparam iter_t 输出迭代器类型
-     * @tparam type 数据类型
-     * @param iter 输出缓冲区迭代器
-     * @param data 数据对象
-     * @param width 宽度
-     * @return 更新后的迭代器
-     */
-    template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
-    inline iter_t verilator_data_format_to_hex(iter_t iter, const type& data, ::std::size_t width)
-    {
-        /// 每个字的位宽
-        constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
-        /// 每个十六进制位的位宽
-        constexpr static ::std::size_t digit_width{4zu};
-        // 0x前缀长度
-        constexpr static auto prefix_size{2zu};
-        if constexpr(::VlIsVlWide<type>::value)
-        {
-            // 最高字中信号宽度
-            auto left_word_width{width % word_width};
-            if(left_word_width == 0) { left_word_width = word_width; }
-            auto begin{data.data()};
-            auto end{data.data() + (width + word_width - 1) / word_width};
-            iter = ::std::format_to(iter, "{:#0{}x}", *(--end), (left_word_width + digit_width - 1) / digit_width + prefix_size);
-            for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
-            {
-                iter = ::std::format_to(iter, "{:0{}x}", value, word_width / digit_width);
-            }
-            return iter;
-        }
-        else
-        {
-            return ::std::format_to(iter, "{:#0{}x}", data, (width + digit_width - 1) / digit_width + prefix_size);
-        }
-    }
-
-    /**
-     * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
-     *
-     * @tparam iter_t 输出迭代器类型
-     * @tparam type 数据类型
-     * @param iter 输出缓冲区迭代器
-     * @param data 数据对象
-     * @param width 宽度
-     * @return 更新后的迭代器
-     */
-    template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
-    inline iter_t verilator_data_format_to_bin(iter_t iter, const type& data, ::std::size_t width)
-    {
-        /// 每个字的位宽
-        constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
-        // 0b前缀长度
-        constexpr static auto prefix_size{2zu};
-        if constexpr(::VlIsVlWide<type>::value)
-        {
-            // 最高字中信号宽度
-            auto left_word_width{width % word_width};
-            if(left_word_width == 0) { left_word_width = word_width; }
-            auto begin{data.data()};
-            auto end{data.data() + (width + word_width - 1) / word_width};
-            iter = ::std::format_to(iter, "{:#0{}b}", *(--end), left_word_width + prefix_size);
-            for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
-            {
-                iter = ::std::format_to(iter, "{:0{}b}", value, word_width);
-            }
-            return iter;
-        }
-        else
-        {
-            return ::std::format_to(iter, "{:#0{}b}", data, width + prefix_size);
-        }
-    }
-
-}  // namespace verilator_utils::detail
-
 export namespace verilator_utils
 {
     /**
@@ -536,10 +456,8 @@ export namespace verilator_utils
             }
 
             return data_format.visit(
-                [aligned_value, width = width()](auto format) noexcept -> underlying_type
+                [aligned_value, width = width()]<typename format_t>(const format_t& format) noexcept -> underlying_type
                 {
-                    using format_t = decltype(format);
-
                     if constexpr(::std::same_as<format_t, ::std::monostate>)
                     {
                         ::std::unreachable();
@@ -601,9 +519,8 @@ export namespace verilator_utils
         [[nodiscard]] inline bool is_valid() const noexcept
         {
             return data_format.visit(
-                [this](auto format) noexcept -> bool
+                [this]<typename format_t>(const format_t& format) noexcept -> bool
                 {
-                    using format_t = decltype(format);
                     if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
                     {
                         auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
@@ -627,9 +544,8 @@ export namespace verilator_utils
         inline iter_t format_to(iter_t iter) const
         {
             return data_format.visit(
-                [this, iter](auto format) -> iter_t
+                [this, iter]<typename format_t>(const format_t& format) -> iter_t
                 {
-                    using format_t = decltype(format);
                     if constexpr(::std::same_as<format_t, ::std::monostate>)
                     {
                         ::std::unreachable();
@@ -638,49 +554,17 @@ export namespace verilator_utils
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_hex_t>)
                     {
                         auto aligned_value{static_cast<cast_type>(*this)};
-                        return ::verilator_utils::detail::verilator_data_format_to_hex(iter, aligned_value, width());
+                        return format.format_to(iter, aligned_value, width());
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_bin_t>)
                     {
                         auto aligned_value{static_cast<cast_type>(*this)};
-                        return ::verilator_utils::detail::verilator_data_format_to_bin(iter, aligned_value, width());
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_t>)
-                    {
-                        auto underlying_data{::std::get<::std::int64_t>(to_underlying())};
-                        return ::std::format_to(iter, "{}", underlying_data);
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_t>)
-                    {
-                        auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
-                        return ::std::format_to(iter, "{}", underlying_data);
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_float_t>)
-                    {
-                        auto underlying_data{::std::get<float>(to_underlying())};
-                        if(format.format_as_hex) { return ::std::format_to(iter, "{:a}", underlying_data); }
-                        return ::std::format_to(iter, "{}", underlying_data);
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_double_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_fixed_point_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_fixed_point_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_fixed_point_t>)
-                    {
-                        auto underlying_data{::std::get<double>(to_underlying())};
-                        if(format.format_as_hex) { return ::std::format_to(iter, "{:a}", underlying_data); }
-                        return ::std::format_to(iter, "{}", underlying_data);
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
-                    {
-                        auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
-                        return ::std::format_to(iter,
-                                                "{}",
-                                                is_valid() ? format.enum_string[underlying_data]
-                                                           : ::std::format("\"invalid enum: {}\"", underlying_data));
+                        return format.format_to(iter, aligned_value, width());
                     }
                     else
                     {
-                        static_assert(false, "未实现所有格式的转化");
+                        return to_underlying().visit([iter, &format](auto underlying_data) -> iter_t
+                                                     { return format.format_to(iter, underlying_data); });
                     }
                 });
         }

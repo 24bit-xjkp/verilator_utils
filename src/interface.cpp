@@ -5,3 +5,4 @@ export import :scheduler;
 export import :context;
 export import :task;
 export import :verilator;
+export import :internal;

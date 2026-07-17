@@ -2,7 +2,7 @@ module;
 #include <doctest_fwd.hpp>
 export module verilator_utils:utils;
 import :verilator;
-import std;
+import :internal;
 
 extern "C++"
 {
@@ -188,6 +188,48 @@ export namespace verilator_utils::literals
     // NOLINTEND(google-runtime-float)
 }  // namespace verilator_utils::literals
 
+export namespace verilator_utils
+{
+    /**
+     * @brief 检查类型是否为Verilator数据类型
+     *
+     * @tparam type 要检查的类型
+     * @note VlUnpacked不在此列，使用unpacked array应当首先解引用
+     */
+    template <typename type>
+    concept is_verilator_data_type = ::std::same_as<type, ::CData> || ::std::same_as<type, ::SData> ||
+                                     ::std::same_as<type, ::IData> || ::std::same_as<type, ::QData> || ::VlIsVlWide<type>::value;
+
+    /**
+     * @brief 检查类型是否为Verilator unpacked array类型
+     *
+     * @tparam type 要检查的类型
+     */
+    template <typename type>
+    concept is_verilator_unpacked_array_type = ::IsVlUnpacked<type>::value;
+
+    /**
+     * @brief 检查类型是否为verilator数据格式可转换到的C++基本数据类型
+     *
+     * @tparam type 要检查的类型
+     */
+    template <typename type>
+    concept is_cpp_underlying_type = ::std::same_as<type, ::std::int64_t> || ::std::same_as<type, ::std::uint64_t> ||
+                                     ::std::same_as<type, float> || ::std::same_as<type, double>;
+
+    template <typename type>
+    struct verilator_unpacked_array_type_traits
+    {
+    };
+
+    template <typename type, ::std::size_t size>
+    struct verilator_unpacked_array_type_traits<::VlUnpacked<type, size>>
+    {
+        using value_type = type;
+        constexpr inline static ::std::size_t n{size};
+    };
+}  // namespace verilator_utils
+
 namespace verilator_utils
 {
     namespace detail
@@ -211,6 +253,48 @@ namespace verilator_utils
              * @return 最小宽度
              */
             [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return -1zu; }
+
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象
+             * @param width 宽度
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
+            [[nodiscard]] inline iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
+            {
+                /// 每个字的位宽
+                constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
+                /// 每个十六进制位的位宽
+                constexpr static ::std::size_t digit_width{4zu};
+                // 0x前缀长度
+                constexpr static auto prefix_size{2zu};
+                if constexpr(::VlIsVlWide<type>::value)
+                {
+                    // 最高字中信号宽度
+                    auto left_word_width{width % word_width};
+                    if(left_word_width == 0) { left_word_width = word_width; }
+                    auto begin{data.data()};
+                    auto end{data.data() + (width + word_width - 1) / word_width};
+                    iter = ::std::format_to(iter,
+                                            "{:#0{}x}",
+                                            *(--end),
+                                            (left_word_width + digit_width - 1) / digit_width + prefix_size);
+                    for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
+                    {
+                        iter = ::std::format_to(iter, "{:0{}x}", value, word_width / digit_width);
+                    }
+                    return iter;
+                }
+                else
+                {
+                    return ::std::format_to(iter, "{:#0{}x}", data, (width + digit_width - 1) / digit_width + prefix_size);
+                }
+            }
         };
 
         /**
@@ -232,6 +316,43 @@ namespace verilator_utils
              * @return 最小宽度
              */
             [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return -1zu; }
+
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象
+             * @param width 宽度
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
+            [[nodiscard]] inline iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
+            {
+                /// 每个字的位宽
+                constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
+                // 0b前缀长度
+                constexpr static auto prefix_size{2zu};
+                if constexpr(::VlIsVlWide<type>::value)
+                {
+                    // 最高字中信号宽度
+                    auto left_word_width{width % word_width};
+                    if(left_word_width == 0) { left_word_width = word_width; }
+                    auto begin{data.data()};
+                    auto end{data.data() + (width + word_width - 1) / word_width};
+                    iter = ::std::format_to(iter, "{:#0{}b}", *(--end), left_word_width + prefix_size);
+                    for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
+                    {
+                        iter = ::std::format_to(iter, "{:0{}b}", value, word_width);
+                    }
+                    return iter;
+                }
+                else
+                {
+                    return ::std::format_to(iter, "{:#0{}b}", data, width + prefix_size);
+                }
+            }
         };
 
         /**
@@ -253,6 +374,19 @@ namespace verilator_utils
              * @return 最大宽度
              */
             [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return 64; }
+
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象，要求经过符号扩展
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t>
+            [[nodiscard]] inline iter_t format_to(iter_t iter, ::std::int64_t data) const
+            { return ::std::format_to(iter, "{}", data); }
         };
 
         /**
@@ -274,6 +408,19 @@ namespace verilator_utils
              * @return 最大宽度
              */
             [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return 64; }
+
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象，要求经过零扩展
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t>
+            [[nodiscard]] inline iter_t format_to(iter_t iter, ::std::uint64_t data) const
+            { return ::std::format_to(iter, "{}", data); }
         };
 
         /**
@@ -291,13 +438,48 @@ namespace verilator_utils
              * @return 数据宽度
              */
             [[nodiscard]] constexpr inline static ::std::size_t width() noexcept { return 32; }
+
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t>
+            [[nodiscard]] inline iter_t format_to(iter_t iter, float data) const
+            {
+                if(format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
+                return ::std::format_to(iter, "{}", data);
+            }
+        };
+
+        struct double_format_to_impl_t
+        {
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t>
+            [[nodiscard]] inline iter_t format_to(this const auto& self, iter_t iter, double data)
+            {
+                if(self.format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
+                return ::std::format_to(iter, "{}", data);
+            }
         };
 
         /**
          * @brief 双精度浮点数
          * 存储在std::uint64_t中，格式为[double格式数据]
          */
-        struct data_format_double_t
+        struct data_format_double_t : ::verilator_utils::detail::double_format_to_impl_t
         {
             /// 格式化时使用十六进制浮点格式，而不是十进制浮点格式
             bool format_as_hex{};
@@ -314,7 +496,7 @@ namespace verilator_utils
          * @brief 无符号定点数
          * 存储在std::uint64_t中，格式为[前导0][整数部分][小数部分]
          */
-        struct data_format_unsigned_fixed_point_t
+        struct data_format_unsigned_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
         {
             /// 整数位数
             ::std::uint8_t integer_bit;
@@ -350,7 +532,7 @@ namespace verilator_utils
          * @brief 有符号定点数，即补码表示
          * 存储在std::uint64_t中，格式为[前导0][符号][整数部分，补码][小数部分，补码]
          */
-        struct data_format_signed_fixed_point_t
+        struct data_format_signed_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
         {
             /// 整数位数
             ::std::uint8_t integer_bit;
@@ -386,7 +568,7 @@ namespace verilator_utils
          * @brief 采用符号-幅值表示的定点数，即原码表示
          * 存储在std::uint64_t中，格式为[前导0][符号][整数部分，原码][小数部分，原码]
          */
-        struct data_format_sign_mag_fixed_point_t
+        struct data_format_sign_mag_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
         {
             /// 整数位数
             ::std::uint8_t integer_bit;
@@ -441,6 +623,24 @@ namespace verilator_utils
              * @return 最大宽度
              */
             [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return 64; }
+
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t>
+            [[nodiscard]] inline iter_t format_to(iter_t iter, ::std::uint64_t data) const
+            {
+                return ::std::format_to(iter,
+                                        "{}",
+                                        data < enum_string.size() ? enum_string[data]
+                                                                  : ::std::format("\"invalid enum: {}\"", data));
+            }
         };
     }  // namespace detail
 
@@ -483,7 +683,7 @@ namespace verilator_utils
          * @return 数据格式对象
          */
         constexpr inline ::verilator_utils::data_format::format real_double(bool format_as_hex = false)
-        { return ::verilator_utils::detail::data_format_double_t{format_as_hex}; }
+        { return ::verilator_utils::detail::data_format_double_t{.format_as_hex = format_as_hex}; }
 
         /**
          * @brief 无符号定点数
@@ -497,9 +697,9 @@ namespace verilator_utils
             unsigned_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
             return ::verilator_utils::detail::data_format_unsigned_fixed_point_t{
-                integer_bit,
-                fractional_bit,
-                format_as_hex,
+                .integer_bit = integer_bit,
+                .fractional_bit = fractional_bit,
+                .format_as_hex = format_as_hex,
             };
         }
 
@@ -515,9 +715,9 @@ namespace verilator_utils
             signed_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
             return ::verilator_utils::detail::data_format_signed_fixed_point_t{
-                integer_bit,
-                fractional_bit,
-                format_as_hex,
+                .integer_bit = integer_bit,
+                .fractional_bit = fractional_bit,
+                .format_as_hex = format_as_hex,
             };
         }
 
@@ -533,9 +733,9 @@ namespace verilator_utils
             sign_mag_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
             return ::verilator_utils::detail::data_format_sign_mag_fixed_point_t{
-                integer_bit,
-                fractional_bit,
-                format_as_hex,
+                .integer_bit = integer_bit,
+                .fractional_bit = fractional_bit,
+                .format_as_hex = format_as_hex,
             };
         }
 
@@ -562,54 +762,15 @@ namespace verilator_utils
          */
         constexpr inline bool is_variable_width_format(const ::verilator_utils::data_format::format& format) noexcept
         {
-            constexpr static auto hex_index{1zu};
-            constexpr static auto unsigned_index{4zu};
+            constexpr static auto hex_index{::verilator_utils::variant_type_index<::verilator_utils::detail::data_format_hex_t,
+                                                                                  ::verilator_utils::data_format::format>};
+            constexpr static auto unsigned_index{
+                ::verilator_utils::variant_type_index<::verilator_utils::detail::data_format_unsigned_t,
+                                                      ::verilator_utils::data_format::format>};
             return (format.index() >= hex_index && format.index() <= unsigned_index) ||
                    ::std::holds_alternative<::verilator_utils::detail::data_format_enum_t>(format);
         }
     }  // namespace detail
-}  // namespace verilator_utils
-
-export namespace verilator_utils
-{
-    /**
-     * @brief 检查类型是否为Verilator数据类型
-     *
-     * @tparam type 要检查的类型
-     * @note VlUnpacked不在此列，使用unpacked array应当首先解引用
-     */
-    template <typename type>
-    concept is_verilator_data_type = ::std::same_as<type, ::CData> || ::std::same_as<type, ::SData> ||
-                                     ::std::same_as<type, ::IData> || ::std::same_as<type, ::QData> || ::VlIsVlWide<type>::value;
-
-    /**
-     * @brief 检查类型是否为Verilator unpacked array类型
-     *
-     * @tparam type 要检查的类型
-     */
-    template <typename type>
-    concept is_verilator_unpacked_array_type = ::IsVlUnpacked<type>::value;
-
-    /**
-     * @brief 检查类型是否为verilator数据格式可转换到的C++基本数据类型
-     *
-     * @tparam type 要检查的类型
-     */
-    template <typename type>
-    concept is_cpp_underlying_type = ::std::same_as<type, ::std::int64_t> || ::std::same_as<type, ::std::uint64_t> ||
-                                     ::std::same_as<type, float> || ::std::same_as<type, double>;
-
-    template <typename type>
-    struct verilator_unpacked_array_type_traits
-    {
-    };
-
-    template <typename type, ::std::size_t size>
-    struct verilator_unpacked_array_type_traits<::VlUnpacked<type, size>>
-    {
-        using value_type = type;
-        constexpr inline static ::std::size_t n{size};
-    };
 }  // namespace verilator_utils
 
 export namespace verilator_utils::detail
