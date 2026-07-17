@@ -186,7 +186,7 @@ TEST_SUITE("verilator_utils/wrapper")
 
     TEST_CASE("vector slice formats FSM enum values and reports invalid states")
     {
-        using enum_format = ::verilator_utils::data_format::fsm_enum;
+        using enum_format = ::verilator_utils::data_format::fsm_enum_t;
         enum_format format{
             {"idle", "start", "run"}
         };
@@ -205,7 +205,7 @@ TEST_SUITE("verilator_utils/wrapper")
 
     TEST_CASE("FSM enum accepts minimum width for power of two state counts")
     {
-        using enum_format = ::verilator_utils::data_format::fsm_enum;
+        using enum_format = ::verilator_utils::data_format::fsm_enum_t;
         enum_format format{
             {"idle", "read", "write", "done"}
         };
@@ -219,7 +219,7 @@ TEST_SUITE("verilator_utils/wrapper")
 
     TEST_CASE("FSM enum format is preserved by narrower nested slices")
     {
-        using enum_format = ::verilator_utils::data_format::fsm_enum;
+        using enum_format = ::verilator_utils::data_format::fsm_enum_t;
         ::CData data{0b101u};
         ::verilator_utils::vector_slice<::CData> value{data, 3, enum_format{{"idle", "read", "write", "done"}}};
         auto nested{value[1, 0]};
@@ -283,7 +283,7 @@ TEST_SUITE("verilator_utils/wrapper")
         auto nested_with_format{value[3, 0, ::verilator_utils::data_format::dec_unsigned]};
 
         CHECK_EQ(converted.width(), 8u);
-        CHECK_EQ(converted.format().index(), 4u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(converted.format()));
         CHECK_EQ(converted.to_string(), "166");
         CHECK_EQ(nested.width(), 4u);
         CHECK_EQ(nested.to_string(), "0x6");
@@ -453,8 +453,8 @@ TEST_SUITE("verilator_utils/wrapper")
         ::VlUnpacked<::CData, 3> data{0xau, 0xbu, 0xcu};
         ::verilator_utils::unpacked_array<::CData, 3> wrapper{data, 8, ::verilator_utils::data_format::dec_unsigned};
 
-        CHECK_EQ(wrapper.format().index(), 4u);
-        CHECK_EQ(wrapper[0].format().index(), 4u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(wrapper.format()));
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(wrapper[0].format()));
         CHECK_EQ(wrapper.to_string(), "[10, 11, 12]");
         CHECK_EQ(::std::format("{}", wrapper), "[10, 11, 12]");
     }

@@ -463,49 +463,20 @@ export namespace verilator_utils
                         ::std::unreachable();
                         return underlying_type{};
                     }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_hex_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_bin_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
-                    {
-                        return underlying_type{aligned_value};
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_t>)
-                    {
-                        auto shift{64zu - width};
-                        auto sign_extended_value{static_cast<::std::int64_t>(aligned_value << shift) >> shift};
-                        return underlying_type{sign_extended_value};
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_float_t>)
-                    {
-                        auto temp{static_cast<::std::uint32_t>(aligned_value)};
-                        return underlying_type{::std::bit_cast<float>(temp)};
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_double_t>)
-                    {
-                        return underlying_type{::std::bit_cast<double>(aligned_value)};
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_fixed_point_t>)
-                    {
-                        return underlying_type{::std::ldexp(static_cast<double>(aligned_value), -format.fractional_bit)};
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_fixed_point_t>)
-                    {
-                        auto shift{64zu - format.width()};
-                        auto signed_value{static_cast<::std::int64_t>(aligned_value << shift) >> shift};
-                        return underlying_type{::std::ldexp(static_cast<double>(signed_value), -format.fractional_bit)};
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_fixed_point_t>)
-                    {
-                        auto sign_bit_index{format.width() - 1};
-                        auto sign{aligned_value >> sign_bit_index};
-                        auto magnitude_mask{(1zu << sign_bit_index) - 1zu};
-                        auto magnitude{::std::ldexp(static_cast<double>(aligned_value & magnitude_mask), -format.fractional_bit)};
-                        return underlying_type{sign ? -magnitude : magnitude};
-                    }
                     else
                     {
-                        static_assert(false, "未实现所有格式的转化");
+                        if constexpr(requires() {
+                                         {
+                                             format.to_underlying(aligned_value, width)
+                                         } -> ::verilator_utils::is_cpp_underlying_type;
+                                     })
+                        {
+                            return underlying_type{format.to_underlying(aligned_value, width)};
+                        }
+                        else
+                        {
+                            return underlying_type{format.to_underlying(aligned_value)};
+                        }
                     }
                 });
         }
@@ -521,7 +492,7 @@ export namespace verilator_utils
             return data_format.visit(
                 [this]<typename format_t>(const format_t& format) noexcept -> bool
                 {
-                    if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
+                    if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
                     {
                         auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
                         return underlying_data < format.enum_string.size();
@@ -551,12 +522,12 @@ export namespace verilator_utils
                         ::std::unreachable();
                         return iter;
                     }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_hex_t>)
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::hex_t>)
                     {
                         auto aligned_value{static_cast<cast_type>(*this)};
                         return format.format_to(iter, aligned_value, width());
                     }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_bin_t>)
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::bin_t>)
                     {
                         auto aligned_value{static_cast<cast_type>(*this)};
                         return format.format_to(iter, aligned_value, width());
@@ -579,14 +550,14 @@ export namespace verilator_utils
             ::std::string result{};
             // 0b和0x前缀的长度
             constexpr static auto prefix_size{2zu};
-            if(::std::holds_alternative<::verilator_utils::detail::data_format_hex_t>(data_format))
+            if(::std::holds_alternative<::verilator_utils::data_format::hex_t>(data_format))
             {
                 /// 每个十六进制位的位宽
                 constexpr static ::std::size_t digit_width{4zu};
                 auto total_len{(width() + digit_width - 1) / digit_width + prefix_size};
                 result.reserve(total_len);
             }
-            else if(::std::holds_alternative<::verilator_utils::detail::data_format_bin_t>(data_format))
+            else if(::std::holds_alternative<::verilator_utils::data_format::bin_t>(data_format))
             {
                 auto total_len{width() + prefix_size};
                 result.reserve(total_len);
@@ -643,7 +614,7 @@ export namespace verilator_utils
                                           { format.max_width() } -> ::std::same_as<::std::size_t>;
                                       })
                     {
-                        if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
+                        if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
                         {
                             REQUIRE_FALSE(format.enum_string.empty());
                         }

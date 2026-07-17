@@ -234,11 +234,33 @@ namespace verilator_utils
 {
     namespace detail
     {
+        struct double_format_to_impl_t
+        {
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t>
+            [[nodiscard]] inline iter_t format_to(this const auto& self, iter_t iter, double data)
+            {
+                if(self.format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
+                return ::std::format_to(iter, "{}", data);
+            }
+        };
+    }  // namespace detail
+
+    export namespace data_format
+    {
         /**
          * @brief 十六进制
          *
          */
-        struct data_format_hex_t
+        struct hex_t
         {
             /**
              * @brief 获取格式支持的最大宽度
@@ -295,13 +317,22 @@ namespace verilator_utils
                     return ::std::format_to(iter, "{:#0{}x}", data, (width + digit_width - 1) / digit_width + prefix_size);
                 }
             }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
+            { return packed_value; }
         };
 
         /**
          * @brief 二进制
          *
          */
-        struct data_format_bin_t
+        struct bin_t
         {
             /**
              * @brief 获取格式支持的最大宽度
@@ -353,13 +384,22 @@ namespace verilator_utils
                     return ::std::format_to(iter, "{:#0{}b}", data, width + prefix_size);
                 }
             }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
+            { return packed_value; }
         };
 
         /**
          * @brief 有符号十进制
          * 存储在std::uint64_t中，格式为[前导0][二进制补码]
          */
-        struct data_format_signed_t
+        struct dec_signed_t
         {
             /**
              * @brief 获取格式支持的最小宽度
@@ -387,13 +427,29 @@ namespace verilator_utils
             template <typename iter_t>
             [[nodiscard]] inline iter_t format_to(iter_t iter, ::std::int64_t data) const
             { return ::std::format_to(iter, "{}", data); }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @param width 数据宽度
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::int64_t to_underlying(::std::uint64_t packed_value,
+                                                                               ::std::size_t width) noexcept
+            {
+                auto shift{64zu - width};
+                // NOLINTNEXTLINE(hicpp-signed-bitwise)
+                auto sign_extended_value{static_cast<::std::int64_t>(packed_value << shift) >> shift};
+                return sign_extended_value;
+            }
         };
 
         /**
          * @brief 无符号十进制
          * 存储在std::uint64_t中，格式为[前导0][数据]
          */
-        struct data_format_unsigned_t
+        struct dec_unsigned_t
         {
             /**
              * @brief 获取格式支持的最小宽度
@@ -421,13 +477,22 @@ namespace verilator_utils
             template <typename iter_t>
             [[nodiscard]] inline iter_t format_to(iter_t iter, ::std::uint64_t data) const
             { return ::std::format_to(iter, "{}", data); }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
+            { return packed_value; }
         };
 
         /**
          * @brief 单精度浮点数
          * 存储在std::uint64_t中，格式为[前导0][float格式数据]
          */
-        struct data_format_float_t
+        struct real_float_t
         {
             /// 格式化时使用十六进制浮点格式，而不是十进制浮点格式
             bool format_as_hex{};
@@ -454,32 +519,22 @@ namespace verilator_utils
                 if(format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
                 return ::std::format_to(iter, "{}", data);
             }
-        };
 
-        struct double_format_to_impl_t
-        {
             /**
-             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
              *
-             * @tparam iter_t 输出迭代器类型
-             * @tparam type 数据类型
-             * @param iter 输出缓冲区迭代器
-             * @param data 数据对象
-             * @return 更新后的迭代器
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
              */
-            template <typename iter_t>
-            [[nodiscard]] inline iter_t format_to(this const auto& self, iter_t iter, double data)
-            {
-                if(self.format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
-                return ::std::format_to(iter, "{}", data);
-            }
+            [[nodiscard]] constexpr inline static float to_underlying(::std::uint64_t packed_value) noexcept
+            { return ::std::bit_cast<float>(static_cast<::std::uint32_t>(packed_value)); }
         };
 
         /**
          * @brief 双精度浮点数
          * 存储在std::uint64_t中，格式为[double格式数据]
          */
-        struct data_format_double_t : ::verilator_utils::detail::double_format_to_impl_t
+        struct real_double_t : ::verilator_utils::detail::double_format_to_impl_t
         {
             /// 格式化时使用十六进制浮点格式，而不是十进制浮点格式
             bool format_as_hex{};
@@ -490,13 +545,22 @@ namespace verilator_utils
              * @return 数据宽度
              */
             [[nodiscard]] constexpr inline static ::std::size_t width() noexcept { return 64; }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline static double to_underlying(::std::uint64_t packed_value) noexcept
+            { return ::std::bit_cast<double>(packed_value); }
         };
 
         /**
          * @brief 无符号定点数
          * 存储在std::uint64_t中，格式为[前导0][整数部分][小数部分]
          */
-        struct data_format_unsigned_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
+        struct unsigned_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
         {
             /// 整数位数
             ::std::uint8_t integer_bit;
@@ -526,13 +590,22 @@ namespace verilator_utils
              * @return 定点数宽度
              */
             [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit; }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline double to_underlying(::std::uint64_t packed_value) const noexcept
+            { return ::std::ldexp(static_cast<double>(packed_value), -fractional_bit); }
         };
 
         /**
          * @brief 有符号定点数，即补码表示
          * 存储在std::uint64_t中，格式为[前导0][符号][整数部分，补码][小数部分，补码]
          */
-        struct data_format_signed_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
+        struct signed_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
         {
             /// 整数位数
             ::std::uint8_t integer_bit;
@@ -562,13 +635,25 @@ namespace verilator_utils
              * @return 定点数宽度
              */
             [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline double to_underlying(::std::uint64_t packed_value) const noexcept
+            {
+                auto signed_value{::verilator_utils::data_format::dec_signed_t::to_underlying(packed_value, width())};
+                return ::std::ldexp(static_cast<double>(signed_value), -fractional_bit);
+            }
         };
 
         /**
          * @brief 采用符号-幅值表示的定点数，即原码表示
          * 存储在std::uint64_t中，格式为[前导0][符号][整数部分，原码][小数部分，原码]
          */
-        struct data_format_sign_mag_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
+        struct sign_mag_fixed_point_t : ::verilator_utils::detail::double_format_to_impl_t
         {
             /// 整数位数
             ::std::uint8_t integer_bit;
@@ -598,13 +683,28 @@ namespace verilator_utils
              * @return 定点数宽度
              */
             [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline double to_underlying(::std::uint64_t packed_value) const noexcept
+            {
+                auto sign_bit_index{width() - 1};
+                auto sign{packed_value >> sign_bit_index};
+                auto magnitude_mask{(1zu << sign_bit_index) - 1zu};
+                auto magnitude{::std::ldexp(static_cast<double>(packed_value & magnitude_mask), -fractional_bit)};
+                return sign == 0 ? magnitude : -magnitude;
+            }
         };
 
         /**
          * @brief 枚举类型，采用自然二进制编码，从0开始编码
          *
          */
-        struct data_format_enum_t
+        struct fsm_enum_t
         {
             /// 枚举项名称列表，按枚举顺序排列
             ::std::vector<::std::string> enum_string;
@@ -641,31 +741,37 @@ namespace verilator_utils
                                         data < enum_string.size() ? enum_string[data]
                                                                   : ::std::format("\"invalid enum: {}\"", data));
             }
-        };
-    }  // namespace detail
 
-    export namespace data_format
-    {
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
+            { return packed_value; }
+        };
+
         /// 数据格式类型
         using format = ::std::variant<::std::monostate,
-                                      ::verilator_utils::detail::data_format_hex_t,
-                                      ::verilator_utils::detail::data_format_bin_t,
-                                      ::verilator_utils::detail::data_format_signed_t,
-                                      ::verilator_utils::detail::data_format_unsigned_t,
-                                      ::verilator_utils::detail::data_format_float_t,
-                                      ::verilator_utils::detail::data_format_double_t,
-                                      ::verilator_utils::detail::data_format_unsigned_fixed_point_t,
-                                      ::verilator_utils::detail::data_format_signed_fixed_point_t,
-                                      ::verilator_utils::detail::data_format_sign_mag_fixed_point_t,
-                                      ::verilator_utils::detail::data_format_enum_t>;
+                                      ::verilator_utils::data_format::hex_t,
+                                      ::verilator_utils::data_format::bin_t,
+                                      ::verilator_utils::data_format::dec_unsigned_t,
+                                      ::verilator_utils::data_format::dec_signed_t,
+                                      ::verilator_utils::data_format::real_float_t,
+                                      ::verilator_utils::data_format::real_double_t,
+                                      ::verilator_utils::data_format::unsigned_fixed_point_t,
+                                      ::verilator_utils::data_format::signed_fixed_point_t,
+                                      ::verilator_utils::data_format::sign_mag_fixed_point_t,
+                                      ::verilator_utils::data_format::fsm_enum_t>;
         /// 十六进制
-        constexpr inline ::verilator_utils::data_format::format hex{::verilator_utils::detail::data_format_hex_t{}};
+        constexpr inline ::verilator_utils::data_format::format hex{::verilator_utils::data_format::hex_t{}};
         /// 二进制
-        constexpr inline ::verilator_utils::data_format::format bin{::verilator_utils::detail::data_format_bin_t{}};
-        /// 有符号十进制
-        constexpr inline ::verilator_utils::data_format::format dec_signed{::verilator_utils::detail::data_format_signed_t{}};
+        constexpr inline ::verilator_utils::data_format::format bin{::verilator_utils::data_format::bin_t{}};
         /// 无符号十进制
-        constexpr inline ::verilator_utils::data_format::format dec_unsigned{::verilator_utils::detail::data_format_unsigned_t{}};
+        constexpr inline ::verilator_utils::data_format::format dec_unsigned{::verilator_utils::data_format::dec_unsigned_t{}};
+        /// 有符号十进制
+        constexpr inline ::verilator_utils::data_format::format dec_signed{::verilator_utils::data_format::dec_signed_t{}};
 
         /**
          * @brief 单精度浮点数
@@ -674,7 +780,7 @@ namespace verilator_utils
          * @return 数据格式对象
          */
         constexpr inline ::verilator_utils::data_format::format real_float(bool format_as_hex = false)
-        { return ::verilator_utils::detail::data_format_float_t{format_as_hex}; }
+        { return ::verilator_utils::data_format::real_float_t{format_as_hex}; }
 
         /**
          * @brief 双精度浮点数
@@ -683,7 +789,7 @@ namespace verilator_utils
          * @return 数据格式对象
          */
         constexpr inline ::verilator_utils::data_format::format real_double(bool format_as_hex = false)
-        { return ::verilator_utils::detail::data_format_double_t{.format_as_hex = format_as_hex}; }
+        { return ::verilator_utils::data_format::real_double_t{.format_as_hex = format_as_hex}; }
 
         /**
          * @brief 无符号定点数
@@ -696,7 +802,7 @@ namespace verilator_utils
         constexpr inline ::verilator_utils::data_format::format
             unsigned_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
-            return ::verilator_utils::detail::data_format_unsigned_fixed_point_t{
+            return ::verilator_utils::data_format::unsigned_fixed_point_t{
                 .integer_bit = integer_bit,
                 .fractional_bit = fractional_bit,
                 .format_as_hex = format_as_hex,
@@ -714,7 +820,7 @@ namespace verilator_utils
         constexpr inline ::verilator_utils::data_format::format
             signed_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
-            return ::verilator_utils::detail::data_format_signed_fixed_point_t{
+            return ::verilator_utils::data_format::signed_fixed_point_t{
                 .integer_bit = integer_bit,
                 .fractional_bit = fractional_bit,
                 .format_as_hex = format_as_hex,
@@ -732,15 +838,12 @@ namespace verilator_utils
         constexpr inline ::verilator_utils::data_format::format
             sign_mag_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
-            return ::verilator_utils::detail::data_format_sign_mag_fixed_point_t{
+            return ::verilator_utils::data_format::sign_mag_fixed_point_t{
                 .integer_bit = integer_bit,
                 .fractional_bit = fractional_bit,
                 .format_as_hex = format_as_hex,
             };
         }
-
-        /// 枚举，常用于FSM状态变量，采用从0开始的自然二进制编码
-        using fsm_enum = ::verilator_utils::detail::data_format_enum_t;
 
         /**
          * @brief 枚举，常用于FSM状态变量，采用从0开始的自然二进制编码
@@ -748,8 +851,11 @@ namespace verilator_utils
          * @param enum_string 枚举项名称列表，按枚举顺序排列
          * @return 数据格式对象
          */
-        constexpr inline ::verilator_utils::data_format::format sign_mag_fixed_point(::std::vector<::std::string> enum_string)
-        { return ::verilator_utils::detail::data_format_enum_t{::std::move(enum_string)}; }
+        constexpr inline ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
+        {
+            REQUIRE_FALSE(enum_string.empty());
+            return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
+        }
     }  // namespace data_format
 
     namespace detail
@@ -762,13 +868,13 @@ namespace verilator_utils
          */
         constexpr inline bool is_variable_width_format(const ::verilator_utils::data_format::format& format) noexcept
         {
-            constexpr static auto hex_index{::verilator_utils::variant_type_index<::verilator_utils::detail::data_format_hex_t,
+            constexpr static auto hex_index{::verilator_utils::variant_type_index<::verilator_utils::data_format::hex_t,
                                                                                   ::verilator_utils::data_format::format>};
             constexpr static auto unsigned_index{
-                ::verilator_utils::variant_type_index<::verilator_utils::detail::data_format_unsigned_t,
+                ::verilator_utils::variant_type_index<::verilator_utils::data_format::dec_unsigned_t,
                                                       ::verilator_utils::data_format::format>};
             return (format.index() >= hex_index && format.index() <= unsigned_index) ||
-                   ::std::holds_alternative<::verilator_utils::detail::data_format_enum_t>(format);
+                   ::std::holds_alternative<::verilator_utils::data_format::fsm_enum_t>(format);
         }
     }  // namespace detail
 }  // namespace verilator_utils

@@ -34,7 +34,7 @@ namespace verilator_utils
         };
 
         template <typename type, typename... types>
-            requires (::verilator_utils::detail::find_once_in_types<type, types...>())
+            requires (::verilator_utils::detail::find_once_in_types<type, types...>()) // NOLINT(readability-redundant-parentheses)
         struct variant_index_impl<type, ::std::variant<types...>> :
             ::std::integral_constant<::std::size_t,
                                      []<::std::size_t... indexes>(
