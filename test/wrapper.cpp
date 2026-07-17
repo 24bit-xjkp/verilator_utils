@@ -147,12 +147,11 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::IData float_data{::std::bit_cast<::std::uint32_t>(1.5F)};
         ::QData double_data{::std::bit_cast<::std::uint64_t>(-2.25)};
-        ::verilator_utils::vector_slice<::IData> float_value{float_data, 32, ::verilator_utils::data_format::real_float};
-        ::verilator_utils::vector_slice<::QData> double_value{double_data, 64, ::verilator_utils::data_format::real_double};
-        ::verilator_utils::vector_slice<::IData> hex_float_value{
-            float_data,
-            32,
-            ::std::remove_cvref_t<decltype(::verilator_utils::data_format::real_float)>{true}};
+        ::verilator_utils::vector_slice<::IData> float_value{float_data, 32, ::verilator_utils::data_format::real_float()};
+        ::verilator_utils::vector_slice<::QData> double_value{double_data, 64, ::verilator_utils::data_format::real_double()};
+        ::verilator_utils::vector_slice<::IData> hex_float_value{float_data,
+                                                                 32,
+                                                                 ::verilator_utils::data_format::real_float(true)};
 
         CHECK_EQ(::std::get<float>(float_value.to_underlying()), 1.5F);
         CHECK_EQ(float_value.to_string(), "1.5");
@@ -166,25 +165,16 @@ TEST_SUITE("verilator_utils/wrapper")
         ::CData unsigned_data{0b0110u};
         ::CData signed_data{0b1110u};
         ::CData sign_magnitude_data{0b1101u};
-        using unsigned_format = ::verilator_utils::data_format::unsigned_fixed_point;
-        using signed_format = ::verilator_utils::data_format::signed_fixed_point;
-        using sign_magnitude_format = ::verilator_utils::data_format::sign_mag;
 
-        ::verilator_utils::vector_slice<::CData> unsigned_value{
-            unsigned_data,
-            4,
-            unsigned_format{2, 2}
-        };
-        ::verilator_utils::vector_slice<::CData> signed_value{
-            signed_data,
-            4,
-            signed_format{2, 1}
-        };
-        ::verilator_utils::vector_slice<::CData> sign_magnitude_value{
-            sign_magnitude_data,
-            4,
-            sign_magnitude_format{2, 1}
-        };
+        ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data,
+                                                                4,
+                                                                ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
+        ::verilator_utils::vector_slice<::CData> signed_value{signed_data,
+                                                              4,
+                                                              ::verilator_utils::data_format::signed_fixed_point(2, 1)};
+        ::verilator_utils::vector_slice<::CData> sign_magnitude_value{sign_magnitude_data,
+                                                                      4,
+                                                                      ::verilator_utils::data_format::sign_mag_fixed_point(2, 1)};
 
         CHECK_EQ(::std::get<double>(unsigned_value.to_underlying()), 1.5);
         CHECK_EQ(unsigned_value.to_string(), "1.5");
@@ -192,6 +182,51 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(signed_value.to_string(), "-1");
         CHECK_EQ(::std::get<double>(sign_magnitude_value.to_underlying()), -2.5);
         CHECK_EQ(sign_magnitude_value.to_string(), "-2.5");
+    }
+
+    TEST_CASE("vector slice formats FSM enum values and reports invalid states")
+    {
+        using enum_format = ::verilator_utils::data_format::fsm_enum;
+        enum_format format{
+            {"idle", "start", "run"}
+        };
+        ::CData valid_data{0b10u};
+        ::CData invalid_data{0b11u};
+        ::verilator_utils::vector_slice<::CData> valid_value{valid_data, 2, format};
+        ::verilator_utils::vector_slice<::CData> invalid_value{invalid_data, 2, format};
+
+        CHECK_EQ(::std::get<::std::uint64_t>(valid_value.to_underlying()), 2u);
+        CHECK(valid_value.is_valid());
+        CHECK_EQ(valid_value.to_string(), "run");
+        CHECK_EQ(::std::format("{}", valid_value), "run");
+        CHECK_FALSE(invalid_value.is_valid());
+        CHECK_EQ(invalid_value.to_string(), "\"invalid enum: 3\"");
+    }
+
+    TEST_CASE("FSM enum accepts minimum width for power of two state counts")
+    {
+        using enum_format = ::verilator_utils::data_format::fsm_enum;
+        enum_format format{
+            {"idle", "read", "write", "done"}
+        };
+        ::CData data{0b11u};
+        ::verilator_utils::vector_slice<::CData> value{data, 2, format};
+
+        CHECK_EQ(format.min_width(), 2u);
+        CHECK(value.is_valid());
+        CHECK_EQ(value.to_string(), "done");
+    }
+
+    TEST_CASE("FSM enum format is preserved by narrower nested slices")
+    {
+        using enum_format = ::verilator_utils::data_format::fsm_enum;
+        ::CData data{0b101u};
+        ::verilator_utils::vector_slice<::CData> value{data, 3, enum_format{{"idle", "read", "write", "done"}}};
+        auto nested{value[1, 0]};
+
+        CHECK_EQ(nested.width(), 2u);
+        CHECK(nested.is_valid());
+        CHECK_EQ(nested.to_string(), "read");
     }
 
     TEST_CASE("vector slice compares integer formats with underlying values")
@@ -213,8 +248,8 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::IData finite_data{::std::bit_cast<::std::uint32_t>(1.5F)};
         ::IData nan_data{::std::bit_cast<::std::uint32_t>(::std::numeric_limits<float>::quiet_NaN())};
-        ::verilator_utils::vector_slice<::IData> finite_value{finite_data, 32, ::verilator_utils::data_format::real_float};
-        ::verilator_utils::vector_slice<::IData> nan_value{nan_data, 32, ::verilator_utils::data_format::real_float};
+        ::verilator_utils::vector_slice<::IData> finite_value{finite_data, 32, ::verilator_utils::data_format::real_float()};
+        ::verilator_utils::vector_slice<::IData> nan_value{nan_data, 32, ::verilator_utils::data_format::real_float()};
 
         CHECK_LT(finite_value, 2.0F);
         CHECK_GT(finite_value, 1.0F);
