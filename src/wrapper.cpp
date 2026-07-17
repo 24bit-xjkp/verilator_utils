@@ -210,7 +210,7 @@ export namespace verilator_utils
                                      ::std::size_t left_bound_index,
                                      ::std::size_t right_bound_index,
                                      ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
-            data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}, data_format{format}
+            data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}, data_format{::std::move(format)}
         {
             REQUIRE_GE(left_bound, right_bound);
             check_format(data_format);
@@ -226,7 +226,7 @@ export namespace verilator_utils
         inline explicit vector_slice(value_type& data,
                                      ::std::size_t width,
                                      ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
-            data{data}, left_bound{width - 1}, right_bound{0}, data_format{format}
+            data{data}, left_bound{width - 1}, right_bound{0}, data_format{::std::move(format)}
         {
             REQUIRE_NE(width, 0);
             check_format(data_format);
@@ -271,10 +271,10 @@ export namespace verilator_utils
          * @param format 数据格式，为std::monostate表示使用当前对象的数据格式
          * @return 向量切片的包装对象
          */
-        inline vector_slice
-            operator[] (::std::size_t left_bound_index,
-                        ::std::size_t right_bound_index,
-                        ::verilator_utils::data_format::format format = ::verilator_utils::data_format::format{}) const noexcept
+        inline vector_slice operator[] (
+            ::std::size_t left_bound_index,
+            ::std::size_t right_bound_index,
+            const ::verilator_utils::data_format::format& format = ::verilator_utils::data_format::format{}) const noexcept
         {
             REQUIRE_GE(left_bound_index, right_bound_index);
             REQUIRE_LE(right_bound_index, left_bound);
@@ -547,7 +547,8 @@ export namespace verilator_utils
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_hex_t> ||
                                       ::std::same_as<format_t, ::verilator_utils::detail::data_format_bin_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_t>)
+                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
                     {
                         return underlying_type{aligned_value};
                     }
@@ -576,7 +577,7 @@ export namespace verilator_utils
                         auto signed_value{static_cast<::std::int64_t>(aligned_value << shift) >> shift};
                         return underlying_type{::std::ldexp(static_cast<double>(signed_value), -format.fractional_bit)};
                     }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_t>)
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_fixed_point_t>)
                     {
                         auto sign_bit_index{format.width() - 1};
                         auto sign{aligned_value >> sign_bit_index};
@@ -587,6 +588,30 @@ export namespace verilator_utils
                     else
                     {
                         static_assert(false, "未实现所有格式的转化");
+                    }
+                });
+        }
+
+        /**
+         * @brief 检查向量切片的值是否有效
+         *
+         * @note 对于枚举等有效值范围可能小于取值范围的格式进行检查，否则总是返回true
+         * @return 向量切片的值是否有效
+         */
+        [[nodiscard]] inline bool is_valid() const noexcept
+        {
+            return data_format.visit(
+                [this](auto format) noexcept -> bool
+                {
+                    using format_t = decltype(format);
+                    if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
+                    {
+                        auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
+                        return underlying_data < format.enum_string.size();
+                    }
+                    else
+                    {
+                        return true;
                     }
                 });
         }
@@ -622,28 +647,36 @@ export namespace verilator_utils
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_t>)
                     {
-                        auto underlying_data{to_underlying()};
-                        return ::std::format_to(iter, "{}", ::std::get<::std::int64_t>(underlying_data));
+                        auto underlying_data{::std::get<::std::int64_t>(to_underlying())};
+                        return ::std::format_to(iter, "{}", underlying_data);
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_t>)
                     {
-                        auto underlying_data{to_underlying()};
-                        return ::std::format_to(iter, "{}", ::std::get<::std::uint64_t>(underlying_data));
+                        auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
+                        return ::std::format_to(iter, "{}", underlying_data);
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_float_t>)
                     {
-                        auto underlying_data{to_underlying()};
-                        if(format.format_as_hex) { return ::std::format_to(iter, "{:a}", ::std::get<float>(underlying_data)); }
-                        return ::std::format_to(iter, "{}", ::std::get<float>(underlying_data));
+                        auto underlying_data{::std::get<float>(to_underlying())};
+                        if(format.format_as_hex) { return ::std::format_to(iter, "{:a}", underlying_data); }
+                        return ::std::format_to(iter, "{}", underlying_data);
                     }
                     else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_double_t> ||
                                       ::std::same_as<format_t, ::verilator_utils::detail::data_format_unsigned_fixed_point_t> ||
                                       ::std::same_as<format_t, ::verilator_utils::detail::data_format_signed_fixed_point_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_t>)
+                                      ::std::same_as<format_t, ::verilator_utils::detail::data_format_sign_mag_fixed_point_t>)
                     {
-                        auto underlying_data{to_underlying()};
-                        if(format.format_as_hex) { return ::std::format_to(iter, "{:a}", ::std::get<double>(underlying_data)); }
-                        return ::std::format_to(iter, "{}", ::std::get<double>(underlying_data));
+                        auto underlying_data{::std::get<double>(to_underlying())};
+                        if(format.format_as_hex) { return ::std::format_to(iter, "{:a}", underlying_data); }
+                        return ::std::format_to(iter, "{}", underlying_data);
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
+                    {
+                        auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
+                        return ::std::format_to(iter,
+                                                "{}",
+                                                is_valid() ? format.enum_string[underlying_data]
+                                                           : ::std::format("\"invalid enum: {}\"", underlying_data));
                     }
                     else
                     {
@@ -713,9 +746,10 @@ export namespace verilator_utils
         inline void check_format(::verilator_utils::data_format::format format) const
         {
             format.visit(
-                [width = width()](auto format)
+                [width = width()](auto format) -> void
                 {
-                    if constexpr(::std::same_as<decltype(format), ::std::monostate>)
+                    using format_t = decltype(format);
+                    if constexpr(::std::same_as<format_t, ::std::monostate>)
                     {
                         using namespace ::std::string_view_literals;
                         REQUIRE_MESSAGE(false, "必须设置数据类型"sv);
@@ -725,6 +759,11 @@ export namespace verilator_utils
                                           { format.max_width() } -> ::std::same_as<::std::size_t>;
                                       })
                     {
+                        if constexpr(::std::same_as<format_t, ::verilator_utils::detail::data_format_enum_t>)
+                        {
+                            REQUIRE_FALSE(format.enum_string.empty());
+                        }
+
                         auto min_width{format.min_width()};
                         auto max_width{format.max_width()};
                         REQUIRE_GE(width, min_width);
