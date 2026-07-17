@@ -547,3 +547,167 @@ export namespace verilator_utils::detail
     extern "C++" inline int argc{};
     extern "C++" inline const char** argv{};
 }  // namespace verilator_utils::detail
+
+export namespace verilator_utils
+{
+    /**
+     * @brief 协程生成器
+     * 由于libc++尚未支持std::generator，因此添加该简易实现
+     * @note 为了可以优化掉堆分配，不支持生成器嵌套
+     * @tparam type 生成器值类型
+     */
+    template <typename type>
+    struct generator : ::std::ranges::view_interface<generator<type>>
+    {
+        struct promise_type;
+        using value_type = type;
+
+    private:
+        using handle_t = ::std::coroutine_handle<promise_type>;
+
+        struct iterator
+        {
+            using difference_type = ::std::ptrdiff_t;
+            using value_type = type;
+            handle_t handle{};
+
+            constexpr inline iterator& operator++ ()
+            {
+                handle.resume();
+                handle.promise().rethrow_exception();
+                return *this;
+            }
+
+            constexpr inline void operator++ (int) { ++(*this); }
+
+            constexpr inline type& operator* () const noexcept { return *handle.promise().ptr; }
+
+            constexpr inline friend bool operator== (iterator iter, ::std::default_sentinel_t /* unused */) noexcept
+            { return iter.handle.done(); }
+        };
+
+        handle_t handle{};
+
+    public:
+        struct promise_type
+        {
+            type* ptr{};
+            ::std::exception_ptr exception{};
+
+            /**
+             * @brief 获取返回对象
+             *
+             * @return 生成器对象
+             */
+            constexpr inline generator get_return_object() noexcept { return generator{handle_t::from_promise(*this)}; }
+
+            /**
+             * @brief 初始挂起
+             *
+             * @return 可等待体，总是挂起协程
+             */
+            constexpr inline ::std::suspend_always initial_suspend() noexcept { return ::std::suspend_always{}; }
+
+            /**
+             * @brief 最终挂起
+             *
+             * @return 可等待体，总是挂起协程
+             */
+            constexpr inline ::std::suspend_always final_suspend() noexcept { return ::std::suspend_always{}; }
+
+            /**
+             * @brief 生产值
+             *
+             * @param value 要生产的值
+             */
+            template <typename ref_t>
+            constexpr inline ::std::suspend_always
+                yield_value(ref_t&& value) noexcept  // NOLINT(cppcoreguidelines-missing-std-forward)
+                requires (::std::same_as<type, ::std::remove_reference_t<ref_t>>)
+            {
+                ptr = ::std::addressof(value);
+                return ::std::suspend_always{};
+            }
+
+            /**
+             * @brief 退出生成器
+             *
+             */
+            constexpr inline void return_void() noexcept {}
+
+            /**
+             * @brief 处理未捕获异常
+             *
+             */
+            constexpr inline void unhandled_exception() noexcept { exception = ::std::current_exception(); }
+
+            /**
+             * @brief 重新抛出协程中抛出的异常
+             *
+             */
+            inline void rethrow_exception() const
+            {
+                if(exception) { ::std::rethrow_exception(exception); }
+            }
+        };
+
+        /**
+         * @brief 构造函数
+         *
+         * @param handle 协程句柄
+         */
+        constexpr inline explicit generator(handle_t handle) noexcept : ::std::ranges::view_interface<generator>{}, handle{handle}
+        {
+        }
+
+        /**
+         * @brief 析构函数
+         *
+         */
+        constexpr inline ~generator() noexcept
+        {
+            if(handle) { handle.destroy(); }
+        }
+
+        inline generator(const generator&) = delete;
+        inline generator& operator= (const generator&) = delete;
+
+        /**
+         * @brief 移动构造函数
+         *
+         * @param other 要移动的生成器
+         */
+        constexpr inline generator(generator&& other) noexcept : handle{::std::exchange(other.handle, nullptr)} {}
+
+        /**
+         * @brief 移动赋值函数
+         *
+         * @param other 要移动的生成器
+         */
+        inline generator& operator= (generator&& other) noexcept
+        {
+            if(handle) { handle.destroy(); }
+            handle = ::std::exchange(other, nullptr);
+        }
+
+        /**
+         * @brief 获取迭代器
+         *
+         * @return 迭代器对象
+         */
+        constexpr inline iterator begin() const
+        {
+            // 启动生成器
+            handle.resume();
+            handle.promise().rethrow_exception();
+            return {handle};
+        }
+
+        /**
+         * @brief 获取哨位
+         *
+         * @return 哨位对象
+         */
+        constexpr inline static ::std::default_sentinel_t end() noexcept { return ::std::default_sentinel; }
+    };
+}  // namespace verilator_utils
