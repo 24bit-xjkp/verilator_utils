@@ -957,13 +957,32 @@ export namespace verilator_utils
              *
              * @param value 要生产的值
              */
-            template <typename ref_t>
-            constexpr inline ::std::suspend_always
-                yield_value(ref_t&& value) noexcept  // NOLINT(cppcoreguidelines-missing-std-forward)
-                requires (::std::same_as<type, ::std::remove_reference_t<ref_t>>)
+            constexpr inline ::std::suspend_always yield_value(yielded value) noexcept
             {
                 ptr = ::std::addressof(value);
                 return ::std::suspend_always{};
+            }
+
+            /**
+             * @brief 生产值
+             *
+             * @param value 要生产的值
+             */
+            constexpr inline auto yield_value(const std::remove_reference_t<yielded>& ref) noexcept
+                requires (std::constructible_from<std::remove_cvref_t<yielded>, const std::remove_reference_t<yielded>&>)
+            {
+                struct awaiter
+                {
+                    std::remove_cvref_t<yielded> value;
+
+                    constexpr inline static bool await_ready() noexcept { return false; }
+
+                    constexpr inline void await_suspend(handle_t handle) noexcept { handle.ptr = ::std::addressof(value); }
+
+                    constexpr inline static void await_resume() noexcept {}
+                };
+
+                return awaiter{ref};
             }
 
             /**
