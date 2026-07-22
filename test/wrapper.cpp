@@ -41,6 +41,95 @@ TEST_SUITE("verilator_utils/wrapper")
         static_assert(::std::same_as<typename ::verilator_utils::vector_slice<::VlWide<2>>::cast_type, ::VlWide<2>>);
     }
 
+    TEST_CASE("format wrapper exposes compile time and runtime metadata")
+    {
+        constexpr ::verilator_utils::format_wrapper<::std::uint64_t> constant_value{0xa6u,
+                                                                                    8,
+                                                                                    ::verilator_utils::data_format::hex};
+        static_assert(constant_value.value() == 0xa6u);
+        static_assert(constant_value.width() == 8u);
+        static_assert(constant_value.to_verilator() == 0xa6u);
+
+        auto value{
+            ::verilator_utils::format_wrapper<::std::uint64_t>{0x2au, 8, ::verilator_utils::data_format::bin}
+        };
+        CHECK_EQ(value.value(), 0x2au);
+        CHECK_EQ(value.width(), 8u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::bin_t>(value.format()));
+        CHECK_EQ(value.to_string(), "0b00101010");
+        CHECK_EQ(::std::format("{}", value), "0b00101010");
+        CHECK_EQ(value.to_verilator(), 0x2au);
+
+        value = 0xau;
+        CHECK_EQ(value.value(), 0xau);
+        CHECK_EQ(value.to_string(), "0b00001010");
+    }
+
+    TEST_CASE("format wrapper converts scalar values for every supported format")
+    {
+        ::verilator_utils::format_wrapper<::std::uint64_t> unsigned_value{166u, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::format_wrapper<::std::int64_t> signed_value{-90, 8, ::verilator_utils::data_format::dec_signed};
+        ::verilator_utils::format_wrapper<float> float_value{1.5F, 32, ::verilator_utils::data_format::real_float()};
+        ::verilator_utils::format_wrapper<double> double_value{-2.25, 64, ::verilator_utils::data_format::real_double()};
+        ::verilator_utils::format_wrapper<double> unsigned_fixed_point_value{
+            1.5,
+            4,
+            ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
+        ::verilator_utils::format_wrapper<double> signed_fixed_point_value{
+            -1.0,
+            4,
+            ::verilator_utils::data_format::signed_fixed_point(2, 1)};
+        ::verilator_utils::format_wrapper<double> sign_magnitude_value{
+            -2.5,
+            4,
+            ::verilator_utils::data_format::sign_mag_fixed_point(2, 1)};
+        ::verilator_utils::format_wrapper<::std::uint64_t> enum_value{
+            2u,
+            2,
+            ::verilator_utils::data_format::fsm_enum({"idle", "start", "run"})};
+
+        CHECK_EQ(unsigned_value.to_verilator(), 166u);
+        CHECK_EQ(unsigned_value.to_string(), "166");
+        CHECK_EQ(signed_value.to_verilator(), 0xa6u);
+        CHECK_EQ(signed_value.to_string(), "-90");
+        CHECK_EQ(float_value.to_verilator(), ::std::bit_cast<::std::uint32_t>(1.5F));
+        CHECK_EQ(float_value.to_string(), "1.5");
+        CHECK_EQ(double_value.to_verilator(), ::std::bit_cast<::std::uint64_t>(-2.25));
+        CHECK_EQ(double_value.to_string(), "-2.25");
+        CHECK_EQ(unsigned_fixed_point_value.to_verilator(), 0b0110u);
+        CHECK_EQ(unsigned_fixed_point_value.to_string(), "1.5");
+        CHECK_EQ(signed_fixed_point_value.to_verilator(), 0b1110u);
+        CHECK_EQ(signed_fixed_point_value.to_string(), "-1");
+        CHECK_EQ(sign_magnitude_value.to_verilator(), 0b1101u);
+        CHECK_EQ(sign_magnitude_value.to_string(), "-2.5");
+        CHECK_EQ(enum_value.to_verilator(), 2u);
+        CHECK_EQ(enum_value.to_string(), "run");
+    }
+
+    TEST_CASE("format wrapper supports wide values and vector slice comparisons")
+    {
+        ::VlWide<2> wide_data{0x89ab'cdefu, 0x0000'0123u};
+        ::verilator_utils::format_wrapper<::VlWide<2>> wide_value{wide_data, 48};
+
+        static_assert(::std::same_as<decltype(wide_value.to_verilator()), const ::VlWide<2>&>);
+        CHECK_EQ(wide_value.value().at(0), 0x89ab'cdefu);
+        CHECK_EQ(wide_value.value().at(1), 0x0000'0123u);
+        CHECK_EQ(wide_value.to_string(), "0x012389abcdef");
+        CHECK_EQ(::std::format("{}", wide_value), "0x012389abcdef");
+
+        ::VlWide<2> slice_data{0x89ab'cdefu, 0x0000'0123u};
+        ::verilator_utils::vector_slice<::VlWide<2>> slice{slice_data, 47, 0};
+        CHECK(slice == wide_value);
+
+        ::QData data{0x0000'0123'89ab'cdefu};
+        ::verilator_utils::format_wrapper<::std::uint64_t> comparison_value{0x89ab'cdefu,
+                                                                            32,
+                                                                            ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::vector_slice<::QData> low_slice{data, 31, 0, ::verilator_utils::data_format::dec_unsigned};
+        CHECK_EQ(low_slice <=> comparison_value, ::std::partial_ordering::equivalent);
+        CHECK(low_slice == comparison_value);
+    }
+
     TEST_CASE("bit slice reads writes and formats a single bit")
     {
         ::CData data{0b1010'1010u};
