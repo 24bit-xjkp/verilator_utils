@@ -252,6 +252,140 @@ namespace verilator_utils
                 return ::std::format_to(iter, "{}", data);
             }
         };
+
+        /**
+         * @brief 检查类型是否为数字
+         *
+         * @tparam type 要检查的类型
+         */
+        template <typename type>
+        concept is_number_type = ::std::integral<type> || ::std::floating_point<type>;
+
+        /**
+         * @brief 计算绝对值，运行时转发到std::abs，编译时使用简易实现
+         *
+         * @note <cmath>尚不支持编译时计算，因此实现该包装函数
+         * @param value 要计算的值
+         * @return 绝对值
+         */
+        constexpr inline auto abs(::verilator_utils::detail::is_number_type auto value) noexcept
+        {
+            if consteval
+            {
+                if constexpr(::std::integral<decltype(value)>)
+                {
+                    return ::verilator_utils::detail::abs(static_cast<double>(value));
+                }
+                else
+                {
+                    return value < 0 ? -value : value;
+                }
+            }
+            else
+            {
+                return ::std::abs(value);
+            }
+        }
+
+        /**
+         * @brief 加载指数到浮点数，运行时转发到std::ldexp
+         *
+         * @note <cmath>尚不支持编译时计算，因此实现该包装函数
+         * @param value 要计算的值
+         *
+         * @return 加载指数后的浮点数
+         */
+        constexpr inline auto ldexp(::verilator_utils::detail::is_number_type auto value, int exp) noexcept
+        {
+            if consteval
+            {
+                using value_t = decltype(value);
+                if constexpr(::std::integral<value_t>)
+                {
+                    return ::verilator_utils::detail::ldexp(static_cast<double>(value), exp);
+                }
+                else
+                {
+                    constexpr value_t radix{::std::numeric_limits<value_t>::radix};
+                    value_t scale{exp < 0 ? 1 / radix : radix};
+                    value_t total_scale{1.0};
+                    auto abs_exp{static_cast<::std::size_t>(exp < 0 ? -exp : exp)};
+                    while(abs_exp != 0)
+                    {
+                        if((abs_exp & 1zu) == 1) { total_scale *= scale; }
+                        scale *= scale;
+                        abs_exp >>= 1zu;
+                    }
+                    return value * total_scale;
+                }
+            }
+            else
+            {
+                return ::std::ldexp(value, exp);
+            }
+        }
+
+        /**
+         * @brief 获取符号位，运行时转发到std::signbit，编译时使用简易实现
+         *
+         * @note <cmath>尚不支持编译时计算，因此实现该包装函数
+         * @param value 要计算的值
+         * @return 符号位
+         */
+        constexpr inline bool signbit(::verilator_utils::detail::is_number_type auto value) noexcept
+        {
+            if consteval
+            {
+                if constexpr(::std::integral<decltype(value)>) { return value < 0; }
+                else
+                {
+                    using array_t = ::std::array<::std::uint8_t, sizeof(value) / sizeof(::std::uint8_t)>;
+                    return ::std::bit_cast<array_t>(value).back() >> 7zu;
+                }
+            }
+            else
+            {
+                return ::std::signbit(value);
+            }
+        }
+
+        /**
+         * @brief 计算VlWide的宽度
+         *
+         * @tparam n VlWide元素个数
+         * @param value VlWide数据
+         * @return 宽度
+         */
+        template <::std::size_t n>
+        constexpr inline ::std::size_t vlwide_width(const ::VlWide<n>& value) noexcept
+        {
+            constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
+            constexpr static auto total_bits{n * word_width};
+            ::std::size_t leading_zeros{};
+            for(auto word: value.m_storage | ::std::views::reverse)
+            {
+                if(word == 0) { leading_zeros += word_width; }
+                else
+                {
+                    leading_zeros += ::std::countl_zero(word);
+                    break;
+                }
+            }
+            return total_bits - leading_zeros;
+        }
+
+        /**
+         * @brief 计算有符号数的宽度
+         *
+         * @param value 数据
+         * @return 宽度
+         */
+        constexpr inline ::std::size_t signed_integral_width(::std::int64_t value) noexcept
+        {
+            auto unsigned_value{static_cast<::std::uint64_t>(value)};
+            unsigned_value = value < 0 ? -unsigned_value : unsigned_value;
+            return ::std::bit_width(unsigned_value);
+        }
     }  // namespace detail
 
     export namespace data_format
@@ -326,6 +460,15 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
             { return packed_value; }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
+            { return underlying_value; }
         };
 
         /**
@@ -393,6 +536,15 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
             { return packed_value; }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
+            { return underlying_value; }
         };
 
         /**
@@ -443,6 +595,20 @@ namespace verilator_utils
                 auto sign_extended_value{static_cast<::std::int64_t>(packed_value << shift) >> shift};
                 return sign_extended_value;
             }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @param width 数据宽度
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::int64_t underlying_value,
+                                                                               ::std::size_t width) noexcept
+            {
+                auto shift{64zu - width};
+                return static_cast<::std::uint64_t>(underlying_value) << shift >> shift;
+            }
         };
 
         /**
@@ -486,6 +652,15 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
             { return packed_value; }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
+            { return underlying_value; }
         };
 
         /**
@@ -528,6 +703,15 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr inline static float to_underlying(::std::uint64_t packed_value) noexcept
             { return ::std::bit_cast<float>(static_cast<::std::uint32_t>(packed_value)); }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(float underlying_value) noexcept
+            { return ::std::bit_cast<::std::uint32_t>(underlying_value); }
         };
 
         /**
@@ -554,6 +738,15 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr inline static double to_underlying(::std::uint64_t packed_value) noexcept
             { return ::std::bit_cast<double>(packed_value); }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(double underlying_value) noexcept
+            { return ::std::bit_cast<::std::uint64_t>(underlying_value); }
         };
 
         /**
@@ -598,7 +791,16 @@ namespace verilator_utils
              * @return 转换后的数据
              */
             [[nodiscard]] constexpr inline double to_underlying(::std::uint64_t packed_value) const noexcept
-            { return ::std::ldexp(static_cast<double>(packed_value), -fractional_bit); }
+            { return ::verilator_utils::detail::ldexp(packed_value, -fractional_bit); }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline ::std::uint64_t to_verilator(double underlying_value) const noexcept
+            { return static_cast<::std::uint64_t>(::verilator_utils::detail::ldexp(underlying_value, fractional_bit)); }
         };
 
         /**
@@ -645,7 +847,20 @@ namespace verilator_utils
             [[nodiscard]] constexpr inline double to_underlying(::std::uint64_t packed_value) const noexcept
             {
                 auto signed_value{::verilator_utils::data_format::dec_signed_t::to_underlying(packed_value, width())};
-                return ::std::ldexp(static_cast<double>(signed_value), -fractional_bit);
+                return ::verilator_utils::detail::ldexp(signed_value, -fractional_bit);
+            }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline ::std::uint64_t to_verilator(double underlying_value) const noexcept
+            {
+                auto signed_value{
+                    static_cast<::std::int64_t>(::verilator_utils::detail::ldexp(underlying_value, fractional_bit))};
+                return ::verilator_utils::data_format::dec_signed_t::to_verilator(signed_value, width());
             }
         };
 
@@ -695,8 +910,22 @@ namespace verilator_utils
                 auto sign_bit_index{width() - 1};
                 auto sign{packed_value >> sign_bit_index};
                 auto magnitude_mask{(1zu << sign_bit_index) - 1zu};
-                auto magnitude{::std::ldexp(static_cast<double>(packed_value & magnitude_mask), -fractional_bit)};
+                auto magnitude{::verilator_utils::detail::ldexp(packed_value & magnitude_mask, -fractional_bit)};
                 return sign == 0 ? magnitude : -magnitude;
+            }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline ::std::uint64_t to_verilator(double underlying_value) const noexcept
+            {
+                auto sign{static_cast<::std::uint64_t>(::verilator_utils::detail::signbit(underlying_value))};
+                auto magnitude{
+                    ::verilator_utils::detail::ldexp(::verilator_utils::detail::abs(underlying_value), fractional_bit)};
+                return sign << (width() - 1) | static_cast<::std::uint64_t>(magnitude);
             }
         };
 
@@ -750,6 +979,15 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
             { return packed_value; }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
+            { return underlying_value; }
         };
 
         /// 数据格式类型
@@ -856,6 +1094,73 @@ namespace verilator_utils
             REQUIRE_FALSE(enum_string.empty());
             return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
         }
+
+        /**
+         * @brief 检查数据格式是否合法
+         *
+         * @param format 要检查的数据格式
+         * @param width 数据宽度
+         */
+        constexpr inline void check_format(const ::verilator_utils::data_format::format& format, ::std::size_t width)
+        {
+            format.visit(
+                [width]<typename format_t>(const format_t& format) -> void
+                {
+                    using namespace ::std::string_view_literals;
+                    if constexpr(::std::same_as<format_t, ::std::monostate>)
+                    {
+                        if consteval { throw ::std::invalid_argument{"必须设置数据类型"}; }
+                        else
+                        {
+                            REQUIRE_MESSAGE(false, "必须设置数据类型"sv);
+                        }
+                    }
+                    else if constexpr(requires() {
+                                          { format.min_width() } -> ::std::same_as<::std::size_t>;
+                                          { format.max_width() } -> ::std::same_as<::std::size_t>;
+                                      })
+                    {
+                        if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
+                        {
+                            if consteval
+                            {
+                                if(format.enum_string.empty()) { throw ::std::invalid_argument{"枚举列表不能为空"}; }
+                            }
+                            else
+                            {
+                                REQUIRE_FALSE(format.enum_string.empty());
+                            }
+                        }
+
+                        auto min_width{format.min_width()};
+                        auto max_width{format.max_width()};
+
+                        if consteval
+                        {
+                            if(width < min_width || width > max_width)
+                            {
+                                throw ::std::invalid_argument{"数据宽度超出格式允许范围"};
+                            }
+                        }
+                        else
+                        {
+                            REQUIRE_GE(width, min_width);
+                            REQUIRE_LE(width, max_width);
+                        }
+                    }
+                    else
+                    {
+                        if consteval
+                        {
+                            if(width != format.width()) { throw ::std::invalid_argument{"数据宽度与格式宽度不同"}; }
+                        }
+                        else
+                        {
+                            REQUIRE_EQ(width, format.width());
+                        }
+                    }
+                });
+        }
     }  // namespace data_format
 
     namespace detail
@@ -897,7 +1202,7 @@ export namespace verilator_utils
     struct generator : ::std::ranges::view_interface<generator<type>>
     {
         struct promise_type;
-        using value_type = type;
+        using yielded = type&&;
 
     private:
         using handle_t = ::std::coroutine_handle<promise_type>;

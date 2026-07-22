@@ -11,6 +11,388 @@ extern "C++"
 export namespace verilator_utils
 {
     /**
+     * @brief 检查类型是否为格式包装器支持的数据类型
+     *
+     * @tparam type 要检查的类型
+     */
+    template <typename type>
+    concept is_format_wrapper_data_type = ::verilator_utils::is_cpp_underlying_type<type> || ::VlIsVlWide<type>::value;
+
+    /**
+     * @brief 格式包装器，将数据和数据格式绑定
+     * 用于在测试激励中构造带有格式的数据
+     * @note 支持作为常量表达式使用
+     * @tparam type 数据类型
+     */
+    template <::verilator_utils::is_format_wrapper_data_type type>
+    struct format_wrapper
+    {
+    private:
+        /// 是否为Verilator宽数据类型
+        constexpr inline static bool is_vl_wide{::VlIsVlWide<type>::value};
+        using to_verilator_t = ::std::conditional_t<is_vl_wide, const type&, ::std::uint64_t>;
+        using set_value_t = ::std::conditional_t<is_vl_wide, const type&, type>;
+
+    public:
+        using value_type = type;
+
+        /**
+         * @brief 构造格式包装器对象
+         *
+         * @param value 数据
+         * @param width 数据宽度
+         * @param format 数据格式
+         */
+        constexpr inline format_wrapper(type value,
+                                        ::std::size_t width,
+                                        ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
+            underlying_value{value}, data_width{width}, data_format{::std::move(format)}
+        {
+            check_format();
+            check_value();
+        }
+
+        constexpr inline format_wrapper(const format_wrapper&) noexcept = default;
+        constexpr inline format_wrapper& operator= (const format_wrapper&) noexcept = default;
+        constexpr inline format_wrapper(format_wrapper&&) noexcept = default;
+        constexpr inline format_wrapper& operator= (format_wrapper&&) noexcept = default;
+        constexpr inline ~format_wrapper() noexcept = default;
+
+        /**
+         * @brief 获取数据
+         *
+         * @return 数据引用
+         */
+        [[nodiscard]] constexpr inline const type& value() const noexcept { return underlying_value; }
+
+        /**
+         * @brief 获取位宽
+         *
+         * @return 数据位宽
+         */
+        [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return data_width; }
+
+        /**
+         * @brief 获取数据格式
+         *
+         * @return 数据格式
+         */
+        [[nodiscard]] constexpr inline const ::verilator_utils::data_format::format& format() const noexcept
+        { return data_format; }
+
+        /**
+         * @brief 设置数据
+         *
+         * @param value 要设置的数据
+         * @return 格式包装器引用
+         */
+        constexpr inline format_wrapper& operator= (set_value_t value)
+        {
+            underlying_value = value;
+            check_value();
+            return *this;
+        }
+
+        /**
+         * @brief 将数据按格式转化为打包储存在std::uint64_t或VlWide中的数据
+         *
+         * @return 打包储存的数据，当type为VlWide时返回VlWide，其他时候返回std::uint64_t
+         */
+        constexpr inline to_verilator_t to_verilator() const noexcept
+        {
+            if constexpr(is_vl_wide) { return underlying_value; }
+            else
+            {
+                return data_format.visit(
+                    [this]<typename format_t>(const format_t& format) noexcept -> ::std::uint64_t
+                    {
+                        if constexpr(::std::same_as<format_t, ::std::monostate>)
+                        {
+                            ::std::unreachable();
+                            return 0;
+                        }
+                        else if constexpr(requires() { format.to_verilator(underlying_value, width()); })
+                        {
+                            return format.to_verilator(underlying_value, width());
+                        }
+                        else
+                        {
+                            return format.to_verilator(underlying_value);
+                        }
+                    });
+            }
+        }
+
+        /**
+         * @brief 将数据包装器格式化输出到缓冲区上
+         *
+         * @tparam iter_t 迭代器类型
+         * @param iter 迭代器
+         * @return 格式化后缓冲区迭代器
+         */
+        template <typename iter_t>
+        inline iter_t format_to(iter_t iter) const
+        {
+            return data_format.visit(
+                [this, iter]<typename format_t>(const format_t& format) -> iter_t
+                {
+                    if constexpr(requires() { format.format_to(iter, underlying_value, width()); })
+                    {
+                        return format.format_to(iter, underlying_value, width());
+                    }
+                    else if constexpr(requires() { format.format_to(iter, underlying_value); })
+                    {
+                        return format.format_to(iter, underlying_value);
+                    }
+                    else
+                    {
+                        ::std::unreachable();
+                        return iter;
+                    }
+                });
+        }
+
+        /**
+         * @brief 转换为字符串表示
+         *
+         * @return 字符串表示
+         */
+        [[nodiscard]] inline ::std::string to_string() const
+        {
+            ::std::string result{};
+            // 0b和0x前缀的长度
+            constexpr static auto prefix_size{2zu};
+            if(::std::holds_alternative<::verilator_utils::data_format::hex_t>(data_format))
+            {
+                /// 每个十六进制位的位宽
+                constexpr static ::std::size_t digit_width{4zu};
+                auto total_len{(width() + digit_width - 1) / digit_width + prefix_size};
+                result.reserve(total_len);
+            }
+            else if(::std::holds_alternative<::verilator_utils::data_format::bin_t>(data_format))
+            {
+                auto total_len{width() + prefix_size};
+                result.reserve(total_len);
+            }
+            format_to(::std::back_inserter(result));
+            return result;
+        }
+
+    private:
+        type underlying_value;
+        ::std::size_t data_width;
+        ::verilator_utils::data_format::format data_format;
+
+        /**
+         * @brief 检查格式是否合法
+         *
+         */
+        constexpr inline void check_format()
+        {
+            using namespace ::std::string_view_literals;
+
+            auto is_monostate{::std::holds_alternative<::std::monostate>(data_format)};
+            if consteval
+            {
+                if(::std::holds_alternative<::std::monostate>(data_format)) { throw ::std::invalid_argument{"必须设定数据类型"}; }
+            }
+            else
+            {
+                REQUIRE_FALSE_MESSAGE(is_monostate, "必须设定数据类型"sv);
+            }
+
+            if constexpr(::VlIsVlWide<type>::value)
+            {
+                constexpr static auto bin_index{::verilator_utils::variant_type_index<::verilator_utils::data_format::hex_t,
+                                                                                      ::verilator_utils::data_format::format>};
+                auto is_hex_or_bin{data_format.index() <= bin_index};
+
+                if consteval
+                {
+                    if(!is_hex_or_bin) { throw ::std::invalid_argument{"VlWide只支持十六进制和二进制格式"}; }
+                }
+                else
+                {
+                    REQUIRE_MESSAGE(is_hex_or_bin, "VlWide只支持十六进制和二进制格式"sv);
+                }
+            }
+            else if constexpr(::std::same_as<type, ::std::uint64_t>)
+            {
+                constexpr static auto dec_signed_index{
+                    ::verilator_utils::variant_type_index<::verilator_utils::data_format::dec_signed_t,
+                                                          ::verilator_utils::data_format::format>};
+                constexpr static auto sign_mag_fixed_point_index{
+                    ::verilator_utils::variant_type_index<::verilator_utils::data_format::sign_mag_fixed_point_t,
+                                                          ::verilator_utils::data_format::format>};
+                auto is_signed_or_floating_point_or_fixed_point{data_format.index() >= dec_signed_index &&
+                                                                data_format.index() <= sign_mag_fixed_point_index};
+                if consteval
+                {
+                    if(is_signed_or_floating_point_or_fixed_point)
+                    {
+                        throw ::std::invalid_argument{"std::uint64_t不支持有符号十进制、浮点数和定点数"};
+                    }
+                }
+                else
+                {
+                    REQUIRE_FALSE_MESSAGE(is_signed_or_floating_point_or_fixed_point,
+                                          "std::uint64_t不支持有符号十进制、浮点数和定点数"sv);
+                }
+            }
+            else if constexpr(::std::same_as<type, ::std::int64_t>)
+            {
+                auto is_dec_signed{::std::holds_alternative<::verilator_utils::data_format::dec_signed_t>(data_format)};
+                if consteval
+                {
+                    if(!is_dec_signed) { throw ::std::invalid_argument{"std::int64_t只支持有符号十进制格式"}; }
+                    else
+                    {
+                        REQUIRE_MESSAGE(is_dec_signed, "std::int64_t只支持有符号十进制格式"sv);
+                    }
+                }
+            }
+            else if constexpr(::std::same_as<type, float>)
+            {
+                auto is_dec_signed{::std::holds_alternative<::verilator_utils::data_format::real_float_t>(data_format)};
+                if consteval
+                {
+                    if(!is_dec_signed) { throw ::std::invalid_argument{"float只支持单精度浮点数格式"}; }
+                    else
+                    {
+                        REQUIRE_MESSAGE(is_dec_signed, "float只支持单精度浮点数格式"sv);
+                    }
+                }
+            }
+            else if constexpr(::std::same_as<type, double>)
+            {
+                constexpr static auto real_double_index{
+                    ::verilator_utils::variant_type_index<::verilator_utils::data_format::real_double_t,
+                                                          ::verilator_utils::data_format::format>};
+                constexpr static auto sign_mag_fixed_point_index{
+                    ::verilator_utils::variant_type_index<::verilator_utils::data_format::sign_mag_fixed_point_t,
+                                                          ::verilator_utils::data_format::format>};
+                auto is_double_or_fixed_point{data_format.index() >= real_double_index &&
+                                              data_format.index() <= sign_mag_fixed_point_index};
+                if consteval
+                {
+                    if(!is_double_or_fixed_point) { throw ::std::invalid_argument{"double只支持双精度浮点数核定点数格式"}; }
+                    else
+                    {
+                        REQUIRE_MESSAGE(is_double_or_fixed_point, "double只支持双精度浮点数核定点数格式"sv);
+                    }
+                }
+            }
+            else
+            {
+                static_assert(false, "未支持的格式");
+            }
+
+            ::verilator_utils::data_format::check_format(data_format, data_width);
+        }
+
+        /**
+         * @brief 检查数据是否合法
+         *
+         */
+        constexpr inline void check_value()
+        {
+            using namespace ::std::string_view_literals;
+
+            auto do_check{[this](::std::size_t value_width) constexpr
+                          {
+                              if consteval
+                              {
+                                  if(value_width > width()) { throw ::std::invalid_argument{"数据宽度过大"}; }
+                              }
+                              else
+                              {
+                                  REQUIRE_GE(width(), value_width);
+                              }
+                          }};
+            if constexpr(is_vl_wide)
+            {
+                auto value_width{::verilator_utils::detail::vlwide_width(underlying_value)};
+                do_check(value_width);
+            }
+            else if constexpr(::std::same_as<::std::uint64_t, type>)
+            {
+                auto value_width{::std::bit_width(underlying_value)};
+                do_check(value_width);
+            }
+            else if constexpr(::std::same_as<::std::int64_t, type>)
+            {
+                auto value_width{::verilator_utils::detail::signed_integral_width(underlying_value)};
+                do_check(value_width);
+            }
+            else if constexpr(::std::same_as<type, float>)
+            {
+                // 标准单精度浮点类型固定32位，无需宽度检查
+            }
+            else if constexpr(::std::same_as<type, double>)
+            {
+                constexpr static auto unsigned_fixed_point_index{
+                    ::verilator_utils::variant_type_index<::verilator_utils::data_format::unsigned_fixed_point_t,
+                                                          ::verilator_utils::data_format::format>};
+                constexpr static auto sign_mag_fixed_point_index{
+                    ::verilator_utils::variant_type_index<::verilator_utils::data_format::sign_mag_fixed_point_t,
+                                                          ::verilator_utils::data_format::format>};
+
+                auto is_fixed_point{data_format.index() >= unsigned_fixed_point_index &&
+                                    data_format.index() <= sign_mag_fixed_point_index};
+
+                if(is_fixed_point)
+                {
+                    auto convert_to_verilator{data_format.visit(
+                        [this](const auto& format) noexcept -> ::std::uint64_t
+                        {
+                            if constexpr(requires() { format.to_verilator(underlying_value); })
+                            {
+                                return format.to_verilator(underlying_value);
+                            }
+                            else
+                            {
+                                ::std::unreachable();
+                                return 0;
+                            }
+                        })};
+                    auto convert_back{data_format.visit(
+                        [convert_to_verilator](const auto& format) noexcept -> double
+                        {
+                            if constexpr(requires() { format.to_underlying(convert_to_verilator); })
+                            {
+                                return format.to_underlying(convert_to_verilator);
+                            }
+                            else
+                            {
+                                ::std::unreachable();
+                                return 0.0;
+                            }
+                        })};
+                    if consteval
+                    {
+                        if(convert_back != underlying_value)
+                        {
+                            throw ::std::invalid_argument{"当前数据包装器不能无修改的保存给定数据"};
+                        }
+                    }
+                    else
+                    {
+                        REQUIRE_MESSAGE(convert_back == underlying_value, "当前数据包装器不能无修改的保存给定数据"sv);
+                    }
+                }
+                else
+                {
+                    // 标准双精度浮点类型固定64位，无需宽度检查
+                }
+            }
+            else
+            {
+                static_assert(false, "未支持的格式");
+            }
+        }
+    };
+
+    /**
      * @brief 位切片
      *
      * @tparam type Verilator数据类型
@@ -133,7 +515,7 @@ export namespace verilator_utils
             data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}, data_format{::std::move(format)}
         {
             REQUIRE_GE(left_bound, right_bound);
-            check_format(data_format);
+            ::verilator_utils::data_format::check_format(data_format, width());
         }
 
         /**
@@ -149,7 +531,7 @@ export namespace verilator_utils
             data{data}, left_bound{width - 1}, right_bound{0}, data_format{::std::move(format)}
         {
             REQUIRE_NE(width, 0);
-            check_format(data_format);
+            ::verilator_utils::data_format::check_format(data_format, width);
         }
 
         inline vector_slice(const vector_slice&) = default;
@@ -307,8 +689,34 @@ export namespace verilator_utils
         }
 
         /**
+         * @brief 相等运算符
+         *
+         * @param value 要比较的值
+         * @return 是否相等
+         */
+        inline friend bool operator== (const vector_slice& self, const type& value)
+            requires (is_vl_wide)  // NOLINT(readability-redundant-parentheses)
+        {
+            auto temp{static_cast<cast_type>(self)};
+            auto value_width{::verilator_utils::detail::vlwide_width(value)};
+            REQUIRE_GE(self.width(), value_width);
+            return temp == value;
+        }
+
+        /**
+         * @brief 相等运算符
+         *
+         * @param value 要比较的值
+         * @return 是否相等
+         */
+        template <::verilator_utils::is_format_wrapper_data_type underlying_type>
+        inline friend bool operator== (const vector_slice& self, ::verilator_utils::format_wrapper<underlying_type>& value)
+        { return self == value.to_verilator(); }
+
+        /**
          * @brief 三路比较运算符
          *
+         * @param value 要比较的值
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
          */
         template <::verilator_utils::is_cpp_underlying_type underlying_type>
@@ -324,6 +732,19 @@ export namespace verilator_utils
         /**
          * @brief 三路比较运算符
          *
+         * @param value 要比较的值
+         * @note 数据类型为VlWide的format_wrapper只支持十六进制和二进制，因此不能用于三路比较
+         * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
+         */
+        template <::verilator_utils::is_cpp_underlying_type underlying_type>
+        inline friend ::std::partial_ordering operator<=> (const vector_slice& self,
+                                                           ::verilator_utils::format_wrapper<underlying_type>& value)
+        { return self <=> value.value(); }
+
+        /**
+         * @brief 三路比较运算符
+         *
+         * @param value 要比较的值
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
          */
         inline friend ::std::partial_ordering operator<=> (const vector_slice& self, const vector_slice& other)
@@ -436,7 +857,7 @@ export namespace verilator_utils
          */
         inline vector_slice convert(::verilator_utils::data_format::format format)
         {
-            check_format(format);
+            ::verilator_utils::data_format::check_format(data_format, width());
             return vector_slice{data, left_bound, right_bound, format};
         }
 
@@ -522,12 +943,8 @@ export namespace verilator_utils
                         ::std::unreachable();
                         return iter;
                     }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::hex_t>)
-                    {
-                        auto aligned_value{static_cast<cast_type>(*this)};
-                        return format.format_to(iter, aligned_value, width());
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::bin_t>)
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::hex_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::data_format::bin_t>)
                     {
                         auto aligned_value{static_cast<cast_type>(*this)};
                         return format.format_to(iter, aligned_value, width());
@@ -592,44 +1009,6 @@ export namespace verilator_utils
         ::std::size_t right_bound;
         /// 数据类型
         ::verilator_utils::data_format::format data_format;
-
-        /**
-         * @brief 检查数据格式是否合法
-         *
-         * @param format 要检查的数据格式
-         */
-        inline void check_format(::verilator_utils::data_format::format format) const
-        {
-            format.visit(
-                [width = width()](auto format) -> void
-                {
-                    using format_t = decltype(format);
-                    if constexpr(::std::same_as<format_t, ::std::monostate>)
-                    {
-                        using namespace ::std::string_view_literals;
-                        REQUIRE_MESSAGE(false, "必须设置数据类型"sv);
-                    }
-                    else if constexpr(requires() {
-                                          { format.min_width() } -> ::std::same_as<::std::size_t>;
-                                          { format.max_width() } -> ::std::same_as<::std::size_t>;
-                                      })
-                    {
-                        if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
-                        {
-                            REQUIRE_FALSE(format.enum_string.empty());
-                        }
-
-                        auto min_width{format.min_width()};
-                        auto max_width{format.max_width()};
-                        REQUIRE_GE(width, min_width);
-                        REQUIRE_LE(width, max_width);
-                    }
-                    else
-                    {
-                        REQUIRE_EQ(width, format.width());
-                    }
-                });
-        }
 
         constexpr inline static ::std::uint64_t scalar_mask(::std::size_t width, ::std::size_t right_bound) noexcept
         {
@@ -906,6 +1285,17 @@ export namespace std
                                   ::std::basic_format_context<iter_t, char_t>& ctx)
         { return ::std::format_to(ctx.out(), "{}", value.data); }
     };
+
+    template <::verilator_utils::is_format_wrapper_data_type value_type>
+    struct formatter<::verilator_utils::format_wrapper<value_type>>
+    {
+        constexpr inline static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+
+        template <typename iter_t, typename char_t>
+        inline static auto format(const ::verilator_utils::format_wrapper<value_type>& value,
+                                  ::std::basic_format_context<iter_t, char_t>& ctx)
+        { return value.format_to(ctx.out()); }
+    };
 }  // namespace std
 
 export namespace doctest
@@ -926,5 +1316,11 @@ export namespace doctest
     struct StringMaker<::verilator_utils::unpacked_array<type, n>>
     {
         static ::doctest::String convert(const ::verilator_utils::unpacked_array<type, n>& value) { return value.to_string(); }
+    };
+
+    template <::verilator_utils::is_format_wrapper_data_type value_type>
+    struct StringMaker<::verilator_utils::format_wrapper<value_type>>
+    {
+        static ::doctest::String convert(const ::verilator_utils::format_wrapper<value_type>& value) { return value.to_string(); }
     };
 }  // namespace doctest
