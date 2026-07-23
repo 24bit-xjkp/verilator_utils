@@ -1186,8 +1186,10 @@ namespace verilator_utils
 
 export namespace verilator_utils::detail
 {
-    extern "C++" inline int argc{};
-    extern "C++" inline const char** argv{};
+    /// 传递给verilator模型的argc
+    inline int argc{};
+    /// 传递给verilator模型的argv
+    inline const char** argv{};
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
