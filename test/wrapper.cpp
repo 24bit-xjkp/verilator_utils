@@ -87,6 +87,7 @@ TEST_SUITE("verilator_utils/wrapper")
             2u,
             2,
             ::verilator_utils::data_format::fsm_enum({"idle", "start", "run"})};
+        ::verilator_utils::format_wrapper<bool> boolean_value{true, 1, ::verilator_utils::data_format::boolean};
 
         CHECK_EQ(unsigned_value.to_verilator(), 166u);
         CHECK_EQ(unsigned_value.to_string(), "166");
@@ -104,6 +105,12 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(sign_magnitude_value.to_string(), "-2.5");
         CHECK_EQ(enum_value.to_verilator(), 2u);
         CHECK_EQ(enum_value.to_string(), "run");
+        CHECK_EQ(boolean_value.to_verilator(), 1u);
+        CHECK_EQ(boolean_value.to_string(), "true");
+        CHECK_EQ(::std::format("{}", boolean_value), "true");
+        boolean_value = false;
+        CHECK_EQ(boolean_value.to_verilator(), 0u);
+        CHECK_EQ(boolean_value.to_string(), "false");
     }
 
     TEST_CASE("format wrapper supports wide values and vector slice comparisons")
@@ -149,6 +156,19 @@ TEST_SUITE("verilator_utils/wrapper")
         bit_two = 1;
         CHECK_EQ(data, 0b1010'1100u);
         CHECK_EQ(static_cast<std::uint64_t>(bit_two), 1u);
+    }
+
+    TEST_CASE("bit slice formats boolean values with boolean format")
+    {
+        ::CData data{0u};
+        ::verilator_utils::bit_slice<::CData> boolean_bit{data, 0, ::verilator_utils::data_format::boolean};
+
+        CHECK_EQ(boolean_bit.to_string(), "false");
+        CHECK_EQ(::std::format("{}", boolean_bit), "false");
+        boolean_bit = 1;
+        CHECK_EQ(data, 1u);
+        CHECK_EQ(boolean_bit.to_string(), "true");
+        CHECK(boolean_bit == ::verilator_utils::format_wrapper<bool>{true, 1, ::verilator_utils::data_format::boolean});
     }
 
     TEST_CASE("bit slice reads and writes bits in every scalar data type")
@@ -230,6 +250,19 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(::std::get<::std::uint64_t>(unsigned_value.to_underlying()), 166u);
         CHECK_EQ(signed_value.to_string(), "-90");
         CHECK_EQ(::std::get<::std::int64_t>(signed_value.to_underlying()), -90);
+    }
+
+    TEST_CASE("vector slice formats boolean values")
+    {
+        ::CData data{1u};
+        ::verilator_utils::vector_slice<::CData> bool_value{data, 1, ::verilator_utils::data_format::boolean};
+
+        CHECK_EQ(::std::get<bool>(bool_value.to_underlying()), true);
+        CHECK_EQ(bool_value.to_string(), "true");
+        CHECK_EQ(::std::format("{}", bool_value), "true");
+
+        data = 0;
+        CHECK_EQ(bool_value.to_string(), "false");
     }
 
     TEST_CASE("vector slice formats floating point values")
