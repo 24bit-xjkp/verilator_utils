@@ -34,23 +34,23 @@ TEST_SUITE("edge_detector")
     TEST_CASE("edge_detector")
     {
         dut_context_t dut_context{true, verilator_time_unit::ns, verilator_time_unit::ps_10};
-        auto&& [context, dut, scheduler, _]{dut_context};
+        auto&& [_, dut, _, _]{dut_context};
         port_t port{dut};
 
         constexpr static auto period{1_ns};
         constexpr static auto pipeline{3zu};
         // 流水线级数为3，倒数第二级表示当前信号
         constexpr static auto delay{pipeline - 1};
-        scheduler.add_task(generate_clock(port.clk, period));
-        scheduler.add_task(generate_reset(port.rst, port.clk));
+        dut_context.add_task(generate_clock(port.clk, period));
+        dut_context.add_task(generate_reset(port.rst, port.clk));
 
         constexpr static auto verify{
             [](port_t& port, bool rising, bool falling) static -> task
             {
                 co_await wait_verify(port.clk, delay);
 
-                auto&& scheduler{co_await get_scheduler()};
-                INFO(::std::format("At {}", scheduler.time_in_string()));
+                auto time{co_await get_time_in_string()};
+                INFO(::std::format("At {}", time));
                 CHECK_EQ(port.rising, rising);
                 CHECK_EQ(port.falling, falling);
                 CHECK_EQ(port.both, rising || falling);
@@ -103,7 +103,7 @@ TEST_SUITE("edge_detector")
                 co_await eval_finish();
             },
         };
-        scheduler.add_task(stimulate(port));
+        dut_context.add_task(stimulate(port));
 
         dut_context.loop_until_finish();
     }

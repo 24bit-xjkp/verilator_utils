@@ -76,6 +76,7 @@ export namespace verilator_utils
          * @param coverage 是否启用覆盖率记录
          * @param time_unit 时间单位，默认值为ns
          * @param time_precision 时间精度，默认值为ps
+         * @param base_name 生成文件的基本名称，不带有后缀名，默认为doctest的测试用例名称
          * @param trace_level 跟踪级别，默认值为0
          * @param argc 命令行参数数量，默认为detail::argc
          * @param argv 命令行参数数组，默认为detail::argv
@@ -83,6 +84,7 @@ export namespace verilator_utils
         inline dut_context(bool coverage,
                            ::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,
                            ::verilator_utils::verilator_time_unit time_precision = ::verilator_utils::verilator_time_unit::ps,
+                           ::std::string_view base_name = ::std::string_view{},
                            int trace_level = 0,
                            int argc = ::verilator_utils::detail::argc,
                            const char** argv = ::verilator_utils::detail::argv) : coverage{coverage}
@@ -95,6 +97,7 @@ export namespace verilator_utils
             context->timeunit(::std::to_underlying(time_unit));
             context->commandArgs(argc, argv);
             scheduler = ::std::make_unique<::verilator_utils::eval_scheduler>(*dut);
+            if(base_name.empty()) { base_name = current_test.m_name; }
 
             if constexpr(!::std::same_as<tracer_t, void>)
             {
@@ -103,26 +106,26 @@ export namespace verilator_utils
                 dut->trace(tracer.get(), trace_level);
                 if constexpr(::std::same_as<tracer_t, ::VerilatedVcdC>)
                 {
-                    tracer->open(::std::format("{}.vcd", current_test.m_name).data());
+                    tracer->open(::std::format("{}.vcd", base_name).data());
                 }
                 else if constexpr(::std::same_as<tracer_t, ::VerilatedFstC>)
                 {
-                    tracer->open(::std::format("{}.fst", current_test.m_name).data());
+                    tracer->open(::std::format("{}.fst", base_name).data());
                 }
                 else if constexpr(::std::same_as<tracer_t, ::VerilatedSaifC>)
                 {
-                    tracer->open(::std::format("{}.saif", current_test.m_name).data());
+                    tracer->open(::std::format("{}.saif", base_name).data());
                 }
             }
 
-            if(coverage) { context->coverageFilename(::std::format("{}.dat", current_test.m_name)); }
+            if(coverage) { context->coverageFilename(::std::format("{}.dat", base_name)); }
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
 
         inline dut_context(const dut_context&) = delete;
-        inline dut_context& operator=(const dut_context&) = delete;
+        inline dut_context& operator= (const dut_context&) = delete;
         inline dut_context(dut_context&&) noexcept = default;
-        inline dut_context& operator=(dut_context&&) noexcept = default;
+        inline dut_context& operator= (dut_context&&) noexcept = default;
 
         inline ~dut_context() noexcept
         {
@@ -182,6 +185,14 @@ export namespace verilator_utils
             initial_eval();
             while(!scheduler->empty() && !scheduler->is_finish()) { loop_once(); }
         }
+
+        /**
+         * @brief 向调度器中添加任务
+         *
+         * @param task 要添加的任务
+         * @note 相当于在绑定的调度器对象scheduler上调用add_task
+         */
+        inline void add_task(::verilator_utils::task task) noexcept { scheduler->add_task(::std::move(task)); }
     };
 }  // namespace verilator_utils
 
