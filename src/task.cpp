@@ -536,7 +536,6 @@ export namespace verilator_utils
                                                                    bool active_high = true)
     {
         co_await ::verilator_utils::wait_event([rst, active_high] { return rst != active_high; });
-        co_await ::verilator_utils::wait_eval_stage(::verilator_utils::eval_scheduler::eval_stage_enum::after_initial_eval);
     }
 
     namespace detail
@@ -678,9 +677,8 @@ export namespace verilator_utils
      * @param initial_value LFSR初始值
      * @return 生成器
      */
-    [[nodiscard]] inline ::verilator_utils::generator<bool> fibonacci_lfsr_generator(::std::size_t width,
-                                                                                     ::std::uint64_t feedback_mask = 0,
-                                                                                     ::std::uint64_t initial_value = 1)
+    [[nodiscard]] inline ::verilator_utils::generator<bool>
+        fibonacci_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1)
     {
         using namespace ::std::string_view_literals;
         REQUIRE_GE(width, 3);
@@ -711,9 +709,8 @@ export namespace verilator_utils
      * @param initial_value LFSR初始值
      * @return 生成器
      */
-    [[nodiscard]] inline ::verilator_utils::generator<bool> galois_lfsr_generator(::std::size_t width,
-                                                                                  ::std::uint64_t feedback_mask = 0,
-                                                                                  ::std::uint64_t initial_value = 1)
+    [[nodiscard]] inline ::verilator_utils::generator<bool>
+        galois_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1)
     {
         using namespace ::std::string_view_literals;
         REQUIRE_GE(width, 3);
