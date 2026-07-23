@@ -215,7 +215,7 @@ export namespace verilator_utils
      */
     template <typename type>
     concept is_cpp_underlying_type = ::std::same_as<type, ::std::int64_t> || ::std::same_as<type, ::std::uint64_t> ||
-                                     ::std::same_as<type, float> || ::std::same_as<type, double>;
+                                     ::std::same_as<type, float> || ::std::same_as<type, double> || ::std::same_as<type, bool>;
 
     template <typename type>
     struct verilator_unpacked_array_type_traits
@@ -990,6 +990,51 @@ namespace verilator_utils
             { return underlying_value; }
         };
 
+        /**
+         * @brief 布尔型
+         *
+         */
+        struct boolean_t
+        {
+            /**
+             * @brief 获取布尔型宽度
+             *
+             * @return 布尔型宽度
+             */
+            [[nodiscard]] constexpr inline static ::std::size_t width() noexcept { return 1; }
+
+            /**
+             * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
+             *
+             * @tparam iter_t 输出迭代器类型
+             * @tparam type 数据类型
+             * @param iter 输出缓冲区迭代器
+             * @param data 数据对象
+             * @return 更新后的迭代器
+             */
+            template <typename iter_t>
+            [[nodiscard]] inline iter_t format_to(iter_t iter, bool data) const
+            { return ::std::format_to(iter, "{}", data); }
+
+            /**
+             * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
+             *
+             * @param packed_value 打包储存的数据
+             * @return 转换后的数据
+             */
+            [[nodiscard]] constexpr inline static bool to_underlying(::std::uint64_t packed_value) noexcept
+            { return static_cast<bool>(packed_value); }
+
+            /**
+             * @brief 将C++底层数据转换为打包储存在std::uint64_t中的数据
+             *
+             * @param underlying_value C++底层数据
+             * @return 打包储存的数据
+             */
+            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(bool underlying_value) noexcept
+            { return static_cast<::std::uint64_t>(underlying_value); }
+        };
+
         /// 数据格式类型
         using format = ::std::variant<::std::monostate,
                                       ::verilator_utils::data_format::hex_t,
@@ -1001,7 +1046,8 @@ namespace verilator_utils
                                       ::verilator_utils::data_format::unsigned_fixed_point_t,
                                       ::verilator_utils::data_format::signed_fixed_point_t,
                                       ::verilator_utils::data_format::sign_mag_fixed_point_t,
-                                      ::verilator_utils::data_format::fsm_enum_t>;
+                                      ::verilator_utils::data_format::fsm_enum_t,
+                                      ::verilator_utils::data_format::boolean_t>;
         /// 十六进制
         constexpr inline ::verilator_utils::data_format::format hex{::verilator_utils::data_format::hex_t{}};
         /// 二进制
@@ -1095,6 +1141,9 @@ namespace verilator_utils
             return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
         }
 
+        /// 布尔型
+        constexpr inline ::verilator_utils::data_format::format boolean{::verilator_utils::data_format::boolean_t{}};
+
         /**
          * @brief 检查数据格式是否合法
          *
@@ -1116,8 +1165,8 @@ namespace verilator_utils
                         }
                     }
                     else if constexpr(requires() {
-                                          { format.min_width() } -> ::std::same_as<::std::size_t>;
-                                          { format.max_width() } -> ::std::same_as<::std::size_t>;
+                                          format.min_width();
+                                          format.max_width();
                                       })
                     {
                         if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)

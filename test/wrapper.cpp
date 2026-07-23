@@ -139,8 +139,8 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(static_cast<::std::uint64_t>(bit_one), 1u);
         CHECK_EQ(static_cast<std::uint64_t>(bit_two), 0u);
         CHECK_EQ(bit_one.width(), 1u);
-        CHECK_EQ(bit_one.to_string(), "0x1");
-        CHECK_EQ(bit_two.to_string(), "0x0");
+        CHECK_EQ(bit_one.to_string(), "1");
+        CHECK_EQ(bit_two.to_string(), "0");
 
         bit_one = 0;
         CHECK_EQ(data, 0b1010'1000u);
@@ -174,7 +174,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(static_cast<::std::uint64_t>(qdata_bit), 1u);
         qdata_bit = 0;
         CHECK_EQ(qdata, 0u);
-        CHECK_EQ(qdata_bit.to_string(), "0x0");
+        CHECK_EQ(qdata_bit.to_string(), "0");
     }
 
     TEST_CASE("bit slice reads and writes wide data word boundaries")
@@ -194,8 +194,8 @@ TEST_SUITE("verilator_utils/wrapper")
 
         CHECK_EQ(data.at(0), 0x8000'0000u);
         CHECK_EQ(data.at(1), 0x0000'0001u);
-        CHECK_EQ(bit_thirty_one.to_string(), "0x1");
-        CHECK_EQ(bit_thirty_three.to_string(), "0x0");
+        CHECK_EQ(bit_thirty_one.to_string(), "1");
+        CHECK_EQ(bit_thirty_three.to_string(), "0");
     }
 
     TEST_CASE("vector slice reads scalar ranges and individual bits")

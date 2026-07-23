@@ -194,11 +194,11 @@ export namespace verilator_utils
             auto is_monostate{::std::holds_alternative<::std::monostate>(data_format)};
             if consteval
             {
-                if(::std::holds_alternative<::std::monostate>(data_format)) { throw ::std::invalid_argument{"必须设定数据类型"}; }
+                if(::std::holds_alternative<::std::monostate>(data_format)) { throw ::std::invalid_argument{"必须设定数据格式"}; }
             }
             else
             {
-                REQUIRE_FALSE_MESSAGE(is_monostate, "必须设定数据类型"sv);
+                REQUIRE_FALSE_MESSAGE(is_monostate, "必须设定数据格式"sv);
             }
 
             if constexpr(::VlIsVlWide<type>::value)
@@ -230,13 +230,13 @@ export namespace verilator_utils
                 {
                     if(is_signed_or_floating_point_or_fixed_point)
                     {
-                        throw ::std::invalid_argument{"std::uint64_t不支持有符号十进制、浮点数和定点数"};
+                        throw ::std::invalid_argument{"std::uint64_t不支持有符号十进制、浮点数和定点数格式"};
                     }
                 }
                 else
                 {
                     REQUIRE_FALSE_MESSAGE(is_signed_or_floating_point_or_fixed_point,
-                                          "std::uint64_t不支持有符号十进制、浮点数和定点数"sv);
+                                          "std::uint64_t不支持有符号十进制、浮点数和定点数格式"sv);
                 }
             }
             else if constexpr(::std::same_as<type, ::std::int64_t>)
@@ -245,10 +245,10 @@ export namespace verilator_utils
                 if consteval
                 {
                     if(!is_dec_signed) { throw ::std::invalid_argument{"std::int64_t只支持有符号十进制格式"}; }
-                    else
-                    {
-                        REQUIRE_MESSAGE(is_dec_signed, "std::int64_t只支持有符号十进制格式"sv);
-                    }
+                }
+                else
+                {
+                    REQUIRE_MESSAGE(is_dec_signed, "std::int64_t只支持有符号十进制格式"sv);
                 }
             }
             else if constexpr(::std::same_as<type, float>)
@@ -257,10 +257,10 @@ export namespace verilator_utils
                 if consteval
                 {
                     if(!is_dec_signed) { throw ::std::invalid_argument{"float只支持单精度浮点数格式"}; }
-                    else
-                    {
-                        REQUIRE_MESSAGE(is_dec_signed, "float只支持单精度浮点数格式"sv);
-                    }
+                }
+                else
+                {
+                    REQUIRE_MESSAGE(is_dec_signed, "float只支持单精度浮点数格式"sv);
                 }
             }
             else if constexpr(::std::same_as<type, double>)
@@ -275,11 +275,23 @@ export namespace verilator_utils
                                               data_format.index() <= sign_mag_fixed_point_index};
                 if consteval
                 {
-                    if(!is_double_or_fixed_point) { throw ::std::invalid_argument{"double只支持双精度浮点数核定点数格式"}; }
-                    else
-                    {
-                        REQUIRE_MESSAGE(is_double_or_fixed_point, "double只支持双精度浮点数核定点数格式"sv);
-                    }
+                    if(!is_double_or_fixed_point) { throw ::std::invalid_argument{"double只支持双精度浮点数和定点数格式"}; }
+                }
+                else
+                {
+                    REQUIRE_MESSAGE(is_double_or_fixed_point, "double只支持双精度浮点数和定点数格式"sv);
+                }
+            }
+            else if constexpr(::std::same_as<type, bool>)
+            {
+                auto is_boolean{::std::holds_alternative<::verilator_utils::data_format::boolean_t>(data_format)};
+                if consteval
+                {
+                    if(!is_boolean) { throw ::std::invalid_argument{"bool只支持布尔型格式"}; }
+                }
+                else
+                {
+                    REQUIRE_MESSAGE(is_boolean, "bool只支持布尔型格式"sv);
                 }
             }
             else
@@ -324,11 +336,12 @@ export namespace verilator_utils
                 auto value_width{::verilator_utils::detail::signed_integral_width(underlying_value)};
                 do_check(value_width);
             }
-            else if constexpr(::std::same_as<type, float>)
+            else if constexpr(::std::same_as<float, type> || ::std::same_as<bool, type>)
             {
                 // 标准单精度浮点类型固定32位，无需宽度检查
+                // 标准bool类型固定1位，无需宽度检查
             }
-            else if constexpr(::std::same_as<type, double>)
+            else if constexpr(::std::same_as<double, type>)
             {
                 constexpr static auto unsigned_fixed_point_index{
                     ::verilator_utils::variant_type_index<::verilator_utils::data_format::unsigned_fixed_point_t,
@@ -407,8 +420,13 @@ export namespace verilator_utils
          *
          * @param data 数据引用
          * @param index 位索引
+         * @param format 数据格式，只影响格式化输出，支持十六进制、二进制、十进制无符号、枚举和布尔型
          */
-        constexpr inline explicit bit_slice(value_type& data, ::std::size_t index = 0) noexcept : data{data}, index{index} {}
+        inline explicit bit_slice(value_type& data,
+                                  ::std::size_t index = 0,
+                                  ::verilator_utils::data_format::format format = ::verilator_utils::data_format::dec_unsigned) :
+            data{data}, index{index}, data_format{::std::move(format)}
+        { check_format(); }
 
         /**
          * @brief 赋值运算符
@@ -416,7 +434,7 @@ export namespace verilator_utils
          * @param value 要赋值的值
          * @return bool_wrapper& 赋值后对象的引用
          */
-        constexpr inline bit_slice& operator= (::std::uint64_t value)
+        inline bit_slice& operator= (::std::uint64_t value)
         {
             REQUIRE_MESSAGE(value <= 1, "位包装器只能赋值0或1");
             if constexpr(is_vl_wide)
@@ -439,7 +457,7 @@ export namespace verilator_utils
          *
          * @return 转换后的整数值
          */
-        constexpr inline operator ::std::uint64_t () const noexcept
+        inline operator ::std::uint64_t () const noexcept
         {
             if constexpr(is_vl_wide)
             {
@@ -456,6 +474,34 @@ export namespace verilator_utils
         }
 
         /**
+         * @brief 赋值运算符
+         *
+         * @param value 要赋值的值
+         * @return bool_wrapper& 赋值后对象的引用
+         */
+        template <typename underlying_type>
+            requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
+        inline bit_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
+        {
+            REQUIRE_EQ(value.width(), 1);
+            return *this = value.to_verilator();
+        }
+
+        /**
+         * @brief 相等运算符
+         *
+         * @param value 要比较的值
+         * @return 是否相等
+         */
+        template <typename underlying_type>
+            requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
+        inline friend bool operator== (const bit_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
+        {
+            REQUIRE_EQ(value.width(), 1);
+            return static_cast<::std::uint64_t>(self) == value.to_verilator();
+        }
+
+        /**
          * @brief 获取位宽
          *
          * @return std::size_t 位宽
@@ -463,21 +509,89 @@ export namespace verilator_utils
         [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return 1; }
 
         /**
+         * @brief 获取数据类型
+         *
+         * @return 数据类型
+         */
+        [[nodiscard]] inline ::verilator_utils::data_format::format format() const noexcept { return data_format; }
+
+        /**
+         * @brief 将数据包装器格式化输出到缓冲区上
+         *
+         * @tparam iter_t 迭代器类型
+         * @param iter 迭代器
+         * @return 格式化后缓冲区迭代器
+         */
+        template <typename iter_t>
+        inline iter_t format_to(iter_t iter) const
+        {
+            return data_format.visit(
+                [this, iter]<typename format_t>(const format_t& format) -> iter_t
+                {
+                    auto aligned_value{static_cast<::std::uint64_t>(*this)};
+                    if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::hex_t> ||
+                                 ::std::same_as<format_t, ::verilator_utils::data_format::bin_t>)
+                    {
+                        return format.format_to(iter, aligned_value, width());
+                    }
+                    else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::dec_unsigned_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t> ||
+                                      ::std::same_as<format_t, ::verilator_utils::data_format::boolean_t>)
+                    {
+                        return format.format_to(iter, aligned_value);
+                    }
+                    else
+                    {
+                        ::std::unreachable();
+                        return iter;
+                    }
+                });
+        }
+
+        /**
          * @brief 转换为字符串表示
          *
          * @return 字符串表示
          */
-        [[nodiscard]] inline ::std::string to_string() const { return ::std::format("{:#x}", ::std::uint64_t{*this}); }
+        [[nodiscard]] inline ::std::string to_string() const
+        {
+            // 格式化输出字符较少，一般小于sso容量，因此不进行预留
+            ::std::string result{};
+            format_to(::std::back_inserter(result));
+            return result;
+        }
 
     private:
         /// 数据引用
         value_type& data;
         /// 位索引
         ::std::size_t index;
+        /// 数据格式
+        ::verilator_utils::data_format::format data_format;
         /// 每个字的位宽
         constexpr inline static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
         /// 是否为Verilator宽数据类型
         constexpr inline static bool is_vl_wide{::VlIsVlWide<value_type>::value};
+        constexpr inline static auto hex_index{
+            ::verilator_utils::variant_type_index<::verilator_utils::data_format::hex_t, ::verilator_utils::data_format::format>};
+        constexpr inline static auto dec_unsigned_index{
+            ::verilator_utils::variant_type_index<::verilator_utils::data_format::dec_unsigned_t,
+                                                  ::verilator_utils::data_format::format>};
+
+        /**
+         * @brief 检查格式是否合法
+         *
+         */
+        inline void check_format() const
+        {
+            using namespace ::std::string_view_literals;
+            REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::std::monostate>(data_format), "必须设定数据格式"sv);
+            auto is_hex_bin_unsigned{data_format.index() >= hex_index && data_format.index() <= dec_unsigned_index};
+            auto is_enum{::std::holds_alternative<::verilator_utils::data_format::fsm_enum_t>(data_format)};
+            auto is_boolean{::std::holds_alternative<::verilator_utils::data_format::boolean_t>(data_format)};
+            REQUIRE_MESSAGE((is_hex_bin_unsigned || is_enum || is_boolean),
+                            "位切片只支持十六进制、二进制、十进制无符号、枚举和布尔型格式"sv);
+        }
     };
 
     /**
@@ -498,7 +612,7 @@ export namespace verilator_utils
         /// 可转换的目标类型
         using cast_type = std::conditional_t<is_vl_wide, value_type, ::std::uint64_t>;
         /// 能转换到的C++基础数据类型
-        using underlying_type = ::std::variant<::std::uint64_t, ::std::int64_t, float, double>;
+        using underlying_type = ::std::variant<::std::uint64_t, ::std::int64_t, float, double, bool>;
 
         /**
          * @brief 构造一个向量切片对象，索引为闭区间
@@ -656,6 +770,12 @@ export namespace verilator_utils
             return *this;
         }
 
+        /**
+         * @brief 赋值运算符
+         *
+         * @param other 要赋值的值
+         * @return 赋值后对象的引用
+         */
         inline vector_slice& operator= (const vector_slice& other)
         {
             REQUIRE_EQ(width(), other.width());
@@ -667,6 +787,20 @@ export namespace verilator_utils
                 data = (data & ~mask) | (aligned_value << right_bound);
             }
             return *this;
+        }
+
+        /**
+         * @brief 赋值运算符
+         *
+         * @param value 要赋值的值
+         * @return bool_wrapper& 赋值后对象的引用
+         */
+        template <::verilator_utils::is_format_wrapper_data_type underlying_type>
+            requires (is_vl_wide || !::VlIsVlWide<underlying_type>::value)
+        inline vector_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
+        {
+            REQUIRE_EQ(width(), value.width());
+            return *this = value.to_verilator();
         }
 
         /**
@@ -710,7 +844,7 @@ export namespace verilator_utils
          * @return 是否相等
          */
         template <::verilator_utils::is_format_wrapper_data_type underlying_type>
-        inline friend bool operator== (const vector_slice& self, ::verilator_utils::format_wrapper<underlying_type>& value)
+        inline friend bool operator== (const vector_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
         { return self == value.to_verilator(); }
 
         /**
@@ -720,13 +854,16 @@ export namespace verilator_utils
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
          */
         template <::verilator_utils::is_cpp_underlying_type underlying_type>
+            requires (!::std::same_as<bool, underlying_type>)
         inline friend ::std::partial_ordering operator<=> (const vector_slice& self, underlying_type value)
         {
             using namespace ::std::string_view_literals;
             constexpr static auto bin_index{2zu};
             REQUIRE_MESSAGE(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+            REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
+                                  "布尔型不支持三路比较，只支持相等比较"sv);
             return self.to_underlying().visit([value](auto underlying_value) noexcept -> ::std::partial_ordering
-                                              { return compare_underlying(underlying_value, value); });
+                                              { return three_way_compare_underlying(underlying_value, value); });
         }
 
         /**
@@ -737,8 +874,9 @@ export namespace verilator_utils
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
          */
         template <::verilator_utils::is_cpp_underlying_type underlying_type>
+            requires (!::std::same_as<bool, underlying_type>)
         inline friend ::std::partial_ordering operator<=> (const vector_slice& self,
-                                                           ::verilator_utils::format_wrapper<underlying_type>& value)
+                                                           const ::verilator_utils::format_wrapper<underlying_type>& value)
         { return self <=> value.value(); }
 
         /**
@@ -753,12 +891,16 @@ export namespace verilator_utils
             constexpr static auto bin_index{2zu};
             REQUIRE_MESSAGE(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
             REQUIRE_MESSAGE(other.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+            REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
+                                  "布尔型不支持三路比较，只支持相等比较"sv);
+            REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(other.data_format),
+                                  "布尔型不支持三路比较，只支持相等比较"sv);
             return self.to_underlying().visit(
                 [other_to_underlying = other.to_underlying()](auto self_underlying_value) noexcept -> ::std::partial_ordering
                 {
                     return other_to_underlying.visit(
                         [self_underlying_value](auto other_underlying_value) noexcept -> ::std::partial_ordering
-                        { return compare_underlying(self_underlying_value, other_underlying_value); });
+                        { return three_way_compare_underlying(self_underlying_value, other_underlying_value); });
                 });
         }
 
@@ -886,11 +1028,7 @@ export namespace verilator_utils
                     }
                     else
                     {
-                        if constexpr(requires() {
-                                         {
-                                             format.to_underlying(aligned_value, width)
-                                         } -> ::verilator_utils::is_cpp_underlying_type;
-                                     })
+                        if constexpr(requires() { format.to_underlying(aligned_value, width); })
                         {
                             return underlying_type{format.to_underlying(aligned_value, width)};
                         }
@@ -985,9 +1123,15 @@ export namespace verilator_utils
 
     private:
         template <::verilator_utils::is_cpp_underlying_type left_type, ::verilator_utils::is_cpp_underlying_type right_type>
-        constexpr inline static ::std::partial_ordering compare_underlying(left_type left, right_type right) noexcept
+        constexpr inline static ::std::partial_ordering three_way_compare_underlying(left_type left, right_type right) noexcept
         {
-            if constexpr(::std::integral<left_type> && ::std::integral<right_type>)
+            // bool不支持三路比较
+            if constexpr(::std::same_as<bool, left_type> || ::std::same_as<bool, right_type>)
+            {
+                ::std::unreachable();
+                return ::std::partial_ordering::unordered;
+            }
+            else if constexpr(::std::integral<left_type> && ::std::integral<right_type>)
             {
                 if(::std::cmp_less(left, right)) { return ::std::partial_ordering::less; }
                 if(::std::cmp_greater(left, right)) { return ::std::partial_ordering::greater; }
@@ -1169,11 +1313,27 @@ export namespace verilator_utils
         }
 
         /**
+         * @brief 将数据包装器格式化输出到缓冲区上
+         *
+         * @tparam iter_t 迭代器类型
+         * @param iter 迭代器
+         * @return 格式化后缓冲区迭代器
+         */
+        template <typename iter_t>
+        inline iter_t format_to(iter_t iter) const
+        { return ::std::format_to(iter, "{}", data); }
+
+        /**
          * @brief 转换为字符串表示
          *
          * @return 字符串表示
          */
-        [[nodiscard]] inline ::std::string to_string() const { return ::std::format("{}", data); }
+        [[nodiscard]] inline ::std::string to_string() const
+        {
+            ::std::string result{};
+            format_to(::std::back_inserter(result));
+            return result;
+        }
     };
 
     /**
@@ -1261,7 +1421,7 @@ export namespace std
         template <typename iter_t, typename char_t>
         inline static auto format(const ::verilator_utils::bit_slice<value_type>& value,
                                   ::std::basic_format_context<iter_t, char_t>& ctx)
-        { return ::std::format_to(ctx.out(), "{:#x}", static_cast<::std::uint64_t>(value)); }
+        { return value.format_to(ctx.out()); }
     };
 
     template <::verilator_utils::is_verilator_data_type value_type>
@@ -1283,7 +1443,7 @@ export namespace std
         template <typename iter_t, typename char_t>
         inline static auto format(const ::verilator_utils::unpacked_array<type, n>& value,
                                   ::std::basic_format_context<iter_t, char_t>& ctx)
-        { return ::std::format_to(ctx.out(), "{}", value.data); }
+        { return value.format_to(ctx.out()); }
     };
 
     template <::verilator_utils::is_format_wrapper_data_type value_type>
