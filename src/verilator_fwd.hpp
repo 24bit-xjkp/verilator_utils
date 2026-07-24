@@ -7,4 +7,7 @@
     #pragma clang diagnostic ignored "-WTU-local-entity-exposure"
     #pragma clang diagnostic ignored "-Wunused-but-set-variable"
     #pragma clang diagnostic ignored "-Wunused-variable"
+    #pragma clang diagnostic ignored "-Wdeprecated-missing-comma-variadic-parameter"
+    #pragma clang diagnostic ignored "-Wunused-parameter"
+    #pragma clang diagnostic ignored "-Wsign-compare"
 #endif

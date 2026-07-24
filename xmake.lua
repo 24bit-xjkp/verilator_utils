@@ -6,7 +6,6 @@ add_rules("mode.debug", "mode.release", "mode.releasedbg")
 add_requires("doctest", "verilator", "clean_std_heads")
 add_packages("doctest", "verilator", "clean_std_heads")
 set_exceptions("cxx")
-add_cxxflags("-Wno-deprecated-missing-comma-variadic-parameter", "-Wno-sign-compare", "-Wno-unused-parameter")
 set_policy("build.c++.modules.hide_dependencies", true)
 set_defaultmode("release")
 
