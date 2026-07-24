@@ -8,6 +8,7 @@ target("verilator_utils")
         set_policy("build.sanitizer.address", true)
         set_policy("build.sanitizer.undefined", true)
     end
+    set_policy("build.fence", true)
 target_end()
 
 target("verilator_utils_full")
