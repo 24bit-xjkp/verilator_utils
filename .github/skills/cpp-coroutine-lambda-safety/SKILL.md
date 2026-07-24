@@ -1,6 +1,6 @@
 ---
 name: cpp-coroutine-lambda-safety
-description: 'Use when: writing, refactoring, or reviewing C++ coroutine lambdas, especially lambdas returning task/async_task or using co_await/co_return. Covers avoiding coroutine lambda captures, moving state into parameters, and validating scheduler-style tests.'
+description: 'Use when: writing, refactoring, or reviewing C++ coroutine lambdas, especially lambdas returning task/async_task or using co_await/co_return. Covers explicit object parameters, safe closure lifetime, capture lifetime boundaries, and scheduler-style test validation.'
 argument-hint: 'Describe the coroutine lambda or task code to review/refactor'
 ---
 
@@ -13,35 +13,75 @@ argument-hint: 'Describe the coroutine lambda or task code to review/refactor'
 - Add or update scheduler tests that create coroutine tasks from local variables.
 
 ## Core Rule
-- Do not rely on a coroutine lambda capture list for values that must survive after the lambda call returns.
 - C++ coroutine state is stored in the coroutine frame, but lambda captures live in the lambda closure object.
-- If the closure object is a temporary, captured references or values can become invalid while the coroutine is still suspended.
-- Put all coroutine dependencies in the lambda parameter list so they are stored as coroutine parameters.
+- A normal coroutine lambda member function receives the closure through an implicit `this` pointer; the closure itself is not copied into the coroutine frame.
+- Declare a by-value explicit object parameter, `this auto`, so invoking the lambda copies the closure into a coroutine parameter and therefore into the coroutine frame.
+- Copying the closure preserves captured values and reference members, but does not extend the lifetime of objects captured by reference.
+- Every referenced object must still outlive the coroutine task.
 
 ## Refactoring Procedure
 1. Find lambdas whose body contains `co_await`, `co_return`, or `co_yield`, or whose trailing return type is a coroutine task type.
-2. Treat any non-empty capture list on those lambdas as unsafe unless the coroutine is proven never to suspend.
-3. Replace the capture list with `[]`.
-4. Add explicit parameters for every object previously captured and used across the coroutine body.
-5. Pass arguments at the immediately invoked call site, usually by reference for test-owned state and scheduler objects.
-6. Preserve ordinary nested non-coroutine callbacks when they are consumed synchronously by an awaiter, but check their lifetime separately.
-7. Re-run diagnostics and the narrowest relevant test target.
+2. Add `this auto` as the first lambda parameter, including captureless and immediately invoked coroutine lambdas.
+3. For local test state with a lifetime covering task execution, use `[&](this auto, ...)` and remove parameters that only forwarded those same locals.
+4. Keep true per-invocation inputs as ordinary parameters after `this auto`, such as a task ID or expected value.
+5. Use `[](this auto, ...)` when the coroutine does not access enclosing state.
+6. Update every call site after removing forwarded parameters.
+7. Preserve nested non-coroutine predicates and callbacks unless their own lifetime is unsafe.
+8. Re-run diagnostics, search for missed coroutine lambdas, and execute the narrowest relevant test target.
 
-## Preferred Pattern
-- Use explicit reference parameters for local test state that outlives the async task.
-- Keep parameter order stable and readable: scheduler/context first, signal or task objects next, output flags/vectors last.
-- Use fully qualified project types to match repository style, for example `::verilator_utils::eval_scheduler&`.
-- Keep immediate invocation at the original construction site so the surrounding test flow remains unchanged.
+## Preferred Patterns
+
+Captureless immediately invoked coroutine:
+
+```cpp
+auto task{[](this auto) -> ::verilator_utils::task
+		  {
+			  co_await ::verilator_utils::wait_time(1_ps);
+		  }()};
+```
+
+Coroutine using test-owned local state:
+
+```cpp
+auto task{[&](this auto) -> ::verilator_utils::task
+		  {
+			  co_await ::verilator_utils::wait_time(1_ps);
+			  observed_time = scheduler.time_in_time_precision();
+		  }()};
+```
+
+Reusable coroutine lambda with a per-call value:
+
+```cpp
+const auto make_task{[&](this auto, int task_id) -> ::verilator_utils::task
+					 {
+						 co_await ::verilator_utils::wait_event([&event_ready] { return event_ready; });
+						 resumed_tasks.push_back(task_id);
+					 }};
+
+auto first{make_task(1)};
+auto second{make_task(2)};
+```
+
+## Lifetime Boundaries
+- `[&](this auto)` copies a closure containing references; it prevents a dangling closure pointer, not dangling referenced objects.
+- `[=](this auto)` copies captured values into the closure and then copies that closure into the coroutine frame; check whether copying is intended and supported.
+- Do not use `this auto&` or `this auto&&` for this purpose because they keep a reference to the original closure rather than storing a closure copy in the frame.
+- Ensure the scheduler, context, DUT, child tasks, output containers, and flags outlive every task that captures them by reference.
+- Keep immediate invocation at the original construction site when possible so task ownership and scheduling order stay unchanged.
 
 ## Review Checklist
-- No coroutine lambda uses `[&]`, `[=]`, or named captures.
-- Every variable used by the coroutine body is either local to the coroutine body or appears in the parameter list.
+- Every lambda coroutine has a by-value `this auto` explicit object parameter.
+- Captureless coroutine lambdas use `[](this auto, ...)`.
+- Capturing coroutine lambdas use `[...](this auto, ...)`, and every referenced object has a proven enclosing lifetime.
+- Parameters retained after `this auto` represent genuine per-call inputs rather than repeated forwarding of captured locals.
+- All call sites match the simplified parameter list.
 - `async_task` or task owner objects outlive any coroutine that awaits them.
 - Scheduler and DUT/context objects outlive tasks queued into the scheduler.
 - Sanitizer failures after the refactor are checked for independent task ownership or destruction-order bugs rather than assumed to be capture-list issues.
 
 ## Validation
-- Search the edited files for coroutine lambdas with non-empty captures.
+- Search the edited files for coroutine lambdas that still lack `this auto`.
 - Check editor/compiler diagnostics for missing parameters after removing captures.
 - For this repository, run the narrow test target when appropriate, such as `xmake test -r unit_test/scheduler`.
 - If AddressSanitizer still reports use-after-free, inspect coroutine handle ownership and queued tasks before expanding the refactor scope.

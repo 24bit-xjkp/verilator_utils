@@ -44,27 +44,26 @@ TEST_SUITE("edge_detector")
         dut_context.add_task(generate_clock(port.clk, period));
         dut_context.add_task(generate_reset(port.rst, port.clk));
 
-        constexpr static auto verify{
-            [](port_t& port, bool rising, bool falling) static -> task
+        const auto verify{
+            [&](this auto, bool rising, bool falling) -> task
             {
                 co_await wait_verify(port.clk, delay);
 
-                auto time{co_await get_time_in_string()};
-                INFO(::std::format("At {}", time));
+                auto eval_time{co_await get_time_in_string()};
+                CAPTURE(eval_time);
                 CHECK_EQ(port.rising, rising);
                 CHECK_EQ(port.falling, falling);
                 CHECK_EQ(port.both, rising || falling);
             },
         };
-        constexpr static auto stimulate{
-            [](port_t& port) static -> task
+        const auto stimulate{
+            [&](this auto) -> task
             {
                 port.signal = 0;
                 // 等待复位完成
                 co_await wait_reset_finish(port.rst);
                 auto verify_tasks{co_await get_spawn_pool()};
-                const auto do_verify{[&port, &verify_tasks](bool rising, bool falling)
-                                     { verify_tasks.add_task(verify(port, rising, falling)); }};
+                const auto do_verify{[&](bool rising, bool falling) { verify_tasks.add_task(verify(rising, falling)); }};
 
                 // 产生异步输入信号
                 co_await wait_time(period / 4zu);
@@ -103,7 +102,7 @@ TEST_SUITE("edge_detector")
                 co_await eval_finish();
             },
         };
-        dut_context.add_task(stimulate(port));
+        dut_context.add_task(stimulate());
 
         dut_context.loop_until_finish();
     }

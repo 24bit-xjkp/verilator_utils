@@ -65,8 +65,8 @@ TEST_SUITE("lfsr_m7")
         port.lfsr_feedback = lfsr_feedback;
         dut_context.set_base_name(std::format("lfsr_m7_{}", lfsr_feedback));
 
-        constexpr static auto do_verify{
-            [](port_t& port) static -> task
+        const auto do_verify{
+            [&](this auto) -> task
             {
                 auto width{port.initial_value.width()};
                 auto period{(1zu << port.initial_value.width()) - 1zu};
@@ -118,7 +118,7 @@ TEST_SUITE("lfsr_m7")
         };
 
         dut_context.add_task(generate_clock(port.clk, 2_ns));
-        dut_context.add_task(do_verify(port));
+        dut_context.add_task(do_verify());
         dut_context.loop_until_finish();
     }
 }
