@@ -6,6 +6,14 @@ import std.compat;
 
 extern "C++"
 {
+#if __has_cpp_attribute(clang::type_visibility)
+    // libc++下需要设置类的rtti信息可见性为default才能跨DSO使用dynamic_cast
+    // 参见https://clang.llvm.org/docs/AttributeReference.html#type-visibility
+    class [[clang::type_visibility("default")]] VerilatedVcdC;
+    class [[clang::type_visibility("default")]] VerilatedFstC;
+    class [[clang::type_visibility("default")]] VerilatedSaifC;
+#endif
+
 #include <verilated.h>
 #include <verilated_cov.h>
 #include <verilated_vcd_c.h>

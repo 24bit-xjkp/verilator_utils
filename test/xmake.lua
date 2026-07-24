@@ -29,6 +29,7 @@ target_end()
 for name, _ in pairs(rtl_verilator_target) do
     target("unit_test_rtl_"..name)
         add_deps(format("unit_test_rtl_%s_verilator", name), "verilator_utils_full")
+        add_packages("zlib", "lz4")
         set_default(false)
         add_files(format("rtl_%s*.cpp", name))
         add_tests("rtl", {runargs = {"+verilator+rand+reset+2"}})

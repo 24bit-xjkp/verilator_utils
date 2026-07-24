@@ -35,17 +35,9 @@ if get_config("use_lto") then
     set_policy("build.optimization.lto", true)
 end
 
-option("trace_support_vcd")
-    set_default(true)
-    set_description("Enable VCD trace support.")
-option_end()
 option("trace_support_fst")
     set_default(true)
-    set_description("Enable FST trace support.")
-option_end()
-option("trace_support_saif")
-    set_default(true)
-    set_description("Enable SAIF trace support.")
+    set_description("Enable FST trace support. This feature needs zlib and lz4.")
 option_end()
 if get_config("trace_support_fst") then
     add_requires("zlib", "lz4")

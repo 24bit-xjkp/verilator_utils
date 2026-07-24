@@ -10,7 +10,6 @@ rtl_verilator_target = {
 for name, top_module in pairs(rtl_verilator_target) do
     target(format("unit_test_rtl_%s_verilator", name))
         add_rules("verilator.shared")
-        add_deps("verilator_utils_fst")
         add_files(name.."*.sv")
         set_default(false)
         add_values("verilator.flags", table.join(verilator_options, {"--top", top_module}))

@@ -20,37 +20,6 @@ export namespace verilator_utils
     concept is_verilator_tracer = ::std::same_as<::VerilatedVcdC, type> || ::std::same_as<::VerilatedFstC, type> ||
                                   ::std::same_as<::VerilatedSaifC, type> || ::std::same_as<void, type>;
 
-    namespace detail
-    {
-        extern "C++"
-        {
-            /// 创建VCD波形文件记录器
-            ::std::unique_ptr<::VerilatedVcdC> create_tracer_vcd();
-
-            /// 创建FST波形文件记录器
-            ::std::unique_ptr<::VerilatedFstC> create_tracer_fst();
-
-            /// 创建SAIF波形文件记录器
-            ::std::unique_ptr<::VerilatedSaifC> create_tracer_saif();
-        }
-
-        template <::verilator_utils::is_verilator_tracer tracer_t>
-            requires (!::std::same_as<tracer_t, void>)
-        inline ::std::unique_ptr<tracer_t> create_tracer()
-        {
-            if constexpr(::std::same_as<::VerilatedVcdC, tracer_t>) { return ::verilator_utils::detail::create_tracer_vcd(); }
-            else if constexpr(::std::same_as<::VerilatedFstC, tracer_t>)
-            {
-                return ::verilator_utils::detail::create_tracer_fst();
-            }
-            else if constexpr(::std::same_as<::VerilatedSaifC, tracer_t>)
-            {
-                return ::verilator_utils::detail::create_tracer_saif();
-            }
-        }
-
-    }  // namespace detail
-
     /**
      * @brief DUT上下文类型
      *
@@ -105,7 +74,9 @@ export namespace verilator_utils
             if constexpr(!::std::same_as<tracer_t, void>)
             {
                 context->traceEverOn(true);
-                tracer = ::verilator_utils::detail::create_tracer<tracer_t>();
+                if constexpr(::std::same_as<::VerilatedVcdC, tracer_t>) { tracer = ::std::make_unique<::VerilatedVcdC>(); }
+                else if constexpr(::std::same_as<::VerilatedFstC, tracer_t>) { tracer = ::std::make_unique<::VerilatedFstC>(); }
+                else if constexpr(::std::same_as<::VerilatedSaifC, tracer_t>) { tracer = ::std::make_unique<::VerilatedSaifC>(); }
                 dut->trace(tracer.get(), trace_level);
             }
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
