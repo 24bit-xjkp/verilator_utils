@@ -20,15 +20,6 @@ export namespace verilator_utils
     };
 
     /**
-     * @brief 子任务执行中断异常
-     *
-     * @note 在子任务完成前恢复父任务时会抛出该异常
-     */
-    struct subtask_suspend_exception
-    {
-    };
-
-    /**
      * @brief 基于协程的电路评估调度器
      *
      */
@@ -229,10 +220,7 @@ export namespace verilator_utils
          * @brief 任务析构函数，销毁协程句柄
          *
          */
-        inline ~task() noexcept
-        {
-            if(handle) { handle.destroy(); }
-        }
+        inline ~task() noexcept { destroy(); }
 
         inline task(const task& other) noexcept = delete;
         inline task& operator= (const task& other) noexcept = delete;
@@ -336,15 +324,10 @@ export namespace verilator_utils
             /**
              * @brief 恢复当前任务执行
              *
-             * @note 由于子任务结束后直接跳转到父任务执行，中间没有暂停点，因此不检查仿真是否结束
-             * @note 在子任务结束前唤醒父任务视为子任务中断，抛出subtask_suspend_exception
+             * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
              * @throws 若子任务抛出异常，则重新抛出异常
              */
-            inline void await_resume() const
-            {
-                if(!subhandle.done()) { throw subtask_suspend_exception{}; }
-                subhandle.promise().rethrow_exception();
-            }
+            inline void await_resume() const;
         };
 
         /**
@@ -757,14 +740,13 @@ export namespace verilator_utils
         {
             auto time_in_fs{time_in_time_precision() * time_precision_fs};
             using namespace ::std::string_view_literals;
-            using pair_t = ::std::pair<::std::uint64_t, ::std::string_view>;
             constexpr static ::std::array unit_table{
-                pair_t{1'000'000'000'000'000, "s"sv },
-                pair_t{1'000'000'000'000,     "ms"sv},
-                pair_t{1'000'000'000,         "us"sv},
-                pair_t{1'000'000,             "ns"sv},
-                pair_t{1'000,                 "ps"sv},
-                pair_t{1,                     "fs"sv},
+                ::std::pair{1'000'000'000'000'000zu, "s"sv },
+                ::std::pair{1'000'000'000'000zu,     "ms"sv},
+                ::std::pair{1'000'000'000zu,         "us"sv},
+                ::std::pair{1'000'000zu,             "ns"sv},
+                ::std::pair{1'000zu,                 "ps"sv},
+                ::std::pair{1zu,                     "fs"sv},
             };
             for(auto&& [unit, unit_str]: unit_table)
             {
@@ -951,5 +933,12 @@ export namespace verilator_utils
         status = status_enum::finial_suspend;
         if(parent) { scheduler->register_ready(parent); }
         return ::std::suspend_always{};
+    }
+
+    void ::verilator_utils::task::task_awaiter::await_resume() const
+    {
+        REQUIRE(subhandle.done());
+        subhandle.promise().scheduler->throw_if_finish();
+        subhandle.promise().rethrow_exception();
     }
 }  // namespace verilator_utils
