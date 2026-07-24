@@ -1161,7 +1161,7 @@ namespace verilator_utils
                         if consteval { throw ::std::invalid_argument{"必须设置数据类型"}; }
                         else
                         {
-                            REQUIRE_MESSAGE(false, "必须设置数据类型"sv);
+                            FAIL("必须设置数据类型"sv);
                         }
                     }
                     else if constexpr(requires() {
