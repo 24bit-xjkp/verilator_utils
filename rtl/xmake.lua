@@ -5,6 +5,7 @@ add_toolchains("@verilator")
 rtl_verilator_target = {
     ["edge_detector"] = "edge_detector",
     ["lfsr_m7"] = "lfsr_m7_wrapper",
+    ["counter"] = "counter",
 }
 
 for name, top_module in pairs(rtl_verilator_target) do
