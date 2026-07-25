@@ -423,6 +423,7 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] inline iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
+                REQUIRE_NE(width, 0);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 /// 每个十六进制位的位宽
@@ -436,11 +437,12 @@ namespace verilator_utils
                     if(left_word_width == 0) { left_word_width = word_width; }
                     auto begin{data.data()};
                     auto end{data.data() + (width + word_width - 1) / word_width};
+                    auto left_word{end - 1};
                     iter = ::std::format_to(iter,
                                             "{:#0{}x}",
-                                            *(--end),
+                                            *left_word,
                                             (left_word_width + digit_width - 1) / digit_width + prefix_size);
-                    for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
+                    for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, left_word}))
                     {
                         iter = ::std::format_to(iter, "{:0{}x}", value, word_width / digit_width);
                     }
@@ -504,6 +506,7 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] inline iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
+                REQUIRE_NE(width, 0);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 // 0b前缀长度
@@ -515,8 +518,9 @@ namespace verilator_utils
                     if(left_word_width == 0) { left_word_width = word_width; }
                     auto begin{data.data()};
                     auto end{data.data() + (width + word_width - 1) / word_width};
-                    iter = ::std::format_to(iter, "{:#0{}b}", *(--end), left_word_width + prefix_size);
-                    for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, end}))
+                    auto left_word{end - 1};
+                    iter = ::std::format_to(iter, "{:#0{}b}", *left_word, left_word_width + prefix_size);
+                    for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, left_word}))
                     {
                         iter = ::std::format_to(iter, "{:0{}b}", value, word_width);
                     }

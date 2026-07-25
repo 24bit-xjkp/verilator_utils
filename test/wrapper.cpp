@@ -34,11 +34,11 @@ TEST_SUITE("verilator_utils/wrapper")
         static_assert(!::verilator_utils::is_unpacked_array<::VlUnpacked<::CData, 1>>);
         static_assert(!::verilator_utils::is_unpacked_array<const ::verilator_utils::unpacked_array<::CData, 1>>);
 
-        static_assert(::std::same_as<typename ::verilator_utils::vector_slice<::CData>::cast_type, ::std::uint64_t>);
-        static_assert(::std::same_as<typename ::verilator_utils::vector_slice<::SData>::cast_type, ::std::uint64_t>);
-        static_assert(::std::same_as<typename ::verilator_utils::vector_slice<::IData>::cast_type, ::std::uint64_t>);
-        static_assert(::std::same_as<typename ::verilator_utils::vector_slice<::QData>::cast_type, ::std::uint64_t>);
-        static_assert(::std::same_as<typename ::verilator_utils::vector_slice<::VlWide<2>>::cast_type, ::VlWide<2>>);
+        static_assert(::std::same_as<::verilator_utils::vector_slice<::CData>::cast_type, ::std::uint64_t>);
+        static_assert(::std::same_as<::verilator_utils::vector_slice<::SData>::cast_type, ::std::uint64_t>);
+        static_assert(::std::same_as<::verilator_utils::vector_slice<::IData>::cast_type, ::std::uint64_t>);
+        static_assert(::std::same_as<::verilator_utils::vector_slice<::QData>::cast_type, ::std::uint64_t>);
+        static_assert(::std::same_as<::verilator_utils::vector_slice<::VlWide<2>>::cast_type, ::VlWide<2>>);
     }
 
     TEST_CASE("format wrapper exposes compile time and runtime metadata")
@@ -117,12 +117,17 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::VlWide<2> wide_data{0x89ab'cdefu, 0x0000'0123u};
         ::verilator_utils::format_wrapper<::VlWide<2>> wide_value{wide_data, 48};
+        ::verilator_utils::format_wrapper<::VlWide<2>> word_aligned_hex{wide_data, 64};
+        wide_data.at(1) = 0;
+        ::verilator_utils::format_wrapper<::VlWide<2>> word_aligned_bin{wide_data, 32, ::verilator_utils::data_format::bin};
 
         static_assert(::std::same_as<decltype(wide_value.to_verilator()), const ::VlWide<2>&>);
         CHECK_EQ(wide_value.value().at(0), 0x89ab'cdefu);
         CHECK_EQ(wide_value.value().at(1), 0x0000'0123u);
         CHECK_EQ(wide_value.to_string(), "0x012389abcdef");
         CHECK_EQ(::std::format("{}", wide_value), "0x012389abcdef");
+        CHECK_EQ(word_aligned_hex.to_string(), "0x0000012389abcdef");
+        CHECK_EQ(word_aligned_bin.to_string(), "0b10001001101010111100110111101111");
 
         ::VlWide<2> slice_data{0x89ab'cdefu, 0x0000'0123u};
         ::verilator_utils::vector_slice<::VlWide<2>> slice{slice_data, 47, 0};

@@ -15,11 +15,11 @@ namespace
 
         void eval() {}
 
-        const char* hierName() const override final { return "fake_dut"; }
+        [[nodiscard]] const char* hierName() const final { return "fake_dut"; }
 
-        const char* modelName() const override final { return "fake_dut"; }
+        [[nodiscard]] const char* modelName() const final { return "fake_dut"; }
 
-        unsigned threads() const override final { return 1; }
+        [[nodiscard]] unsigned threads() const final { return 1u; }
 
         void prepareClone() const { contextp()->prepareClone(); }
 
@@ -85,6 +85,8 @@ TEST_SUITE("verilator_utils/scheduler")
         auto original_handle{task.get_handle()};
 
         ::verilator_utils::task moved{::std::move(task)};
+        // The moved-from state is part of task's move-construction contract.
+        // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
         CHECK_FALSE(task);
         CHECK(moved);
         CHECK_EQ(moved.get_handle(), original_handle);
@@ -139,13 +141,13 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_FALSE(falling_detector());
         CHECK_FALSE(both_detector());
 
-        signal.value = true;
+        signal.value = 1u;
         CHECK(rising_detector());
         CHECK_FALSE(rising_detector());
         CHECK_FALSE(falling_detector());
         CHECK(both_detector());
 
-        signal.value = false;
+        signal.value = 0u;
         CHECK_FALSE(rising_detector());
         CHECK(falling_detector());
         CHECK(both_detector());
@@ -162,9 +164,9 @@ TEST_SUITE("verilator_utils/scheduler")
                  ::verilator_utils::edge_detector::rising);
         CHECK_EQ(detector.get_edge_to_detect(), ::verilator_utils::edge_detector::falling);
 
-        signal.value = true;
+        signal.value = 1u;
         CHECK_FALSE(detector());
-        signal.value = false;
+        signal.value = 0u;
         CHECK(detector());
     }
 
@@ -380,7 +382,7 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         ::CData clk{};
-        ::std::uint64_t resumed_times;
+        ::std::uint64_t resumed_times{};
 
         auto clock_task{::verilator_utils::generate_clock(::verilator_utils::bit_slice<::CData>{clk}, 4_ps)};
         auto stimulus_task{[&](this auto) -> ::verilator_utils::task
@@ -438,17 +440,17 @@ TEST_SUITE("verilator_utils/scheduler")
             {
             }
 
-            void eval()
+            void eval() const
             {
                 CHECK_EQ(scheduler->get_eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::on_dut_eval);
                 *seen_on_dut_eval = true;
             }
 
-            const char* hierName() const override final { return "observing_dut"; }
+            [[nodiscard]] const char* hierName() const final { return "observing_dut"; }
 
-            const char* modelName() const override final { return "observing_dut"; }
+            [[nodiscard]] const char* modelName() const final { return "observing_dut"; }
 
-            unsigned threads() const override final { return 1; }
+            [[nodiscard]] unsigned threads() const final { return 1u; }
 
             ::verilator_utils::eval_scheduler* scheduler;
             bool* seen_on_dut_eval;

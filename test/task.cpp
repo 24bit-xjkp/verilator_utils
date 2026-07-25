@@ -43,9 +43,9 @@ TEST_SUITE("verilator_utils/task")
         CHECK(::std::ranges::equal(::verilator_utils::galois_lfsr_generator(4, 0b1'001, 0b1'011) | ::to_vector(8),
                                    expected_sequence2));
         constexpr static ::std::array expected_sequence3{false};
-        CHECK(::std::ranges::equal(::verilator_utils::fibonacci_lfsr_generator(64, 1, 1ull << 63) | ::to_vector(1),
+        CHECK(::std::ranges::equal(::verilator_utils::fibonacci_lfsr_generator(64, 1, 1zu << 63zu) | ::to_vector(1),
                                    expected_sequence3));
-        CHECK(::std::ranges::equal(::verilator_utils::galois_lfsr_generator(64, 1, 1ull << 63) | ::to_vector(1),
+        CHECK(::std::ranges::equal(::verilator_utils::galois_lfsr_generator(64, 1, 1zu << 63zu) | ::to_vector(1),
                                    expected_sequence3));
     }
 

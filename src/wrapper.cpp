@@ -203,7 +203,7 @@ export namespace verilator_utils
 
             if constexpr(::VlIsVlWide<type>::value)
             {
-                constexpr static auto bin_index{::verilator_utils::variant_type_index<::verilator_utils::data_format::hex_t,
+                constexpr static auto bin_index{::verilator_utils::variant_type_index<::verilator_utils::data_format::bin_t,
                                                                                       ::verilator_utils::data_format::format>};
                 auto is_hex_or_bin{data_format.index() <= bin_index};
 
