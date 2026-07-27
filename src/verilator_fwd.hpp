@@ -1,5 +1,6 @@
 #pragma once
 #include <string.h>
+#include <cassert>
 #ifdef __CYGWIN__
     #include <sys/types.h>
     #include <unistd.h>
