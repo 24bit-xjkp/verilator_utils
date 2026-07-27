@@ -1,11 +1,14 @@
-module;
+#include <verilator_fwd.hpp>
 #include <doctest_fwd.hpp>
-module unit_test_rtl.lfsr_m7;
+import std;
+import std.compat;
 import verilator_utils;
 
 extern "C++"
 {
+#include <unit_test_rtl_lfsr_m7_verilator.h>
 #include <doctest.h>
+#include <verilator_bwd.hpp>
 }
 
 TEST_SUITE("lfsr_m7")

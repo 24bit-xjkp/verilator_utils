@@ -1,5 +1,14 @@
 #pragma once
 #include <string.h>
+#ifdef __CYGWIN__
+    #include <sys/types.h>
+    #include <unistd.h>
+#else
+    #include <inttypes.h>
+    #include <sys/types.h>
+    #include <unistd.h>
+#endif
+
 #include <clear_all_cpp_std_headers.h>
 #ifdef __clang__
     #pragma clang diagnostic push

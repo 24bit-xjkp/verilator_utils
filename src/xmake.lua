@@ -1,7 +1,7 @@
 set_policy("build.c++.modules", true)
 target("verilator_utils")
     set_kind("static")
-    add_files("*.cpp|main.cpp", {public = true})
+    add_files("*.cpp|main.cpp", {public = true, install = true})
     add_includedirs(".", {public = true})
     add_headerfiles("*.hpp")
     if get_config("use_sanitizer") then
