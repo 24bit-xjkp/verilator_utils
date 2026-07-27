@@ -1,6 +1,6 @@
-module;
 #include <doctest_fwd.hpp>
-module unit_test;
+import std;
+import verilator_utils;
 
 extern "C++"
 {
@@ -9,6 +9,8 @@ extern "C++"
 
 namespace
 {
+    using namespace ::verilator_utils::verilator;
+
     struct fake_dut final : ::VerilatedModel
     {
         explicit fake_dut(::VerilatedContext& context) : ::VerilatedModel{context} {}
@@ -56,15 +58,14 @@ TEST_SUITE("verilator_utils/scheduler")
         auto child{[](this auto) -> ::verilator_utils::task { co_return; }()};
 
         ::verilator_utils::task::handle_t parent_handle;
-        auto parent{
-            [&](this auto) -> ::verilator_utils::task
-            {
-                auto handle{co_await ::verilator_utils::get_handle()};
-                CHECK(handle);
-                parent_handle = handle;
-                CHECK_EQ(handle.promise().status, ::verilator_utils::task::status_enum::running);
-                co_await child;
-            }()};
+        auto parent{[&](this auto) -> ::verilator_utils::task
+                    {
+                        auto handle{co_await ::verilator_utils::get_handle()};
+                        CHECK(handle);
+                        parent_handle = handle;
+                        CHECK_EQ(handle.promise().status, ::verilator_utils::task::status_enum::running);
+                        co_await child;
+                    }()};
         auto expected_parent_handle{parent.get_handle()};
 
         CHECK(parent);
@@ -654,18 +655,17 @@ TEST_SUITE("verilator_utils/scheduler")
                               throw ::std::runtime_error{"async child failure"};
                           }()};
         ::verilator_utils::async_task failing_child{scheduler, ::std::move(failing_task)};
-        auto failing_watcher_task{
-            [&](this auto) -> ::verilator_utils::task
-            {
-                try
-                {
-                    co_await failing_child;
-                }
-                catch(const ::std::runtime_error&)
-                {
-                    observed_exception = true;
-                }
-            }()};
+        auto failing_watcher_task{[&](this auto) -> ::verilator_utils::task
+                                  {
+                                      try
+                                      {
+                                          co_await failing_child;
+                                      }
+                                      catch(const ::std::runtime_error&)
+                                      {
+                                          observed_exception = true;
+                                      }
+                                  }()};
         ::verilator_utils::async_task failing_watcher{scheduler, ::std::move(failing_watcher_task)};
 
         scheduler.loop_until_finish();

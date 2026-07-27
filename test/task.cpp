@@ -1,6 +1,6 @@
-module;
 #include <doctest_fwd.hpp>
-module unit_test;
+import std;
+import verilator_utils;
 
 extern "C++"
 {

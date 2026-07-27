@@ -1,15 +1,17 @@
-module;
 #include <doctest_fwd.hpp>
-module unit_test;
+import std;
+import verilator_utils;
 
 extern "C++"
 {
 #include <doctest.h>
 }
+using namespace ::verilator_utils::verilator;
 
 TEST_SUITE("verilator_utils/utils")
 {
     using namespace ::verilator_utils::literals;
+    using namespace ::verilator_utils::verilator;
 
     TEST_CASE("femtosecond literals convert to femtoseconds")
     {

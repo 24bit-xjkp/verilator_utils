@@ -1,14 +1,16 @@
-module;
 #include <doctest_fwd.hpp>
-module unit_test;
+import std;
+import verilator_utils;
 
 extern "C++"
 {
 #include <doctest.h>
 }
+using namespace ::verilator_utils::verilator;
 
 TEST_SUITE("verilator_utils/wrapper")
 {
+    using namespace ::verilator_utils::verilator;
 
     TEST_CASE("slice concepts identify wrapper types")
     {
