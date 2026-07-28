@@ -23,6 +23,7 @@ Checks: >
   -readability-redundant-inline-specifier,
   -readability-math-missing-parentheses,
   -readability-trailing-comma,
+  -readability-redundant-parentheses,
   cert-*,
   -cert-int09-c,
   -cert-dcl37-c,

@@ -34,7 +34,7 @@ namespace verilator_utils
         };
 
         template <typename type, typename... types>
-            requires (::verilator_utils::detail::find_once_in_types<type, types...>()) // NOLINT(readability-redundant-parentheses)
+            requires (::verilator_utils::detail::find_once_in_types<type, types...>())
         struct variant_index_impl<type, ::std::variant<types...>> :
             ::std::integral_constant<::std::size_t,
                                      []<::std::size_t... indexes>(
@@ -58,7 +58,7 @@ namespace verilator_utils
      *
      * @tparam type 要判断的类型
      */
-    template<typename type>
+    template <typename type>
     concept is_variant = ::verilator_utils::detail::is_variant_impl<type>;
 
     /**

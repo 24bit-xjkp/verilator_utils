@@ -829,7 +829,7 @@ export namespace verilator_utils
          * @return 是否相等
          */
         inline friend bool operator== (const vector_slice& self, const type& value)
-            requires (is_vl_wide)  // NOLINT(readability-redundant-parentheses)
+            requires (is_vl_wide)
         {
             auto temp{static_cast<cast_type>(self)};
             auto value_width{::verilator_utils::detail::vlwide_width(value)};
@@ -946,7 +946,7 @@ export namespace verilator_utils
         }
 
         inline vector_slice& operator= (const value_type& value)
-            requires (is_vl_wide)  // NOLINT(readability-redundant-parentheses)
+            requires (is_vl_wide)
         {
             assign_aligned_value(value);
             return *this;
@@ -1169,7 +1169,7 @@ export namespace verilator_utils
         }
 
         inline void assign_aligned_value(const value_type& aligned_value) noexcept
-            requires (is_vl_wide)  // NOLINT(readability-redundant-parentheses)
+            requires (is_vl_wide)
         {
             auto words{(width() + word_width - 1u) / word_width};
             for(auto word_index{0zu}; word_index < words; ++word_index)
