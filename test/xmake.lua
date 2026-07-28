@@ -1,17 +1,11 @@
 set_policy("build.c++.modules", true)
-target("unit_test_main")
-    set_default(false)
-    set_kind("static")
-    add_files("main.cpp")
-target_end()
-
 if get_config("use_sanitizer") then
     set_policy("build.sanitizer.address", true)
     set_policy("build.sanitizer.undefined", true)
 end
 
 target("unit_test")
-    add_deps("verilator_utils", "unit_test_main")
+    add_deps("verilator_utils")
     set_default(false)
     local regex = "*.cpp|rtl_*.cpp|main.cpp"
     add_files(regex)
@@ -19,6 +13,7 @@ target("unit_test")
         local name = path.basename(file)
         add_tests(name, {runargs = {"-ts=verilator_utils/" .. name}})
     end
+    add_files("main.cpp")
     after_load(function (target)
         local verilator_root = target:pkgenvs()["VERILATOR_ROOT"];
         target:add("files", path.join(verilator_root, "include", "verilated.cpp"), {warnings = "none"})

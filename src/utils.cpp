@@ -1,4 +1,7 @@
 module;
+#if _WIN32
+    #include <wincon.h>
+#endif
 #include <doctest_fwd.hpp>
 export module verilator_utils:utils;
 import :verilator;
@@ -1328,12 +1331,12 @@ export namespace verilator_utils
              *
              * @param value 要生产的值
              */
-            constexpr inline auto yield_value(const std::remove_reference_t<yielded>& ref) noexcept
-                requires (std::constructible_from<std::remove_cvref_t<yielded>, const std::remove_reference_t<yielded>&>)
+            constexpr inline auto yield_value(const ::std::remove_reference_t<yielded>& ref) noexcept
+                requires (::std::constructible_from<std::remove_cvref_t<yielded>, const ::std::remove_reference_t<yielded>&>)
             {
                 struct awaiter
                 {
-                    std::remove_cvref_t<yielded> value;
+                    ::std::remove_cvref_t<yielded> value;
 
                     constexpr inline static bool await_ready() noexcept { return false; }
 
@@ -1427,3 +1430,55 @@ export namespace verilator_utils
         constexpr inline static ::std::default_sentinel_t end() noexcept { return ::std::default_sentinel; }
     };
 }  // namespace verilator_utils
+
+export namespace verilator_utils::detail
+{
+
+#if _WIN32
+    /**
+     * @brief 用于在Windows平台下设置控制台编码为 UTF-8
+     *
+     */
+    struct set_console_utf8
+    {
+    private:
+        ::UINT origin_console_cp;
+        ::UINT origin_console_output_cp;
+
+    public:
+        /**
+         * @brief 构造函数，保存原始控制台编码，然后设置控制台编码为 UTF-8
+         *
+         */
+        set_console_utf8() noexcept : origin_console_cp{::GetConsoleCP()}, origin_console_output_cp{::GetConsoleOutputCP()}
+        {
+            ::SetConsoleCP(CP_UTF8);
+            ::SetConsoleOutputCP(CP_UTF8);
+        }
+
+        /**
+         * @brief 析构函数，恢复原始控制台编码
+         *
+         */
+        ~set_console_utf8() noexcept
+        {
+            ::SetConsoleCP(origin_console_cp);
+            ::SetConsoleOutputCP(origin_console_output_cp);
+        }
+
+        set_console_utf8(const set_console_utf8&) = delete;
+        set_console_utf8& operator= (const set_console_utf8&) = delete;
+        set_console_utf8(set_console_utf8&&) = delete;
+        set_console_utf8& operator= (set_console_utf8&&) = delete;
+    };
+#else
+    /**
+     * @brief 用于在Windows平台下设置控制台编码为 UTF-8
+     *
+     * @note 在非Windows下实现为空
+     */
+    struct set_console_utf8
+    {
+    };
+#endif
+}  // namespace verilator_utils::detail

@@ -9,6 +9,7 @@ import verilator_utils;
 
 int main(int argc, const char* argv[])
 {
+    ::verilator_utils::detail::set_console_utf8 _{};
     ::verilator_utils::detail::argc = argc;
     ::verilator_utils::detail::argv = argv;
     try

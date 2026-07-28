@@ -26,14 +26,6 @@ if get_config("use_std_harden") then
     end
 end
 
-option("use_lto")
-    set_default(false)
-    set_description("Enable link-time optimization when building")
-option_end()
-if get_config("use_lto") then
-    set_policy("build.optimization.lto", true)
-end
-
 option("trace_support_fst")
     set_default(true)
     set_description("Enable FST trace support. This feature needs zlib and lz4.")

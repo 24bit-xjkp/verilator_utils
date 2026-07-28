@@ -1,14 +1,13 @@
 set_policy("build.c++.modules", true)
+if get_config("use_sanitizer") then
+    set_policy("build.sanitizer.address", true)
+    set_policy("build.sanitizer.undefined", true)
+end
 target("verilator_utils")
     set_kind("static")
     add_files("*.cpp|main.cpp", {public = true, install = true})
     add_includedirs(".", {public = true})
     add_headerfiles("*.hpp")
-    if get_config("use_sanitizer") then
-        set_policy("build.sanitizer.address", true)
-        set_policy("build.sanitizer.undefined", true)
-    end
-    set_policy("build.fence", true)
 target_end()
 
 target("verilator_utils_full")
