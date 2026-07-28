@@ -80,6 +80,81 @@ TEST_SUITE("verilator_utils/scheduler")
         runner.get_promise().rethrow_exception();
     }
 
+    TEST_CASE("task returns values from nested coroutines after suspension")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        int result{};
+
+        auto child{[](this auto) -> ::verilator_utils::task<int>
+                   {
+                       co_await ::verilator_utils::wait_time(2_ps);
+                       co_return 42;
+                   }()};
+        auto parent{[&](this auto) -> ::verilator_utils::task<void> { result = co_await child; }()};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(parent)};
+
+        scheduler.loop_until_finish();
+        CHECK_EQ(result, 42);
+        CHECK_EQ(scheduler.time_in_time_precision(), 2u);
+        CHECK(child.done());
+        CHECK(runner.done());
+        runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("task transfers move-only return values")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::unique_ptr<int> result;
+
+        auto child{[](this auto) -> ::verilator_utils::task<::std::unique_ptr<int>> { co_return ::std::make_unique<int>(17); }()};
+        auto parent{[&](this auto) -> ::verilator_utils::task<void> { result = co_await child; }()};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(parent)};
+
+        scheduler.loop_until_finish();
+        REQUIRE(result);
+        CHECK_EQ(*result, 17);
+        CHECK(child.done());
+        CHECK(runner.done());
+        runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("value-returning task propagates exceptions to its parent")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool observed_exception{};
+        bool consumed_result{};
+
+        auto child{[](this auto) -> ::verilator_utils::task<int>
+                   {
+                       co_await ::verilator_utils::wait_time(1_ps);
+                       throw ::std::runtime_error{"value task failure"};
+                       co_return 0;
+                   }()};
+        auto parent{[&](this auto) -> ::verilator_utils::task<void>
+                    {
+                        try
+                        {
+                            static_cast<void>(co_await child);
+                            consumed_result = true;
+                        }
+                        catch(const ::std::runtime_error& exception)
+                        {
+                            observed_exception = ::std::string_view{exception.what()} == "value task failure";
+                        }
+                    }()};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(parent)};
+
+        scheduler.loop_until_finish();
+        CHECK(observed_exception);
+        CHECK_FALSE(consumed_result);
+        CHECK(child.done());
+        CHECK(runner.done());
+        runner.get_promise().rethrow_exception();
+    }
+
     TEST_CASE("task supports move construction assignment detach and destroy")
     {
         auto task{[](this auto) -> ::verilator_utils::task<void> { co_return; }()};
