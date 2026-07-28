@@ -598,7 +598,7 @@ namespace verilator_utils
                                                                                ::std::size_t width) noexcept
             {
                 auto shift{64zu - width};
-                // NOLINTNEXTLINE(hicpp-signed-bitwise)
+                // NOLINTNEXTLINE(*-signed-bitwise)
                 auto sign_extended_value{static_cast<::std::int64_t>(packed_value << shift) >> shift};
                 return sign_extended_value;
             }

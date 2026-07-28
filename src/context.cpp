@@ -52,13 +52,14 @@ export namespace verilator_utils
          * @param argc 命令行参数数量，默认为detail::argc
          * @param argv 命令行参数数组，默认为detail::argv
          */
-        inline dut_context(bool coverage,
-                           ::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,
-                           ::verilator_utils::verilator_time_unit time_precision = ::verilator_utils::verilator_time_unit::ps,
-                           ::std::string_view base_name = ::std::string_view{},
-                           int trace_level = 0,
-                           int argc = ::verilator_utils::detail::argc,
-                           const char** argv = ::verilator_utils::detail::argv) : coverage{coverage}
+        inline explicit dut_context(
+            bool coverage,
+            ::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,
+            ::verilator_utils::verilator_time_unit time_precision = ::verilator_utils::verilator_time_unit::ps,
+            ::std::string_view base_name = ::std::string_view{},
+            int trace_level = 0,
+            int argc = ::verilator_utils::detail::argc,
+            const char** argv = ::verilator_utils::detail::argv) : coverage{coverage}
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
@@ -204,7 +205,7 @@ export namespace verilator_utils
          * @param task 要添加的任务
          * @note 相当于在绑定的调度器对象scheduler上调用add_task
          */
-        inline void add_task(::verilator_utils::task task) noexcept { scheduler->add_task(::std::move(task)); }
+        inline void add_task(::verilator_utils::task<void> task) noexcept { scheduler->add_task(::std::move(task)); }
     };
 }  // namespace verilator_utils
 

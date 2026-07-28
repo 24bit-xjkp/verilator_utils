@@ -5,5 +5,12 @@ import verilator_utils;
 int main(int argc, char** argv)
 {
     ::verilator_utils::detail::set_console_utf8 _{};
-    return ::doctest::Context(argc, argv).run();
+    try
+    {
+        return ::doctest::Context(argc, argv).run();
+    }
+    catch(...)
+    {
+        ::std::terminate();
+    }
 }
