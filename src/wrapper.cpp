@@ -457,7 +457,7 @@ export namespace verilator_utils
          *
          * @return 转换后的整数值
          */
-        inline operator ::std::uint64_t () const noexcept
+        inline operator ::std::uint64_t () const noexcept // NOLINT(*-explicit-constructor)
         {
             if constexpr(is_vl_wide)
             {
@@ -715,7 +715,7 @@ export namespace verilator_utils
          *
          * @return 向量切片的对应的值
          */
-        inline operator cast_type() const noexcept
+        inline operator cast_type() const noexcept // NOLINT(*-explicit-constructor)
         {
             if constexpr(is_vl_wide)
             {

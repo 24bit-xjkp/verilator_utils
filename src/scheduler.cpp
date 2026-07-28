@@ -25,26 +25,18 @@ export namespace verilator_utils
      */
     struct eval_scheduler;
 
-    /**
-     * @brief 同步任务类型
-     *
-     */
-    struct task
+    namespace detail
     {
-        struct promise_type;
-        /// 协程句柄类型
-        using handle_t = ::std::coroutine_handle<promise_type>;
-
         /**
          * @brief 永不挂起的可等待体
          *
          */
         struct no_suspend_awaiter : ::std::suspend_never
         {
-            inline void set_handle(this auto&& self, handle_t handle) noexcept(noexcept(self.set_handle_impl(handle)))
-                requires requires() {
+            inline void set_handle(this auto&& self, auto handle) noexcept(noexcept(self.set_handle_impl(handle)))
+                requires (requires() {
                     { self.set_handle_impl(handle) } -> ::std::same_as<void>;
-                }
+                })
             { self.set_handle_impl(handle); }
         };
 
@@ -65,23 +57,25 @@ export namespace verilator_utils
         };
 
         /**
-         * @brief 同步任务的承诺类型
+         * @brief 协程承诺类型的基类
          *
          */
-        struct promise_type
+        struct promise_base
         {
             /// 异常指针
             ::std::exception_ptr exception{};
-            /// 父协程句柄
+            /// 父协程柄
             /// - 为nullptr表示没有父协程
             /// - 非nullptr表示该协程为子协程，生命周期由父协程管理
-            handle_t parent{};
+            ::std::coroutine_handle<> parent{};
+            /// 类型擦除的父协程承诺
+            promise_base* parent_promise{};
             /// 调度器指针，用于实现隐式的调度器传递
             ::verilator_utils::eval_scheduler* scheduler{};
             /// 任务是否是通过抛出仿真结束异常结束的
             bool is_eval_finish_exception{};
             /// 协程状态
-            status_enum status{status_enum::creating};
+            ::verilator_utils::detail::status_enum status{::verilator_utils::detail::status_enum::creating};
             /// 是否为异步协程
             /// - 为false表示同步协程，执行完毕后立即跳转到父协程
             /// - 为true表示异步协程
@@ -91,13 +85,6 @@ export namespace verilator_utils
             /// - 有父的同步协程为同步子协程，生命周期由父协程的task对象管理
             /// - 无父的异步协程为异步子协程，生命周期由父协程的async_task对象管理
             /// - 有父的异步协程不存在，因为禁止将有父的同步协程转化为异步
-
-            /**
-             * @brief 获取任务的返回对象
-             *
-             * @return 任务对象
-             */
-            inline task get_return_object() noexcept { return task{handle_t::from_promise(*this)}; }
 
             /**
              * @brief 协程初始挂起
@@ -110,7 +97,7 @@ export namespace verilator_utils
 
                 struct initial_awaiter : ::std::suspend_always
                 {
-                    inline initial_awaiter(status_enum& status) noexcept : ::std::suspend_always{}, status{status} {}
+                    inline explicit initial_awaiter(status_enum& status) noexcept : ::std::suspend_always{}, status{status} {}
 
                     status_enum& status;
 
@@ -128,10 +115,23 @@ export namespace verilator_utils
             inline ::std::suspend_always final_suspend() noexcept;
 
             /**
-             * @brief 协程返回空值
+             * @brief 判断该协程是不是由调度器直接管理的根协程
              *
+             * @return 是否为根协程
              */
-            inline static void return_void() noexcept {}
+            [[nodiscard]] inline bool is_root_coroutine() const { return !is_async && parent == nullptr; }
+
+            /**
+             * @brief 检查任务是否绑定到调度器
+             *
+             * @return 已绑定则返回调度器指针，否则断言失败
+             */
+            [[nodiscard]] inline ::verilator_utils::eval_scheduler* check_scheduler() const
+            {
+                using namespace ::std::string_view_literals;
+                REQUIRE_MESSAGE(scheduler != nullptr, "任务必须绑定调度器"sv);
+                return scheduler;
+            }
 
             /**
              * @brief 将协程中抛出的异常存储到异常指针中
@@ -170,13 +170,145 @@ export namespace verilator_utils
             {
                 if(with_unhandled_exception()) { ::std::rethrow_exception(exception); }
             }
+        };
+
+        /**
+         * @brief 协程返回值实现
+         *
+         * @tparam return_t 返回类型
+         */
+        template <typename return_t>
+        struct promise_with_return
+        {
+            using return_type = return_t;
+
+            union buffer_t
+            {
+                return_type value;
+
+                constexpr inline buffer_t() noexcept {}
+
+                constexpr inline ~buffer_t() noexcept {}
+
+                constexpr inline buffer_t(const buffer_t&) noexcept = delete;
+                constexpr inline buffer_t(buffer_t&&) noexcept = delete;
+                constexpr inline buffer_t& operator= (const buffer_t&) noexcept = delete;
+                constexpr inline buffer_t& operator= (buffer_t&&) noexcept = delete;
+            } buffer;
+
+            template <typename value_type>
+                requires (::std::constructible_from<return_type, value_type &&>)
+            inline void return_value(value_type&& value) noexcept(::std::is_nothrow_constructible_v<return_type, value_type&&>)
+            { new(::std::addressof(buffer.value)) return_type{::std::forward<value_type>(value)}; }
+        };
+
+        /**
+         * @brief 协程返回空值的特化
+         *
+         */
+        template <>
+        struct promise_with_return<void>
+        {
+            using return_type = void;
+
+            inline static void return_void() noexcept {}
+        };
+
+        template <typename promise_type>
+        struct subtask_awaiter
+        {
+            using handle_t = ::std::coroutine_handle<>;
+            using return_type = promise_type::return_type;
+            /// 子任务的协程句柄
+            handle_t subhandle;
+            promise_type& promise;
 
             /**
-             * @brief 判断该协程是不是由调度器直接管理的根协程
+             * @brief 检查子任务是否完成
              *
-             * @return 是否为根协程
+             * @return 子任务是否完成
              */
-            [[nodiscard]] inline bool is_root_coroutine() const { return !is_async && parent == nullptr; }
+            [[nodiscard]] inline bool await_ready() const noexcept { return subhandle.done(); }
+
+            /**
+             * @brief 挂起当前任务并跳转到子任务执行，等待子任务完成后恢复当前任务执行
+             *
+             * @param parent 当前任务的协程句柄
+             * @return 子任务的协程句柄
+             */
+            [[nodiscard]] inline handle_t await_suspend(auto parent) const noexcept
+            {
+                promise.parent = parent;
+                promise.parent_promise = ::std::addressof(parent.promise());
+                promise.scheduler = parent.promise().scheduler;
+                return subhandle;
+            }
+
+            /**
+             * @brief 恢复当前任务执行
+             *
+             * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
+             * @throws 若子任务抛出异常，则重新抛出异常
+             */
+            inline return_type await_resume();
+        };
+    }  // namespace detail
+
+    /**
+     * @brief 同步任务类型
+     *
+     */
+    template <typename return_t = void>
+    struct task
+    {
+        struct promise_type;
+        /// 协程句柄类型
+        using handle_t = ::std::coroutine_handle<promise_type>;
+        /// 返回值类型
+        using return_type = return_t;
+        /// 协程状态枚举
+        using status_enum = ::verilator_utils::detail::status_enum;
+
+        /**
+         * @brief 同步任务的承诺类型
+         *
+         */
+        struct promise_type  // NOLINT(cppcoreguidelines-special-member-functions)
+            :
+            ::verilator_utils::detail::promise_base,
+            ::verilator_utils::detail::promise_with_return<return_type>
+        {
+            using return_type = ::verilator_utils::detail::promise_with_return<return_type>::return_type;
+
+            /**
+             * @brief 判断协程是否已通过co_return退出
+             *
+             * @return 是否已退出
+             */
+            inline bool is_coroutine_returned() noexcept
+            {
+                auto handle{::std::coroutine_handle<promise_type>::from_promise(*this)};
+                return handle.done() && !exception;
+            }
+
+            /**
+             * @brief 析构协程帧内储存的返回值
+             *
+             */
+            inline ~promise_type() noexcept
+            {
+                if constexpr(!::std::is_void_v<return_type>)
+                {
+                    if(is_coroutine_returned()) { ::std::destroy_at(::std::addressof(this->buffer.value)); }
+                }
+            }
+
+            /**
+             * @brief 获取任务的返回对象
+             *
+             * @return 任务对象
+             */
+            inline task get_return_object() noexcept { return task{handle_t::from_promise(*this)}; }
 
             /**
              * @brief 转发可等待体
@@ -188,7 +320,7 @@ export namespace verilator_utils
             template <typename type>
             inline auto&& await_transform(type&& awaiter)
             {
-                if constexpr(::std::derived_from<type, no_suspend_awaiter>)
+                if constexpr(::std::derived_from<type, ::verilator_utils::detail::no_suspend_awaiter>)
                 {
                     // 通过set_handle向可等待体传递协程柄
                     awaiter.set_handle(handle_t::from_promise(*this));
@@ -197,15 +329,14 @@ export namespace verilator_utils
             }
 
             /**
-             * @brief 检查任务是否绑定到调度器
+             * @brief 从承诺中获取协程结果
              *
-             * @return 已绑定则返回调度器指针，否则断言失败
+             * @note 使用移动构造将结果所有权转移到外部
              */
-            [[nodiscard]] inline ::verilator_utils::eval_scheduler* check_scheduler() const
+            [[nodiscard]] inline return_type get_result()
             {
-                using namespace ::std::string_view_literals;
-                REQUIRE_MESSAGE(scheduler != nullptr, "任务必须绑定调度器"sv);
-                return scheduler;
+                REQUIRE(is_coroutine_returned());
+                if constexpr(!::std::is_void_v<return_type>) { return ::std::move(this->buffer.value); }
             }
         };
 
@@ -214,7 +345,7 @@ export namespace verilator_utils
          *
          * @param handle 协程句柄
          */
-        inline task(handle_t handle) noexcept : handle{handle} {}
+        inline explicit task(handle_t handle) noexcept : handle{handle} {}
 
         /**
          * @brief 任务析构函数，销毁协程句柄
@@ -281,7 +412,7 @@ export namespace verilator_utils
          *
          * @return 任务的promise对象引用
          */
-        [[nodiscard]] inline task::promise_type& get_promise() const noexcept { return handle.promise(); }
+        [[nodiscard]] inline promise_type& get_promise() const noexcept { return handle.promise(); }
 
         /**
          * @brief 销毁任务的协程句柄
@@ -293,57 +424,27 @@ export namespace verilator_utils
         }
 
         /**
-         * @brief 实现子任务的可等待体
-         *
-         */
-        struct task_awaiter
-        {
-            /// 子任务的协程句柄
-            handle_t subhandle;
-
-            /**
-             * @brief 检查子任务是否完成
-             *
-             * @return 子任务是否完成
-             */
-            [[nodiscard]] inline bool await_ready() const noexcept { return subhandle.done(); }
-
-            /**
-             * @brief 挂起当前任务并跳转到子任务执行，等待子任务完成后恢复当前任务执行
-             *
-             * @param parent 当前任务的协程句柄
-             * @return 子任务的协程句柄
-             */
-            [[nodiscard]] inline handle_t await_suspend(handle_t parent) const noexcept
-            {
-                subhandle.promise().parent = parent;
-                subhandle.promise().scheduler = parent.promise().scheduler;
-                return subhandle;
-            }
-
-            /**
-             * @brief 恢复当前任务执行
-             *
-             * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
-             * @throws 若子任务抛出异常，则重新抛出异常
-             */
-            inline void await_resume() const;
-        };
-
-        /**
          * @brief 调用子任务，立即跳转到子任务执行，等待子任务完成后恢复当前任务执行
          *
          * @return 可等待体
          */
-        inline friend task_awaiter operator co_await(const task& subtask) noexcept
+        inline friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
         {
             REQUIRE(subtask.joinable());
-            return task_awaiter{subtask.handle};
+            return {subtask.handle, subtask.get_promise()};
         }
 
     private:
         handle_t handle;
     };
+
+    /**
+     * @brief 判断类型promise_type是否为协程框架支持的承诺类型
+     *
+     * @tparam promise_type 要判断的类型
+     */
+    template <typename promise_type>
+    concept is_coroutine_promise = ::std::derived_from<promise_type, ::verilator_utils::detail::promise_base>;
 
     /**
      * @brief 检查类型是否为事件回调函数，即返回bool的可调用类型
@@ -388,7 +489,7 @@ export namespace verilator_utils
          * @param edge_to_detect 要检测的边沿
          */
         inline edge_detector(const ::verilator_utils::is_bit_slice auto& bit, edge_enum edge_to_detect) :
-            callback{[bit]() { return static_cast<bool>(bit); }}, previous_value{static_cast<bool>(bit)},
+            callback{[bit] { return static_cast<bool>(bit); }}, previous_value{static_cast<bool>(bit)},
             edge_to_detect{edge_to_detect}
         {
         }
@@ -436,6 +537,44 @@ export namespace verilator_utils
 export namespace verilator_utils::detail
 {
     /**
+     * @brief 协程状态对，包含协程柄和类型擦除的承诺指针
+     *
+     */
+    struct coroutine_pair
+    {
+        /// 协程柄
+        ::std::coroutine_handle<> handle;
+        /// 类型擦除的承诺指针
+        ::verilator_utils::detail::promise_base* promise;
+
+        // NOLINTBEGIN(*-explicit-constructor)
+
+        /**
+         * @brief 从未类型擦除的协程柄构造状态对
+         *
+         * @tparam promise_type 承诺类型
+         * @param handle 未类型擦除的协程柄
+         */
+        template <::verilator_utils::is_coroutine_promise promise_type>
+        inline coroutine_pair(::std::coroutine_handle<promise_type> handle) noexcept :
+            handle{handle}, promise{::std::addressof(handle.promise())}
+        {
+        }
+
+        /**
+         * @brief 从子协程承诺中保存的父协程状态构造状态对
+         *
+         * @param subtask_promise 子协程承诺
+         */
+        inline coroutine_pair(const ::verilator_utils::detail::promise_base& subtask_promise) noexcept :
+            handle{subtask_promise.parent}, promise{subtask_promise.parent_promise}
+        {
+        }
+
+        // NOLINTEND(*-explicit-constructor)
+    };
+
+    /**
      * @brief 等待队列的元素类型
      *
      */
@@ -443,8 +582,8 @@ export namespace verilator_utils::detail
     {
         /// 等待时间
         ::std::uint64_t target_time;
-        /// 协程柄
-        ::std::coroutine_handle<::verilator_utils::task::promise_type> handle;
+        /// 协程状态对
+        ::verilator_utils::detail::coroutine_pair pair;
 
         /// 等待队列元素的比较运算符，按等待时间点进行比较
         inline friend ::std::strong_ordering operator<=> (const wait_queue_element& self,
@@ -465,8 +604,8 @@ export namespace verilator_utils::detail
     {
         /// 事件回调函数，判断事件是否完成
         ::verilator_utils::default_event_callback* event_callback;
-        /// 协程柄
-        ::std::coroutine_handle<::verilator_utils::task::promise_type> handle;
+        /// 协程状态对
+        ::verilator_utils::detail::coroutine_pair pair;
 
         [[nodiscard]] inline bool is_ready() const
         {
@@ -479,15 +618,7 @@ export namespace verilator_utils::detail
     using event_queue_t = ::std::vector<::verilator_utils::detail::event_queue_element>;
 
     /// 就绪队列类型
-    using ready_queue_t = ::std::vector<::std::coroutine_handle<::verilator_utils::task::promise_type>>;
-
-    /**
-     * @brief 判断是否是task类型的引用
-     *
-     * @tparam type 要判断的类型
-     */
-    template <typename type>
-    concept is_task_reference = ::std::same_as<::std::remove_reference_t<type>, ::verilator_utils::task>;
+    using ready_queue_t = ::std::vector<::verilator_utils::detail::coroutine_pair>;
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
@@ -521,8 +652,6 @@ export namespace verilator_utils
             /// 一轮评估完成，该阶段不进行协程调度，不可等待
             eval_end,
         };
-        /// 协程柄类型
-        using handle_t = ::std::coroutine_handle<::verilator_utils::task::promise_type>;
 
     private:
         /// 指向VerilatedModel的指针，由dut类型擦除得到
@@ -551,18 +680,24 @@ export namespace verilator_utils
          *
          * @param handle 协程柄
          */
-        inline static void resume_coroutine(handle_t handle)
+        inline static void resume_coroutine(::verilator_utils::detail::coroutine_pair pair)
         {
-            auto&& promise{handle.promise()};
+            auto [handle, promise]{pair};
             // 非根协程执行完承诺可能已销毁，需要先保存一份结果
-            bool is_root_coroutine{promise.is_root_coroutine()};
+            bool is_root_coroutine{promise->is_root_coroutine()};
             handle.resume();
             // 协程为根协程时执行销毁和异常传播
             if(is_root_coroutine && handle.done())
             {
-                // 借用task的raii确保在异常时销毁handle
-                ::verilator_utils::task _{handle};
-                promise.rethrow_exception();
+                // 利用raii确保在异常时销毁handle
+                struct do_destroy  // NOLINT(cppcoreguidelines-special-member-functions)
+                {
+                    ::std::coroutine_handle<> handle;
+
+                    inline ~do_destroy() noexcept { handle.destroy(); }
+                } _{handle};
+
+                promise->rethrow_exception();
             }
         }
 
@@ -580,9 +715,9 @@ export namespace verilator_utils
                 // 将就绪协程放入就绪队列
                 while(!wait_queue.empty())
                 {
-                    if(auto&& [task_target_time, handle]{wait_queue.top()}; task_target_time == target_time)
+                    if(auto&& [task_target_time, pair]{wait_queue.top()}; task_target_time == target_time)
                     {
-                        ready_queue.emplace_back(handle);
+                        ready_queue.emplace_back(pair);
                         wait_queue.pop();
                     }
                     else
@@ -605,7 +740,7 @@ export namespace verilator_utils
             {
                 if(auto&& ref{event_queue[index]}; ref.is_ready())
                 {
-                    ready_queue.emplace_back(ref.handle);
+                    ready_queue.emplace_back(ref.pair);
                     ref = event_queue.back();
                     event_queue.pop_back();
                     any_coroutine_ready = true;
@@ -650,7 +785,7 @@ export namespace verilator_utils
          * @note 调度器会缓存time precision，因此在构造时需要确保dut的time precision已经设置
          */
         template <::std::derived_from<::VerilatedModel> dut_t>
-        inline eval_scheduler(dut_t& dut) noexcept
+        inline explicit eval_scheduler(dut_t& dut) noexcept
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             this->dut = &dut;
@@ -769,20 +904,21 @@ export namespace verilator_utils
         inline ~eval_scheduler() noexcept
         {
             constexpr static auto do_destroy{
-                [](eval_scheduler& scheduler, handle_t handle) static noexcept
+                [](eval_scheduler& scheduler, const ::verilator_utils::detail::coroutine_pair& pair) static noexcept
                 {
-                    if(auto&& promise{handle.promise()}; promise.is_root_coroutine())
+                    auto [handle, promise]{pair};
+                    if(promise->is_root_coroutine())
                     {
                         // 根协程直接销毁
                         handle.destroy();
                     }
-                    else if(!promise.is_async)
+                    else if(!promise->is_async)
                     {
                         // 同步非根协程的父协程不在调度队列中
                         // 将其父协程放入队列，由调度器进行销毁
                         try
                         {
-                            scheduler.ready_queue.emplace_back(promise.parent);
+                            scheduler.ready_queue.emplace_back(*promise);
                         }
                         catch(...)
                         {
@@ -798,11 +934,11 @@ export namespace verilator_utils
             };
             while(!wait_queue.empty())
             {
-                do_destroy(*this, wait_queue.top().handle);
+                do_destroy(*this, wait_queue.top().pair);
                 wait_queue.pop();
             }
 
-            for(auto&& [_, handle]: event_queue) { do_destroy(*this, handle); }
+            for(auto&& [_, pair]: event_queue) { do_destroy(*this, pair); }
             event_queue.clear();
 
             for(auto i{0zu}; i != ready_queue.size(); ++i) { do_destroy(*this, ready_queue[i]); }
@@ -874,38 +1010,39 @@ export namespace verilator_utils
          * @brief 向事件队列中注册一个事件
          *
          * @param callback 事件回调函数
-         * @param handle 协程柄
+         * @param pair 协程状态对
          */
-        inline void register_event(::verilator_utils::default_event_callback& callback, handle_t handle)
-        { event_queue.emplace_back(&callback, handle); }
+        inline void register_event(::verilator_utils::default_event_callback& callback,
+                                   ::verilator_utils::detail::coroutine_pair pair)
+        { event_queue.emplace_back(&callback, pair); }
 
         /**
          * @brief 向等待队列中注册一个等待时间
          *
          * @note 不支持delta延迟，等待时间不能为0
          * @param time_to_wait 等待时间，单位为飞秒，不能为0
-         * @param handle 协程柄
+         * @param pair 协程状态对
          */
-        inline void register_wait(::verilator_utils::femtosecond_t time_to_wait, handle_t handle)
+        inline void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
         {
             using namespace ::std::string_view_literals;
             using namespace ::verilator_utils::literals;
             REQUIRE_MESSAGE(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
             auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
             REQUIRE_MESSAGE(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
-            wait_queue.emplace(time_to_wait_in_time_precision + dut->contextp()->time(), handle);
+            wait_queue.emplace(time_to_wait_in_time_precision + dut->contextp()->time(), pair);
         }
 
         /**
          * @brief 向就绪队列中注册一个协程
          *
-         * @param handle 协程柄
+         * @param pair 协程状态对
          */
-        inline void register_ready(handle_t handle) noexcept
+        inline void register_ready(::verilator_utils::detail::coroutine_pair pair) noexcept
         {
             try
             {
-                ready_queue.emplace_back(handle);
+                ready_queue.emplace_back(pair);
             }
             catch(...)
             {
@@ -917,9 +1054,8 @@ export namespace verilator_utils
          * @brief 向调度器中添加任务
          *
          * @param task 要添加的任务
-         * @note 这不会改变协程的调用栈，即task::promise_type::parent不会改变
          */
-        inline void add_task(::verilator_utils::task task) noexcept
+        inline void add_task(::verilator_utils::task<void> task) noexcept
         {
             // 向task中添加调度器
             task.get_promise().scheduler = this;
@@ -927,18 +1063,20 @@ export namespace verilator_utils
         }
     };
 
-    auto ::verilator_utils::task::promise_type::final_suspend() noexcept -> ::std::suspend_always
+    auto ::verilator_utils::detail::promise_base::final_suspend() noexcept -> ::std::suspend_always
     {
 
         status = status_enum::finial_suspend;
-        if(parent) { scheduler->register_ready(parent); }
+        if(parent) { scheduler->register_ready(*this); }
         return ::std::suspend_always{};
     }
 
-    void ::verilator_utils::task::task_awaiter::await_resume() const
+    template <typename promise_type>
+    auto ::verilator_utils::detail::subtask_awaiter<promise_type>::await_resume() -> return_type
     {
         REQUIRE(subhandle.done());
-        subhandle.promise().scheduler->throw_if_finish();
-        subhandle.promise().rethrow_exception();
+        promise.scheduler->throw_if_finish();
+        promise.rethrow_exception();
+        return promise.get_result();
     }
 }  // namespace verilator_utils

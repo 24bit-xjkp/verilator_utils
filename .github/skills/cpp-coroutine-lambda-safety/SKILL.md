@@ -8,7 +8,7 @@ argument-hint: 'Describe the coroutine lambda or task code to review/refactor'
 
 ## When to Use
 - Refactor C++ coroutine lambdas that use a capture list, such as `[&]`, `[=]`, or `[foo]`.
-- Review code returning coroutine task types, especially `::verilator_utils::task` or related async wrappers.
+- Review code returning coroutine task types, especially `::verilator_utils::task<void>` or related async wrappers.
 - Fix sanitizer reports that may come from coroutine lifetime issues, such as use-after-free or stack-use-after-scope.
 - Add or update scheduler tests that create coroutine tasks from local variables.
 
@@ -34,7 +34,7 @@ argument-hint: 'Describe the coroutine lambda or task code to review/refactor'
 Captureless immediately invoked coroutine:
 
 ```cpp
-auto task{[](this auto) -> ::verilator_utils::task
+auto task{[](this auto) -> ::verilator_utils::task<void>
 		  {
 			  co_await ::verilator_utils::wait_time(1_ps);
 		  }()};
@@ -43,7 +43,7 @@ auto task{[](this auto) -> ::verilator_utils::task
 Coroutine using test-owned local state:
 
 ```cpp
-auto task{[&](this auto) -> ::verilator_utils::task
+auto task{[&](this auto) -> ::verilator_utils::task<void>
 		  {
 			  co_await ::verilator_utils::wait_time(1_ps);
 			  observed_time = scheduler.time_in_time_precision();
@@ -53,7 +53,7 @@ auto task{[&](this auto) -> ::verilator_utils::task
 Reusable coroutine lambda with a per-call value:
 
 ```cpp
-const auto make_task{[&](this auto, int task_id) -> ::verilator_utils::task
+const auto make_task{[&](this auto, int task_id) -> ::verilator_utils::task<void>
 					 {
 						 co_await ::verilator_utils::wait_event([&event_ready] { return event_ready; });
 						 resumed_tasks.push_back(task_id);

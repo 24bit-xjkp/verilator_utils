@@ -27,7 +27,7 @@ TEST_SUITE("counter")
         vector_slice<CData> count;
         bit_slice<CData> overflow;
 
-        inline port_t(dut_t& dut) :
+        inline explicit port_t(dut_t& dut) :
             clk{dut.clk}, rst{dut.rst}, count{dut.count, 4, dec_unsigned}, overflow{dut.overflow, 0, boolean}
         {
         }
@@ -41,7 +41,7 @@ TEST_SUITE("counter")
 
         dut_context.add_task(generate_clock(port.clk, 2_ns));
         const auto do_verify{
-            [&](this auto) -> task
+            [&](this auto) -> task<void>
             {
                 constexpr static auto period{16zu};
                 co_await generate_reset(port.rst, port.clk);

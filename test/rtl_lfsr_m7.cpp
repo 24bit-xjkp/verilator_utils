@@ -36,7 +36,7 @@ TEST_SUITE("lfsr_m7")
         bit_slice<CData> lfsr_feedback;
         bit_slice<CData> result;
 
-        inline port_t(dut_t& dut) :
+        inline explicit port_t(dut_t& dut) :
             clk{dut.clk}, rst{dut.rst}, enable{dut.enable}, initial_value{dut.initial_value, 7, dec_unsigned},
             lfsr_feedback{dut.lfsr_feedback, 0, fsm_enum({"fibonacci"s, "galois"s})}, result{dut.result}
         {
@@ -69,7 +69,7 @@ TEST_SUITE("lfsr_m7")
         dut_context.set_base_name(std::format("lfsr_m7_{}", lfsr_feedback));
 
         const auto do_verify{
-            [&](this auto) -> task
+            [&](this auto) -> task<void>
             {
                 auto width{port.initial_value.width()};
                 auto period{(1zu << port.initial_value.width()) - 1zu};

@@ -27,7 +27,7 @@ TEST_SUITE("edge_detector")
         bit_slice<::CData> falling;
         bit_slice<::CData> both;
 
-        inline port_t(dut_t& dut) :
+        inline explicit port_t(dut_t& dut) :
             clk{dut.clk, 0}, rst{dut.rst, 0}, signal{dut.signal, 0}, rising{dut.rising, 0}, falling{dut.falling, 0},
             both{dut.both, 0}
         {
@@ -48,7 +48,7 @@ TEST_SUITE("edge_detector")
         dut_context.add_task(generate_reset(port.rst, port.clk));
 
         const auto verify{
-            [&](this auto, bool rising, bool falling) -> task
+            [&](this auto, bool rising, bool falling) -> task<void>
             {
                 co_await wait_verify(port.clk, delay);
 
@@ -60,7 +60,7 @@ TEST_SUITE("edge_detector")
             },
         };
         const auto stimulate{
-            [&](this auto) -> task
+            [&](this auto) -> task<void>
             {
                 port.signal = 0;
                 // 等待复位完成
