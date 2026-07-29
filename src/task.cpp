@@ -1312,3 +1312,219 @@ export namespace verilator_utils
     [[nodiscard]] inline ::verilator_utils::detail::get_spawn_pool_awaiter get_spawn_pool() noexcept
     { return ::verilator_utils::detail::get_spawn_pool_awaiter{}; }
 }  // namespace verilator_utils
+
+export namespace verilator_utils
+{
+    /**
+     * @brief 邮箱，类似SystemVerilog mailbox
+     *
+     * @tparam type 元素类型
+     */
+    template <::std::move_constructible type>
+    struct mailbox
+    {
+        using value_type = type;
+        using reference = value_type&;
+        using const_reference = const value_type&;
+
+    private:
+        struct do_pop
+        {
+            ::std::vector<type>& queue;
+
+            constexpr inline explicit do_pop(::std::vector<type>& queue) noexcept : queue{queue} {}
+
+            constexpr inline ~do_pop() noexcept { queue.erase(queue.begin()); }
+
+            constexpr inline do_pop(const do_pop&) noexcept = delete;
+            constexpr inline do_pop(do_pop&&) noexcept = delete;
+            constexpr inline do_pop& operator= (const do_pop&) noexcept = delete;
+            constexpr inline do_pop& operator= (do_pop&&) noexcept = delete;
+        };
+
+    public:
+        /**
+         * @brief 创建邮箱对象
+         *
+         * @param max_count 邮箱最大容量，为0表示无限容量
+         */
+        constexpr inline explicit mailbox(::std::size_t max_count = 0) : max_count{max_count}
+        {
+            if(max_count != 0) { queue.reserve(max_count); }
+        }
+
+        /**
+         * @brief 获取邮箱内元素数量
+         *
+         * @return 元素数量
+         */
+        [[nodiscard]] constexpr inline ::std::size_t num() const noexcept { return queue.size(); }
+
+        /**
+         * @brief 向邮箱末尾放入元素，容量不足时会阻塞
+         *
+         * @tparam args_t 参数类型列表
+         * @param args 参数列表
+         * @return 子任务，配合co_await使用
+         */
+        template <typename... args_t>
+        [[nodiscard]] inline ::verilator_utils::task<void> put(args_t&&... args) noexcept
+            requires (::std::constructible_from<value_type, args_t...>)
+        {
+            if(max_count != 0 && queue.size() == max_count)
+            {
+                co_await ::verilator_utils::wait_event([this] { return queue.size() < max_count; });
+            }
+            queue.emplace_back(::std::forward<args_t>(args)...);
+        }
+
+        /**
+         * @brief 尝试向邮箱末尾放入元素，不会阻塞
+         *
+         * @tparam args_t 参数类型列表
+         * @param args 参数列表
+         * @return 是否成功放入元素
+         */
+        template <typename... args_t>
+        inline bool try_put(args_t&&... args) noexcept
+            requires (::std::constructible_from<value_type, args_t...>)
+        {
+            if(max_count == 0 || queue.size() < max_count)
+            {
+                queue.emplace_back(::std::forward<args_t>(args)...);
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+        /**
+         * @brief 从邮箱获取首个元素，然后删除该元素，邮箱为空时会阻塞
+         *
+         * @return 子任务，配合co_await使用
+         */
+        [[nodiscard]] inline ::verilator_utils::task<value_type> get() noexcept
+        {
+            if(queue.empty())
+            {
+                co_await ::verilator_utils::wait_event([this] { return !queue.empty(); });
+            }
+            do_pop _{queue};
+            co_return ::std::move(queue.front());
+        }
+
+        /**
+         * @brief 尝试从邮箱获取首个元素，然后删除该元素，不会阻塞
+         *
+         * @return std::optional 成功获取时包含元素，否则为空
+         */
+        constexpr inline ::std::optional<value_type> try_get() noexcept
+        {
+            if(!queue.empty())
+            {
+                do_pop _{queue};
+                return ::std::optional<value_type>{::std::move(queue.front())};
+            }
+            else
+            {
+                return ::std::nullopt;
+            }
+        }
+
+        /**
+         * @brief 从邮箱获取首个元素，不会删除元素，邮箱为空时会阻塞
+         *
+         * @return 子任务，配合co_await使用
+         */
+        inline auto peek(this auto&& self) noexcept -> ::verilator_utils::task<decltype(self.queue.front())>
+        {
+            if(self.queue.empty())
+            {
+                co_await ::verilator_utils::wait_event([&self] { return !self.queue.empty(); });
+            }
+            co_return self.queue.front();
+        }
+
+        /**
+         * @brief 从邮箱获取首个元素，不会删除元素和阻塞
+         *
+         * @return std::optional 成功获取时包含元素引用，否则为空
+         */
+        constexpr inline auto try_peek(this auto&& self) noexcept
+        {
+            using optional_t = ::std::optional<decltype(self.queue.front())>;
+            return self.queue.empty() ? ::std::nullopt : optional_t{self.queue.front()};
+        }
+
+    private:
+        ::std::size_t max_count{};
+        ::std::vector<type> queue{};
+    };
+
+    /**
+     * @brief 信号量，类似SystemVerilog semaphore
+     *
+     */
+    struct semaphore
+    {
+        /**
+         * @brief 创建具有指定计数器初值的信号量
+         *
+         * @param initial_count 计数器初值
+         */
+        constexpr inline explicit semaphore(::std::size_t initial_count = 0) noexcept : count{initial_count} {}
+
+        /**
+         * @brief 增加内部计数器
+         *
+         * @param update 要增加的量
+         */
+        constexpr inline void put(::std::size_t update = 1) noexcept { count += update; }
+
+        /**
+         * @brief 减少内部计数器，阻塞直到能如此
+         *
+         * @param update 要减小的量
+         * @return 子任务，配合co_await使用
+         */
+        inline ::verilator_utils::task<void> get(::std::size_t update = 1) noexcept
+        {
+            if(count >= update)
+            {
+                count -= update;
+                co_return;
+            }
+
+            auto my_ticket{next_ticket++};
+            co_await ::verilator_utils::wait_event([this, my_ticket, update] { return my_ticket == ticket && count >= update; });
+            count -= update;
+            ++ticket;
+        }
+
+        /**
+         * @brief 尝试减少内部计数器，不会阻塞
+         *
+         * @param update 要减小的量
+         * @return 是否成功减小计数器
+         */
+        inline bool try_get(::std::size_t update = 1) noexcept
+        {
+            if(count >= update)
+            {
+                count -= update;
+                return true;
+            }
+            else
+            {
+                return false;
+            }
+        }
+
+    private:
+        ::std::size_t count{};
+        ::std::size_t ticket{};
+        ::std::size_t next_ticket{};
+    };
+}  // namespace verilator_utils
