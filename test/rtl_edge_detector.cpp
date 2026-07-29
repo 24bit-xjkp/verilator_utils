@@ -14,6 +14,7 @@ extern "C++"
 TEST_SUITE("edge_detector")
 {
     using namespace ::verilator_utils;
+    using namespace ::verilator_utils::data_format;
     using namespace ::verilator_utils::literals;
     using dut_t = ::unit_test_rtl_edge_detector_verilator;
     using dut_context_t = dut_context<dut_t, ::VerilatedFstC>;
@@ -28,8 +29,8 @@ TEST_SUITE("edge_detector")
         bit_slice<::CData> both;
 
         inline explicit port_t(dut_t& dut) :
-            clk{dut.clk, 0}, rst{dut.rst, 0}, signal{dut.signal, 0}, rising{dut.rising, 0}, falling{dut.falling, 0},
-            both{dut.both, 0}
+            clk{dut.clk}, rst{dut.rst}, signal{dut.signal}, rising{dut.rising, 0, boolean}, falling{dut.falling, 0, boolean},
+            both{dut.both, 0, boolean}
         {
         }
     };
@@ -80,28 +81,28 @@ TEST_SUITE("edge_detector")
                 co_await wait_posedge(port.clk);
 
                 // 下降沿产生同步输入信号
-                co_await wait_stimulus(port.clk);
+                co_await wait_stimulate(port.clk);
                 port.signal = 1;
                 do_verify(true, false);
-                co_await wait_stimulus(port.clk);
+                co_await wait_stimulate(port.clk);
                 port.signal = 0;
                 do_verify(false, true);
 
                 // 上升沿产生同步输入信号
-                co_await wait_stimulus(port.clk, 1, true);
+                co_await wait_stimulate(port.clk, 1, true);
                 port.signal = 1;
                 do_verify(true, false);
-                co_await wait_stimulus(port.clk, 1, true);
+                co_await wait_stimulate(port.clk, 1, true);
                 port.signal = 0;
                 do_verify(false, true);
 
                 // 无输入信号
-                co_await wait_stimulus(port.clk, 1, true);
+                co_await wait_stimulate(port.clk, 1, true);
                 do_verify(false, false);
 
                 co_await verify_tasks.join_all();
                 // 避免波形被截断
-                co_await wait_stimulus(port.clk, 2);
+                co_await wait_stimulate(port.clk, 2);
                 co_await eval_finish();
             },
         };

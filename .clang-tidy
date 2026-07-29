@@ -23,6 +23,7 @@ Checks: >
   -readability-math-missing-parentheses,
   -readability-trailing-comma,
   -readability-redundant-parentheses,
+  -readability-enum-initial-value,
   cert-*,
   -cert-int09-c,
   -cert-dcl37-c,

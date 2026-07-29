@@ -709,7 +709,7 @@ export namespace verilator_utils
          * @brief 评估阶段枚举
          *
          */
-        enum class eval_stage_enum : ::std::uint8_t
+        enum class eval_stage_enum : ::std::size_t
         {
             // 未注明的阶段可进行等待
             // --- 初始化阶段 ---
@@ -731,6 +731,9 @@ export namespace verilator_utils
             after_dut_eval,
             /// 一轮评估完成，该阶段不进行协程调度，不可等待
             eval_end,
+
+            /// 非法状态，可用于默认参数等场合
+            invalid = -1zu
         };
 
     private:

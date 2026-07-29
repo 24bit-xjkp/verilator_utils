@@ -452,7 +452,7 @@ namespace verilator_utils::detail
         wait_edge_and_eval_stage(::verilator_utils::bit_slice<::CData> clk,
                                  ::std::size_t edge_to_wait,
                                  bool activate_posedge,
-                                 ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage)
+                                 ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage) noexcept
     {
         if(activate_posedge) [[likely]] { co_await ::verilator_utils::wait_posedge(clk, edge_to_wait); }
         else
@@ -475,7 +475,7 @@ export namespace verilator_utils
      * @return 生成时钟信号的任务
      */
     [[nodiscard]] inline ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData> clk,
-                                                                      ::verilator_utils::femtosecond_t period)
+                                                                      ::verilator_utils::femtosecond_t period) noexcept
     {
         auto half_period{period / 2zu};
         clk = 0;
@@ -498,7 +498,7 @@ export namespace verilator_utils
     [[nodiscard]] inline ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData> reset,
                                                                       ::verilator_utils::bit_slice<::CData> clk,
                                                                       ::size_t cycle = 3,
-                                                                      bool active_high = true)
+                                                                      bool active_high = true) noexcept
     {
         reset = static_cast<::std::uint64_t>(active_high);
         co_await ::verilator_utils::wait_negedge(clk, cycle);
@@ -521,7 +521,7 @@ export namespace verilator_utils
                     ::std::size_t edge_to_wait = 1,
                     bool activate_posedge = true,
                     ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
-                        ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval)
+                        ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval) noexcept
     { return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, activate_posedge, eval_stage); }
 
     /**
@@ -530,18 +530,25 @@ export namespace verilator_utils
      * @param clk 时钟信号切片
      * @param edge_to_wait 要等待到边沿个数
      * @param activate_posedge 时钟沿极性，true表示上升沿有效，false表示下降沿有效
-     * @param eval_stage 目标评估阶段
+     * @param eval_stage 目标评估阶段，默认根据时钟沿极性选择目标阶段
      * @return 同步任务
-     * @note 等待到edge_to_wait个给定时钟边沿后的给定评估阶段
-     * @note 默认为时钟下降沿且电路 **评估完成后 ** 进行激励，以避免可能的竞争状态，注意寄存器采样带来的延迟
+     * @note 等待到edge_to_wait个给定时钟边沿前的给定评估阶段
+     * @note 默认为时钟下降沿触发时在电路 ** 评估完成前 ** 进行激励，时钟上升沿触发时在电路 ** 评估完成后 ** 进行激励
      */
     [[nodiscard]] inline ::verilator_utils::task<void>
-        wait_stimulus(const ::verilator_utils::bit_slice<::CData>& clk,
-                      ::std::size_t edge_to_wait = 1,
-                      bool activate_posedge = false,
-                      ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
-                          ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval)
-    { return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, activate_posedge, eval_stage); }
+        wait_stimulate(const ::verilator_utils::bit_slice<::CData>& clk,
+                       ::std::size_t edge_to_wait = 1,
+                       bool activate_posedge = false,
+                       ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
+                           ::verilator_utils::eval_scheduler::eval_stage_enum::invalid) noexcept
+    {
+        if(eval_stage == ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
+        {
+            eval_stage = activate_posedge ? ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval
+                                          : ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval;
+        }
+        return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, activate_posedge, eval_stage);
+    }
 
     /**
      * @brief 等待直到复位完成
@@ -697,8 +704,9 @@ export namespace verilator_utils
      * @param initial_value LFSR初始值
      * @return 生成器
      */
-    [[nodiscard]] inline ::verilator_utils::generator<bool>
-        fibonacci_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1)
+    [[nodiscard]] inline ::verilator_utils::generator<bool> fibonacci_lfsr_generator(::std::size_t width,
+                                                                                     ::std::uint64_t feedback_mask = 0,
+                                                                                     ::std::uint64_t initial_value = 1) noexcept
     {
         using namespace ::std::string_view_literals;
         REQUIRE_GE(width, 3);
@@ -730,7 +738,7 @@ export namespace verilator_utils
      * @return 生成器
      */
     [[nodiscard]] inline ::verilator_utils::generator<bool>
-        galois_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1)
+        galois_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1) noexcept
     {
         using namespace ::std::string_view_literals;
         REQUIRE_GE(width, 3);

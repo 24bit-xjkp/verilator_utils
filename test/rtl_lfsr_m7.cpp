@@ -84,7 +84,7 @@ TEST_SUITE("lfsr_m7")
                         port.initial_value.format(),
                     };
                     CAPTURE(initial_value);
-                    co_await wait_stimulus(port.clk);
+                    co_await wait_stimulate(port.clk);
                     port.initial_value = initial_value;
                     port.enable = true;
 
@@ -104,7 +104,7 @@ TEST_SUITE("lfsr_m7")
                     format_wrapper current_result{static_cast<std::uint64_t>(port.result),
                                                   port.result.width(),
                                                   port.result.format()};
-                    co_await wait_stimulus(port.clk);
+                    co_await wait_stimulate(port.clk);
                     port.enable = false;
                     for(auto i{0zu}; i != 3; ++i)
                     {
@@ -115,7 +115,7 @@ TEST_SUITE("lfsr_m7")
                     }
                 }
 
-                co_await wait_stimulus(port.clk);
+                co_await wait_stimulate(port.clk);
                 co_await eval_finish();
             },
         };

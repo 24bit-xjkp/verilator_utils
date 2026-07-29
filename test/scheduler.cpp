@@ -513,7 +513,7 @@ TEST_SUITE("verilator_utils/scheduler")
         runner.get_promise().rethrow_exception();
     }
 
-    TEST_CASE("wait_stimulus waits for the requested falling edges")
+    TEST_CASE("wait_stimulate waits for the requested falling edges")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
@@ -523,7 +523,7 @@ TEST_SUITE("verilator_utils/scheduler")
         auto clock_task{::verilator_utils::generate_clock(::verilator_utils::bit_slice<::CData>{clk}, 4_ps)};
         auto stimulus_task{[&](this auto) -> ::verilator_utils::task<void>
                            {
-                               co_await ::verilator_utils::wait_stimulus(::verilator_utils::bit_slice<::CData>{clk}, 2);
+                               co_await ::verilator_utils::wait_stimulate(::verilator_utils::bit_slice<::CData>{clk}, 2);
                                resumed_times = scheduler.time_in_time_precision();
                                co_await ::verilator_utils::eval_finish();
                            }()};
