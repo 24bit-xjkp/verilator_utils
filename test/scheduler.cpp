@@ -120,6 +120,66 @@ TEST_SUITE("verilator_utils/scheduler")
         runner.get_promise().rethrow_exception();
     }
 
+    TEST_CASE("task preserves mutable references through suspension and nested awaits")
+    {
+        static_assert(::std::same_as<::verilator_utils::task<int&>::return_type, int&>);
+
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        int value{17};
+        int* result{};
+
+        auto child{[&](this auto) -> ::verilator_utils::task<int&>
+                   {
+                       co_await ::verilator_utils::wait_time(1_ps);
+                       co_return value;
+                   }()};
+        auto forwarding_task{[&](this auto) -> ::verilator_utils::task<int&> { co_return co_await child; }()};
+        auto parent{[&](this auto) -> ::verilator_utils::task<void>
+                    {
+                        int& reference{co_await forwarding_task};
+                        result = ::std::addressof(reference);
+                        reference = 23;
+                    }()};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(parent)};
+
+        scheduler.loop_until_finish();
+        CHECK_EQ(result, ::std::addressof(value));
+        CHECK_EQ(value, 23);
+        CHECK(child.done());
+        CHECK(forwarding_task.done());
+        CHECK_EQ(::std::addressof(child.get_promise().get_result()), ::std::addressof(value));
+        CHECK_EQ(::std::addressof(forwarding_task.get_promise().get_result()), ::std::addressof(value));
+        CHECK(runner.done());
+        runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("task preserves const references")
+    {
+        static_assert(::std::same_as<::verilator_utils::task<const int&>::return_type, const int&>);
+
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        const int value{31};
+        const int* result{};
+
+        auto child{[&](this auto) -> ::verilator_utils::task<const int&> { co_return value; }()};
+        auto parent{[&](this auto) -> ::verilator_utils::task<void>
+                    {
+                        const int& reference{co_await child};
+                        result = ::std::addressof(reference);
+                    }()};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(parent)};
+
+        scheduler.loop_until_finish();
+        CHECK_EQ(result, ::std::addressof(value));
+        CHECK_EQ(*result, 31);
+        CHECK(child.done());
+        CHECK_EQ(::std::addressof(child.get_promise().get_result()), ::std::addressof(value));
+        CHECK(runner.done());
+        runner.get_promise().rethrow_exception();
+    }
+
     TEST_CASE("value-returning task propagates exceptions to its parent")
     {
         scheduler_fixture fixture{};

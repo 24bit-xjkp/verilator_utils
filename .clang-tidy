@@ -66,7 +66,7 @@ UseColor: true
 HeaderFilterRegex: '^(?!.*\.(h)$).*' # 过滤.h文件，避免第三方库产生大量警告
 CheckOptions:
   - key: readability-identifier-length.IgnoredVariableNames
-    value: '^(_|b|i|[kK].*|n|af|ch)$'
+    value: '^(_|i|n|id)$'
   - key: readability-identifier-length.IgnoredParameterNames
-    value: '^(_|i|n|af|[kK].*)$'
+    value: '^(_|i|n|id)$'
 ...
