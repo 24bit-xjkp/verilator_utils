@@ -747,6 +747,10 @@ export namespace verilator_utils
         ::std::size_t time_precision_fs;
         /// 每dut时间单位对应的dut时间精度
         double time_precision_per_time_unit;
+        /// 每dut时间精度对应的格式化输出单位
+        double output_unit_per_time_precision;
+        /// 格式化输出的时间单位后缀
+        ::std::string_view output_unit_suffix;
 
         /// 等待队列
         ::verilator_utils::detail::wait_queue_t wait_queue{};
@@ -865,7 +869,7 @@ export namespace verilator_utils
          *
          * @tparam dut_t 待测模型类型，必须派生自VerilatedModel
          * @param dut 指向待测模型对象的指针
-         * @note 调度器会缓存time precision，因此在构造时需要确保dut的time precision已经设置
+         * @note 调度器会缓存time precision和time unit，因此在构造时需要确保二者已经设置
          */
         template <::std::derived_from<::VerilatedModel> dut_t>
         inline explicit eval_scheduler(dut_t& dut) noexcept
@@ -878,6 +882,25 @@ export namespace verilator_utils
             auto time_unit{context.timeunit()};
             time_precision_fs = static_cast<::std::uint64_t>(::std::pow(10, 15 + time_precision));
             time_precision_per_time_unit = static_cast<::std::uint64_t>(::std::pow(10, time_unit - time_precision));
+            using namespace ::std::string_view_literals;
+            constexpr static ::std::array unit_table{
+                ::std::tuple{0,   1'000'000'000'000'000zu, "s"sv },
+                ::std::tuple{-3,  1'000'000'000'000zu,     "ms"sv},
+                ::std::tuple{-6,  1'000'000'000zu,         "us"sv},
+                ::std::tuple{-9,  1'000'000zu,             "ns"sv},
+                ::std::tuple{-12, 1'000zu,                 "ps"sv},
+                ::std::tuple{-15, 1zu,                     "fs"sv},
+            };
+            for(auto&& [unit_exponent, unit_fs, unit_suffix]: unit_table)
+            {
+                if(time_unit >= unit_exponent)
+                {
+                    output_unit_per_time_precision = static_cast<double>(time_precision_fs) / static_cast<double>(unit_fs);
+                    output_unit_suffix = unit_suffix;
+                    return;
+                }
+            }
+            ::std::unreachable();
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
 
@@ -956,28 +979,8 @@ export namespace verilator_utils
          */
         [[nodiscard]] inline ::std::string time_in_string() const
         {
-            auto time_in_fs{time_in_time_precision() * time_precision_fs};
-            using namespace ::std::string_view_literals;
-            constexpr static ::std::array unit_table{
-                ::std::pair{1'000'000'000'000'000zu, "s"sv },
-                ::std::pair{1'000'000'000'000zu,     "ms"sv},
-                ::std::pair{1'000'000'000zu,         "us"sv},
-                ::std::pair{1'000'000zu,             "ns"sv},
-                ::std::pair{1'000zu,                 "ps"sv},
-                ::std::pair{1zu,                     "fs"sv},
-            };
-            for(auto&& [unit, unit_str]: unit_table)
-            {
-                if(time_in_fs >= unit)
-                {
-                    return ::std::format("{:.6g}{}", static_cast<double>(time_in_fs) / static_cast<double>(unit), unit_str);
-                }
-            }
-            for(auto&& [unit, unit_str]: unit_table)
-            {
-                if(time_precision_fs >= unit) { return ::std::format("0{}", unit_str); }
-            }
-            ::std::unreachable();
+            auto time_in_output_unit{static_cast<double>(time_in_time_precision()) * output_unit_per_time_precision};
+            return ::std::format("{:.6g}{}", time_in_output_unit, output_unit_suffix);
         }
 
         /**

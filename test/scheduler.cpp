@@ -313,13 +313,13 @@ TEST_SUITE("verilator_utils/scheduler")
 
         CHECK_EQ(scheduler.time_in_time_precision(), 0u);
         CHECK_EQ(scheduler.time_in_time_unit(), 0.0);
-        CHECK_EQ(scheduler.time_in_string(), "0ps");
+        CHECK_EQ(scheduler.time_in_string(), "0ns");
 
         auto task{[&](this auto) -> ::verilator_utils::task<void>
                   {
                       co_await ::verilator_utils::wait_time(5_ps);
                       CHECK_EQ(scheduler.time_in_time_precision(), 5u);
-                      CHECK_EQ(scheduler.time_in_string(), "5ps");
+                      CHECK_EQ(scheduler.time_in_string(), "0.005ns");
                       co_await ::verilator_utils::wait_time(2_ns);
                       CHECK_EQ(scheduler.time_in_time_precision(), 2'005u);
                       CHECK_EQ(scheduler.time_in_string(), "2.005ns");
@@ -331,27 +331,51 @@ TEST_SUITE("verilator_utils/scheduler")
         runner.get_promise().rethrow_exception();
     }
 
-    TEST_CASE("time formatting selects larger units and keeps compact precision")
+    TEST_CASE("time formatting keeps the unit selected by timeunit")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
+        fixture.context.timeunit(-12);
 
         auto task{[&](this auto) -> ::verilator_utils::task<void>
                   {
-                      co_await ::verilator_utils::wait_time(999_ps);
-                      CHECK_EQ(scheduler.time_in_string(), "999ps");
-                      co_await ::verilator_utils::wait_time(1_ps);
                       CHECK_EQ(scheduler.time_in_string(), "1ns");
                       co_await ::verilator_utils::wait_time(999_ns);
-                      CHECK_EQ(scheduler.time_in_string(), "1us");
-                      co_await ::verilator_utils::wait_time(999'000_ns);
-                      CHECK_EQ(scheduler.time_in_string(), "1ms");
+                      CHECK_EQ(scheduler.time_in_string(), "1000ns");
                   }()};
 
+        fixture.context.time(1'000u);
         ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
         scheduler.loop_until_finish();
         CHECK(runner.done());
         runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("time formatting groups decimal timeunits by SI unit")
+    {
+        struct test_case
+        {
+            ::std::int32_t time_unit;
+            ::std::string_view expected;
+        };
+
+        constexpr static ::std::array test_cases{
+            test_case{-7,  "100ns"},
+            test_case{-8,  "10ns" },
+            test_case{-9,  "1ns"  },
+            test_case{-10, "100ps"},
+            test_case{-11, "10ps" },
+            test_case{-12, "1ps"  },
+        };
+
+        for(auto&& [time_unit, expected]: test_cases)
+        {
+            CAPTURE(time_unit);
+            scheduler_fixture fixture{time_unit, time_unit};
+            auto scheduler{fixture.make_scheduler()};
+            fixture.context.time(1u);
+            CHECK_EQ(scheduler.time_in_string(), expected);
+        }
     }
 
     TEST_CASE("scheduler uses configured time unit for normalized time")
