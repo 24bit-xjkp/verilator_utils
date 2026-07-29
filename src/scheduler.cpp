@@ -170,6 +170,37 @@ export namespace verilator_utils
             {
                 if(with_unhandled_exception()) { ::std::rethrow_exception(exception); }
             }
+
+            /**
+             * @brief 判断协程是否已通过co_return退出
+             *
+             * @return 是否已退出
+             */
+            template <typename promise_type>
+                requires (::std::is_final_v<promise_type>)
+            inline bool is_coroutine_returned(this promise_type& self) noexcept
+            {
+                auto handle{::std::coroutine_handle<promise_type>::from_promise(self)};
+                return handle.done() && !self.exception;
+            }
+
+            /**
+             * @brief 转发可等待体
+             *
+             * @tparam type 可等待体类型
+             * @param awaiter 可等待体对象
+             * @return auto&& 转发的可等待体对象
+             */
+            template <typename promise_type, typename type>
+            inline auto&& await_transform(this promise_type& self, type&& awaiter)
+            {
+                if constexpr(::std::derived_from<type, ::verilator_utils::detail::no_suspend_awaiter>)
+                {
+                    // 通过set_handle向可等待体传递协程柄
+                    awaiter.set_handle(::std::coroutine_handle<promise_type>::from_promise(self));
+                }
+                return ::std::forward<type>(awaiter);
+            }
         };
 
         /**
@@ -196,10 +227,66 @@ export namespace verilator_utils
                 constexpr inline buffer_t& operator= (buffer_t&&) noexcept = delete;
             } buffer;
 
+            /**
+             * @brief 将返回值置于承诺体中
+             *
+             * @tparam value_type 返回值类型
+             * @param value 返回值
+             */
             template <typename value_type>
                 requires (::std::constructible_from<return_type, value_type &&>)
             inline void return_value(value_type&& value) noexcept(::std::is_nothrow_constructible_v<return_type, value_type&&>)
-            { new(::std::addressof(buffer.value)) return_type{::std::forward<value_type>(value)}; }
+            { ::std::construct_at(::std::addressof(buffer.value), ::std::forward<value_type>(value)); }
+
+            /**
+             * @brief 从承诺体中获取返回值
+             *
+             * @note 必须在调用过return_value后才能调用
+             * @return 返回值
+             */
+            inline return_type get_return_value() noexcept(::std::is_nothrow_move_constructible_v<return_type>)
+            { return ::std::move(buffer.value); }
+
+            /**
+             * @brief 析构承诺体中的返回值
+             *
+             * @note 必须在调用过return_value后才能调用
+             */
+            inline void destroy_return_value() noexcept { ::std::destroy_at(::std::addressof(buffer.value)); }
+        };
+
+        template <typename return_t>
+            requires (::std::is_reference_v<return_t>)
+        struct promise_with_return<return_t>
+        {
+            using return_type = return_t;
+            using pointer = ::std::add_pointer_t<::std::remove_reference_t<return_type>>;
+
+            pointer ptr{};
+
+            /**
+             * @brief 将返回值置于承诺体中
+             *
+             * @param ref 返回值
+             */
+            inline void return_value(auto&& ref) noexcept
+                requires (::std::convertible_to<decltype(ref), return_type>)
+            { ptr = ::std::addressof(ref); }
+
+            /**
+             * @brief 从承诺体中获取返回值
+             *
+             * @note 必须在调用过return_value后才能调用
+             * @return 返回值
+             */
+            inline return_type get_return_value() noexcept { return *ptr; }
+
+            /**
+             * @brief 析构承诺体中的返回值
+             *
+             * @note 必须在调用过return_value后才能调用
+             */
+            inline void destroy_return_value() noexcept {}
         };
 
         /**
@@ -211,7 +298,25 @@ export namespace verilator_utils
         {
             using return_type = void;
 
+            /**
+             * @brief 返回空值
+             *
+             */
             inline static void return_void() noexcept {}
+
+            /**
+             * @brief 从承诺体中获取返回值
+             *
+             * @note 必须在调用过return_value后才能调用
+             */
+            inline static void get_return_value() noexcept {}
+
+            /**
+             * @brief 析构承诺体中的返回值
+             *
+             * @note 必须在调用过return_value后才能调用
+             */
+            inline void destroy_return_value() noexcept {}
         };
 
         template <typename promise_type>
@@ -273,23 +378,18 @@ export namespace verilator_utils
          * @brief 同步任务的承诺类型
          *
          */
-        struct promise_type  // NOLINT(cppcoreguidelines-special-member-functions)
+        struct promise_type final  // NOLINT(cppcoreguidelines-special-member-functions,misc-multiple-inheritance)
             :
             ::verilator_utils::detail::promise_base,
             ::verilator_utils::detail::promise_with_return<return_type>
         {
-            using return_type = ::verilator_utils::detail::promise_with_return<return_type>::return_type;
+        private:
+            using base_t = ::verilator_utils::detail::promise_with_return<return_type>;
+            using base_t::destroy_return_value;
+            using base_t::get_return_value;
 
-            /**
-             * @brief 判断协程是否已通过co_return退出
-             *
-             * @return 是否已退出
-             */
-            inline bool is_coroutine_returned() noexcept
-            {
-                auto handle{::std::coroutine_handle<promise_type>::from_promise(*this)};
-                return handle.done() && !exception;
-            }
+        public:
+            using return_type = base_t::return_type;
 
             /**
              * @brief 析构协程帧内储存的返回值
@@ -297,10 +397,7 @@ export namespace verilator_utils
              */
             inline ~promise_type() noexcept
             {
-                if constexpr(!::std::is_void_v<return_type>)
-                {
-                    if(is_coroutine_returned()) { ::std::destroy_at(::std::addressof(this->buffer.value)); }
-                }
+                if(is_coroutine_returned()) { destroy_return_value(); }
             }
 
             /**
@@ -311,24 +408,6 @@ export namespace verilator_utils
             inline task get_return_object() noexcept { return task{handle_t::from_promise(*this)}; }
 
             /**
-             * @brief 转发可等待体
-             *
-             * @tparam type 可等待体类型
-             * @param awaiter 可等待体对象
-             * @return auto&& 转发的可等待体对象
-             */
-            template <typename type>
-            inline auto&& await_transform(type&& awaiter)
-            {
-                if constexpr(::std::derived_from<type, ::verilator_utils::detail::no_suspend_awaiter>)
-                {
-                    // 通过set_handle向可等待体传递协程柄
-                    awaiter.set_handle(handle_t::from_promise(*this));
-                }
-                return ::std::forward<type>(awaiter);
-            }
-
-            /**
              * @brief 从承诺中获取协程结果
              *
              * @note 使用移动构造将结果所有权转移到外部
@@ -336,7 +415,7 @@ export namespace verilator_utils
             [[nodiscard]] inline return_type get_result()
             {
                 REQUIRE(is_coroutine_returned());
-                if constexpr(!::std::is_void_v<return_type>) { return ::std::move(this->buffer.value); }
+                return get_return_value();
             }
         };
 
@@ -444,7 +523,8 @@ export namespace verilator_utils
      * @tparam promise_type 要判断的类型
      */
     template <typename promise_type>
-    concept is_coroutine_promise = ::std::derived_from<promise_type, ::verilator_utils::detail::promise_base>;
+    concept is_coroutine_promise =
+        ::std::derived_from<promise_type, ::verilator_utils::detail::promise_base> && ::std::is_final_v<promise_type>;
 
     /**
      * @brief 检查类型是否为事件回调函数，即返回bool的可调用类型
