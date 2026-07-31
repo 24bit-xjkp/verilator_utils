@@ -694,6 +694,46 @@ TEST_SUITE("verilator_utils/scheduler")
         reset_n_runner.get_promise().rethrow_exception();
     }
 
+    TEST_CASE("clock generation honors its startup delay")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::CData clk{1};
+
+        auto clock_task{::verilator_utils::generate_clock(::verilator_utils::bit_slice<::CData>{clk}, 4_ps, 3_ps)};
+        auto probe_task{[&](this auto) -> ::verilator_utils::task<void>
+                        {
+                            co_await ::verilator_utils::wait_time(2_ps);
+                            CHECK_EQ(clk, 0);
+                        }()};
+
+        ::verilator_utils::async_task clock_runner{scheduler, ::std::move(clock_task)};
+        ::verilator_utils::async_task probe_runner{scheduler, ::std::move(probe_task)};
+
+        scheduler.loop_once();
+        CHECK_EQ(scheduler.time_in_time_precision(), 2u);
+        CHECK_EQ(clk, 0);
+        CHECK(probe_runner.done());
+
+        scheduler.loop_once();
+        CHECK_EQ(scheduler.time_in_time_precision(), 3u);
+        CHECK_EQ(clk, 0);
+
+        scheduler.loop_once();
+        CHECK_EQ(scheduler.time_in_time_precision(), 5u);
+        CHECK_EQ(clk, 1);
+
+        scheduler.loop_once();
+        CHECK_EQ(scheduler.time_in_time_precision(), 7u);
+        CHECK_EQ(clk, 0);
+
+        scheduler.finish();
+        scheduler.loop_once();
+        CHECK(clock_runner.done());
+        clock_runner.get_promise().rethrow_exception();
+        probe_runner.get_promise().rethrow_exception();
+    }
+
     TEST_CASE("scheduler exposes stage transitions and empty state")
     {
         scheduler_fixture fixture{};
