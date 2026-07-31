@@ -7,6 +7,7 @@ rtl_verilator_target = {
     ["lfsr_m7"] = "lfsr_m7_wrapper",
     ["counter"] = "counter",
     ["sequence_detector"] = "sequence_detector",
+    ["dual_ram"] = "dual_ram_wrapper",
 }
 
 for name, top_module in pairs(rtl_verilator_target) do
