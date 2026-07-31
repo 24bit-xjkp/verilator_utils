@@ -3,6 +3,7 @@ set_languages("c++latest")
 set_warnings("allextra")
 includes("script/*.lua")
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
+set_allowedmodes("debug", "release", "releasedbg")
 add_requires("doctest", "verilator", "clean_std_heads")
 add_packages("doctest", "verilator", "clean_std_heads")
 set_exceptions("cxx")
@@ -33,6 +34,18 @@ option_end()
 if get_config("trace_support_fst") then
     add_requires("zlib", "lz4")
 end
+
+option("check_kind")
+    set_values(false)
+    set_showmenu(false)
+    set_description([[Check the build kind. "static" and "shared" are supported.]])
+
+    on_check(function (option)
+        local kind = get_config("kind")
+        assert(kind == "static" or kind == "shared", [[The kind "%s" is not supported.]], kind)
+        option:enable(true)
+    end)
+option_end()
 
 rule("verilator_include")
     after_load(function (target)
