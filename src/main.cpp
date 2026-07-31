@@ -1,10 +1,6 @@
 #include "doctest_fwd.hpp"
-import std;
-import verilator_utils;
-extern "C++"
-{
+import verilator_utils.full;
 #include <doctest.h>
-}
 
 int main(int argc, const char* argv[])
 {

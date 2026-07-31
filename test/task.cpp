@@ -1,6 +1,5 @@
 #include <doctest_fwd.hpp>
-import std;
-import verilator_utils;
+import verilator_utils.full;
 #include <doctest.h>
 
 namespace

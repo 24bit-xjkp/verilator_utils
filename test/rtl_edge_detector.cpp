@@ -1,8 +1,6 @@
 #include <verilator_fwd.hpp>
 #include <doctest_fwd.hpp>
-import std;
-import std.compat;
-import verilator_utils;
+import verilator_utils.full;
 #include <unit_test_rtl_edge_detector_verilator.h>
 #include <doctest.h>
 #include <verilator_bwd.hpp>
