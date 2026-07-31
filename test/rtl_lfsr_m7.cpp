@@ -14,8 +14,6 @@ extern "C++"
 TEST_SUITE("lfsr_m7")
 {
     using namespace verilator_utils;
-    using namespace verilator_utils::literals;
-    using namespace verilator_utils::data_format;
     using namespace std::string_literals;
     namespace views = std::views;
     using dut_t = unit_test_rtl_lfsr_m7_verilator;

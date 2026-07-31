@@ -14,8 +14,6 @@ extern "C++"
 TEST_SUITE("sequence_detector")
 {
     using namespace verilator_utils;
-    using namespace verilator_utils::literals;
-    using namespace verilator_utils::data_format;
     namespace views = std::views;
     using dut_t = unit_test_rtl_sequence_detector_verilator;
     using dut_context_t = dut_context<dut_t, VerilatedFstC>;

@@ -130,7 +130,7 @@ export namespace verilator_utils
     };
 }  // namespace verilator_utils
 
-export namespace verilator_utils::literals
+export namespace verilator_utils::inline literals
 {
     // NOLINTBEGIN(google-runtime-float)
 
@@ -189,7 +189,7 @@ export namespace verilator_utils::literals
     { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000u)}; }
 
     // NOLINTEND(google-runtime-float)
-}  // namespace verilator_utils::literals
+}  // namespace verilator_utils::inline literals
 
 export namespace verilator_utils
 {
@@ -1041,114 +1041,117 @@ namespace verilator_utils
             { return static_cast<::std::uint64_t>(underlying_value); }
         };
 
-        /// 数据格式类型
-        using format = ::std::variant<::std::monostate,
-                                      ::verilator_utils::data_format::hex_t,
-                                      ::verilator_utils::data_format::bin_t,
-                                      ::verilator_utils::data_format::dec_unsigned_t,
-                                      ::verilator_utils::data_format::dec_signed_t,
-                                      ::verilator_utils::data_format::real_float_t,
-                                      ::verilator_utils::data_format::real_double_t,
-                                      ::verilator_utils::data_format::unsigned_fixed_point_t,
-                                      ::verilator_utils::data_format::signed_fixed_point_t,
-                                      ::verilator_utils::data_format::sign_mag_fixed_point_t,
-                                      ::verilator_utils::data_format::fsm_enum_t,
-                                      ::verilator_utils::data_format::boolean_t>;
-        /// 十六进制
-        constexpr ::verilator_utils::data_format::format hex{::verilator_utils::data_format::hex_t{}};
-        /// 二进制
-        constexpr ::verilator_utils::data_format::format bin{::verilator_utils::data_format::bin_t{}};
-        /// 无符号十进制
-        constexpr ::verilator_utils::data_format::format dec_unsigned{::verilator_utils::data_format::dec_unsigned_t{}};
-        /// 有符号十进制
-        constexpr ::verilator_utils::data_format::format dec_signed{::verilator_utils::data_format::dec_signed_t{}};
-
-        /**
-         * @brief 单精度浮点数
-         *
-         * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
-         * @return 数据格式对象
-         */
-        constexpr ::verilator_utils::data_format::format real_float(bool format_as_hex = false)
-        { return ::verilator_utils::data_format::real_float_t{format_as_hex}; }
-
-        /**
-         * @brief 双精度浮点数
-         *
-         * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
-         * @return 数据格式对象
-         */
-        constexpr ::verilator_utils::data_format::format real_double(bool format_as_hex = false)
-        { return ::verilator_utils::data_format::real_double_t{.format_as_hex = format_as_hex}; }
-
-        /**
-         * @brief 无符号定点数
-         *
-         * @param integer_bit 整数位数
-         * @param fractional_bit 小数位数
-         * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
-         * @return 数据格式对象
-         */
-        constexpr ::verilator_utils::data_format::format
-            unsigned_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
+        inline namespace interface
         {
-            return ::verilator_utils::data_format::unsigned_fixed_point_t{
-                .integer_bit = integer_bit,
-                .fractional_bit = fractional_bit,
-                .format_as_hex = format_as_hex,
-            };
-        }
+            /// 数据格式类型
+            using format = ::std::variant<::std::monostate,
+                                          ::verilator_utils::data_format::hex_t,
+                                          ::verilator_utils::data_format::bin_t,
+                                          ::verilator_utils::data_format::dec_unsigned_t,
+                                          ::verilator_utils::data_format::dec_signed_t,
+                                          ::verilator_utils::data_format::real_float_t,
+                                          ::verilator_utils::data_format::real_double_t,
+                                          ::verilator_utils::data_format::unsigned_fixed_point_t,
+                                          ::verilator_utils::data_format::signed_fixed_point_t,
+                                          ::verilator_utils::data_format::sign_mag_fixed_point_t,
+                                          ::verilator_utils::data_format::fsm_enum_t,
+                                          ::verilator_utils::data_format::boolean_t>;
+            /// 十六进制
+            constexpr ::verilator_utils::data_format::format hex{::verilator_utils::data_format::hex_t{}};
+            /// 二进制
+            constexpr ::verilator_utils::data_format::format bin{::verilator_utils::data_format::bin_t{}};
+            /// 无符号十进制
+            constexpr ::verilator_utils::data_format::format dec_unsigned{::verilator_utils::data_format::dec_unsigned_t{}};
+            /// 有符号十进制
+            constexpr ::verilator_utils::data_format::format dec_signed{::verilator_utils::data_format::dec_signed_t{}};
 
-        /**
-         * @brief 有符号定点数
-         *
-         * @param integer_bit 整数位数
-         * @param fractional_bit 小数位数
-         * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
-         * @return 数据格式对象
-         */
-        constexpr ::verilator_utils::data_format::format
-            signed_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
-        {
-            return ::verilator_utils::data_format::signed_fixed_point_t{
-                .integer_bit = integer_bit,
-                .fractional_bit = fractional_bit,
-                .format_as_hex = format_as_hex,
-            };
-        }
+            /**
+             * @brief 单精度浮点数
+             *
+             * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+             * @return 数据格式对象
+             */
+            constexpr ::verilator_utils::data_format::format real_float(bool format_as_hex = false)
+            { return ::verilator_utils::data_format::real_float_t{format_as_hex}; }
 
-        /**
-         * @brief 符号-幅值定点数
-         *
-         * @param integer_bit 整数位数
-         * @param fractional_bit 小数位数
-         * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
-         * @return 数据格式对象
-         */
-        constexpr ::verilator_utils::data_format::format
-            sign_mag_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
-        {
-            return ::verilator_utils::data_format::sign_mag_fixed_point_t{
-                .integer_bit = integer_bit,
-                .fractional_bit = fractional_bit,
-                .format_as_hex = format_as_hex,
-            };
-        }
+            /**
+             * @brief 双精度浮点数
+             *
+             * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+             * @return 数据格式对象
+             */
+            constexpr ::verilator_utils::data_format::format real_double(bool format_as_hex = false)
+            { return ::verilator_utils::data_format::real_double_t{.format_as_hex = format_as_hex}; }
 
-        /**
-         * @brief 枚举，常用于FSM状态变量，采用从0开始的自然二进制编码
-         *
-         * @param enum_string 枚举项名称列表，按枚举顺序排列
-         * @return 数据格式对象
-         */
-        constexpr ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
-        {
-            REQUIRE_FALSE(enum_string.empty());
-            return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
-        }
+            /**
+             * @brief 无符号定点数
+             *
+             * @param integer_bit 整数位数
+             * @param fractional_bit 小数位数
+             * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+             * @return 数据格式对象
+             */
+            constexpr ::verilator_utils::data_format::format
+                unsigned_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
+            {
+                return ::verilator_utils::data_format::unsigned_fixed_point_t{
+                    .integer_bit = integer_bit,
+                    .fractional_bit = fractional_bit,
+                    .format_as_hex = format_as_hex,
+                };
+            }
 
-        /// 布尔型
-        constexpr ::verilator_utils::data_format::format boolean{::verilator_utils::data_format::boolean_t{}};
+            /**
+             * @brief 有符号定点数
+             *
+             * @param integer_bit 整数位数
+             * @param fractional_bit 小数位数
+             * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+             * @return 数据格式对象
+             */
+            constexpr ::verilator_utils::data_format::format
+                signed_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
+            {
+                return ::verilator_utils::data_format::signed_fixed_point_t{
+                    .integer_bit = integer_bit,
+                    .fractional_bit = fractional_bit,
+                    .format_as_hex = format_as_hex,
+                };
+            }
+
+            /**
+             * @brief 符号-幅值定点数
+             *
+             * @param integer_bit 整数位数
+             * @param fractional_bit 小数位数
+             * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
+             * @return 数据格式对象
+             */
+            constexpr ::verilator_utils::data_format::format
+                sign_mag_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
+            {
+                return ::verilator_utils::data_format::sign_mag_fixed_point_t{
+                    .integer_bit = integer_bit,
+                    .fractional_bit = fractional_bit,
+                    .format_as_hex = format_as_hex,
+                };
+            }
+
+            /**
+             * @brief 枚举，常用于FSM状态变量，采用从0开始的自然二进制编码
+             *
+             * @param enum_string 枚举项名称列表，按枚举顺序排列
+             * @return 数据格式对象
+             */
+            constexpr ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
+            {
+                REQUIRE_FALSE(enum_string.empty());
+                return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
+            }
+
+            /// 布尔型
+            constexpr ::verilator_utils::data_format::format boolean{::verilator_utils::data_format::boolean_t{}};
+        }  // namespace interface
 
         /**
          * @brief 检查数据格式是否合法
@@ -1217,6 +1220,8 @@ namespace verilator_utils
                 });
         }
     }  // namespace data_format
+
+    export using namespace ::verilator_utils::data_format::interface;
 
     namespace detail
     {

@@ -14,8 +14,6 @@ extern "C++"
 TEST_SUITE("counter")
 {
     using namespace verilator_utils;
-    using namespace verilator_utils::data_format;
-    using namespace verilator_utils::literals;
     using dut_t = unit_test_rtl_counter_verilator;
     using dut_context_t = dut_context<dut_t, VerilatedFstC>;
     namespace views = std::views;
