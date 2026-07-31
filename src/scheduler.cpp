@@ -192,6 +192,7 @@ export namespace verilator_utils
              * @return auto&& 转发的可等待体对象
              */
             template <typename promise_type, typename type>
+                requires (::std::is_final_v<promise_type>)
             auto&& await_transform(this promise_type& self, type&& awaiter)
             {
                 if constexpr(::std::derived_from<type, ::verilator_utils::detail::no_suspend_awaiter>)
@@ -1108,7 +1109,6 @@ export namespace verilator_utils
         void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
         {
             using namespace ::std::string_view_literals;
-            using namespace ::verilator_utils::literals;
             REQUIRE_MESSAGE(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
             auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
             REQUIRE_MESSAGE(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
