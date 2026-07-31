@@ -33,7 +33,7 @@ export namespace verilator_utils
          */
         struct no_suspend_awaiter : ::std::suspend_never
         {
-            inline void set_handle(this auto&& self, auto handle) noexcept(noexcept(self.set_handle_impl(handle)))
+            void set_handle(this auto&& self, auto handle) noexcept(noexcept(self.set_handle_impl(handle)))
                 requires (requires() {
                     { self.set_handle_impl(handle) } -> ::std::same_as<void>;
                 })
@@ -91,17 +91,17 @@ export namespace verilator_utils
              *
              * @return 可等待体，总是挂起协程
              */
-            inline auto initial_suspend() noexcept
+            auto initial_suspend() noexcept
             {
                 status = status_enum::initial_suspend;
 
                 struct initial_awaiter : ::std::suspend_always
                 {
-                    inline explicit initial_awaiter(status_enum& status) noexcept : ::std::suspend_always{}, status{status} {}
+                    explicit initial_awaiter(status_enum& status) noexcept : ::std::suspend_always{}, status{status} {}
 
                     status_enum& status;
 
-                    inline void await_resume() noexcept { status = status_enum::running; }
+                    void await_resume() noexcept { status = status_enum::running; }
                 };
 
                 return initial_awaiter{status};
@@ -112,21 +112,21 @@ export namespace verilator_utils
              *
              * @return 挂起协程，若存在父协程则将父协程放入就绪队列
              */
-            inline ::std::suspend_always final_suspend() noexcept;
+            ::std::suspend_always final_suspend() noexcept;
 
             /**
              * @brief 判断该协程是不是由调度器直接管理的根协程
              *
              * @return 是否为根协程
              */
-            [[nodiscard]] inline bool is_root_coroutine() const { return !is_async && parent == nullptr; }
+            [[nodiscard]] bool is_root_coroutine() const { return !is_async && parent == nullptr; }
 
             /**
              * @brief 检查任务是否绑定到调度器
              *
              * @return 已绑定则返回调度器指针，否则断言失败
              */
-            [[nodiscard]] inline ::verilator_utils::eval_scheduler* check_scheduler() const
+            [[nodiscard]] ::verilator_utils::eval_scheduler* check_scheduler() const
             {
                 using namespace ::std::string_view_literals;
                 REQUIRE_MESSAGE(scheduler != nullptr, "任务必须绑定调度器"sv);
@@ -137,7 +137,7 @@ export namespace verilator_utils
              * @brief 将协程中抛出的异常存储到异常指针中
              *
              */
-            inline void unhandled_exception() noexcept
+            void unhandled_exception() noexcept
             {
                 try
                 {
@@ -159,14 +159,14 @@ export namespace verilator_utils
              *
              * @return 是否存在未处理异常
              */
-            [[nodiscard]] inline bool with_unhandled_exception() const noexcept { return exception && !is_eval_finish_exception; }
+            [[nodiscard]] bool with_unhandled_exception() const noexcept { return exception && !is_eval_finish_exception; }
 
             /**
              * @brief 重新抛出协程中抛出的异常
              *
              * @note 若协程是通过抛出仿真结束异常结束的，则不重新抛出异常
              */
-            inline void rethrow_exception() const
+            void rethrow_exception() const
             {
                 if(with_unhandled_exception()) { ::std::rethrow_exception(exception); }
             }
@@ -178,7 +178,7 @@ export namespace verilator_utils
              */
             template <typename promise_type>
                 requires (::std::is_final_v<promise_type>)
-            inline bool is_coroutine_returned(this promise_type& self) noexcept
+            bool is_coroutine_returned(this promise_type& self) noexcept
             {
                 auto handle{::std::coroutine_handle<promise_type>::from_promise(self)};
                 return handle.done() && !self.exception;
@@ -192,7 +192,7 @@ export namespace verilator_utils
              * @return auto&& 转发的可等待体对象
              */
             template <typename promise_type, typename type>
-            inline auto&& await_transform(this promise_type& self, type&& awaiter)
+            auto&& await_transform(this promise_type& self, type&& awaiter)
             {
                 if constexpr(::std::derived_from<type, ::verilator_utils::detail::no_suspend_awaiter>)
                 {
@@ -217,14 +217,14 @@ export namespace verilator_utils
             {
                 return_type value;
 
-                constexpr inline buffer_t() noexcept {}
+                constexpr buffer_t() noexcept {}
 
-                constexpr inline ~buffer_t() noexcept {}
+                constexpr ~buffer_t() noexcept {}
 
-                constexpr inline buffer_t(const buffer_t&) noexcept = delete;
-                constexpr inline buffer_t(buffer_t&&) noexcept = delete;
-                constexpr inline buffer_t& operator= (const buffer_t&) noexcept = delete;
-                constexpr inline buffer_t& operator= (buffer_t&&) noexcept = delete;
+                constexpr buffer_t(const buffer_t&) noexcept = delete;
+                constexpr buffer_t(buffer_t&&) noexcept = delete;
+                constexpr buffer_t& operator= (const buffer_t&) noexcept = delete;
+                constexpr buffer_t& operator= (buffer_t&&) noexcept = delete;
             } buffer;
 
             /**
@@ -235,7 +235,7 @@ export namespace verilator_utils
              */
             template <typename value_type>
                 requires (::std::constructible_from<return_type, value_type &&>)
-            inline void return_value(value_type&& value) noexcept(::std::is_nothrow_constructible_v<return_type, value_type&&>)
+            void return_value(value_type&& value) noexcept(::std::is_nothrow_constructible_v<return_type, value_type&&>)
             { ::std::construct_at(::std::addressof(buffer.value), ::std::forward<value_type>(value)); }
 
             /**
@@ -244,7 +244,7 @@ export namespace verilator_utils
              * @note 必须在调用过return_value后才能调用
              * @return 返回值
              */
-            inline return_type get_return_value() noexcept(::std::is_nothrow_move_constructible_v<return_type>)
+            return_type get_return_value() noexcept(::std::is_nothrow_move_constructible_v<return_type>)
             { return ::std::move(buffer.value); }
 
             /**
@@ -252,7 +252,7 @@ export namespace verilator_utils
              *
              * @note 必须在调用过return_value后才能调用
              */
-            inline void destroy_return_value() noexcept { ::std::destroy_at(::std::addressof(buffer.value)); }
+            void destroy_return_value() noexcept { ::std::destroy_at(::std::addressof(buffer.value)); }
         };
 
         template <typename return_t>
@@ -269,7 +269,7 @@ export namespace verilator_utils
              *
              * @param ref 返回值
              */
-            inline void return_value(auto&& ref) noexcept
+            void return_value(auto&& ref) noexcept
                 requires (::std::convertible_to<decltype(ref), return_type>)
             { ptr = ::std::addressof(ref); }
 
@@ -279,14 +279,14 @@ export namespace verilator_utils
              * @note 必须在调用过return_value后才能调用
              * @return 返回值
              */
-            inline return_type get_return_value() noexcept { return *ptr; }
+            return_type get_return_value() noexcept { return *ptr; }
 
             /**
              * @brief 析构承诺体中的返回值
              *
              * @note 必须在调用过return_value后才能调用
              */
-            inline void destroy_return_value() noexcept {}
+            void destroy_return_value() noexcept {}
         };
 
         /**
@@ -302,21 +302,21 @@ export namespace verilator_utils
              * @brief 返回空值
              *
              */
-            inline static void return_void() noexcept {}
+            static void return_void() noexcept {}
 
             /**
              * @brief 从承诺体中获取返回值
              *
              * @note 必须在调用过return_value后才能调用
              */
-            inline static void get_return_value() noexcept {}
+            static void get_return_value() noexcept {}
 
             /**
              * @brief 析构承诺体中的返回值
              *
              * @note 必须在调用过return_value后才能调用
              */
-            inline void destroy_return_value() noexcept {}
+            void destroy_return_value() noexcept {}
         };
 
         template <typename promise_type>
@@ -333,7 +333,7 @@ export namespace verilator_utils
              *
              * @return 子任务是否完成
              */
-            [[nodiscard]] inline bool await_ready() const noexcept { return subhandle.done(); }
+            [[nodiscard]] bool await_ready() const noexcept { return subhandle.done(); }
 
             /**
              * @brief 挂起当前任务并跳转到子任务执行，等待子任务完成后恢复当前任务执行
@@ -341,7 +341,7 @@ export namespace verilator_utils
              * @param parent 当前任务的协程句柄
              * @return 子任务的协程句柄
              */
-            [[nodiscard]] inline handle_t await_suspend(auto parent) const noexcept
+            [[nodiscard]] handle_t await_suspend(auto parent) const noexcept
             {
                 promise.parent = parent;
                 promise.parent_promise = ::std::addressof(parent.promise());
@@ -355,7 +355,7 @@ export namespace verilator_utils
              * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
              * @throws 若子任务抛出异常，则重新抛出异常
              */
-            inline return_type await_resume();
+            return_type await_resume();
         };
     }  // namespace detail
 
@@ -395,7 +395,7 @@ export namespace verilator_utils
              * @brief 析构协程帧内储存的返回值
              *
              */
-            inline ~promise_type() noexcept
+            ~promise_type() noexcept
             {
                 if(is_coroutine_returned()) { destroy_return_value(); }
             }
@@ -405,14 +405,14 @@ export namespace verilator_utils
              *
              * @return 任务对象
              */
-            inline task get_return_object() noexcept { return task{handle_t::from_promise(*this)}; }
+            task get_return_object() noexcept { return task{handle_t::from_promise(*this)}; }
 
             /**
              * @brief 从承诺中获取协程结果
              *
              * @note 使用移动构造将结果所有权转移到外部
              */
-            [[nodiscard]] inline return_type get_result()
+            [[nodiscard]] return_type get_result()
             {
                 REQUIRE(is_coroutine_returned());
                 return get_return_value();
@@ -424,80 +424,80 @@ export namespace verilator_utils
          *
          * @param handle 协程句柄
          */
-        inline explicit task(handle_t handle) noexcept : handle{handle} {}
+        explicit task(handle_t handle) noexcept : handle{handle} {}
 
         /**
          * @brief 任务析构函数，销毁协程句柄
          *
          */
-        inline ~task() noexcept { destroy(); }
+        ~task() noexcept { destroy(); }
 
-        inline task(const task& other) noexcept = delete;
-        inline task& operator= (const task& other) noexcept = delete;
-        inline task& operator= (task&& other) noexcept = delete;
+        task(const task& other) noexcept = delete;
+        task& operator= (const task& other) noexcept = delete;
+        task& operator= (task&& other) noexcept = delete;
 
-        inline task(task&& other) noexcept : handle{::std::exchange(other.handle, nullptr)} {}
+        task(task&& other) noexcept : handle{::std::exchange(other.handle, nullptr)} {}
 
         /**
          * @brief 检查任务对象是否绑定了协程柄
          *
          * @return 是否绑定了协程柄
          */
-        inline explicit operator bool() const noexcept { return static_cast<bool>(handle); }
+        explicit operator bool() const noexcept { return static_cast<bool>(handle); }
 
         /**
          * @brief 判断任务对象是否可同步
          *
          * @return 是否可同步
          */
-        [[nodiscard]] inline bool joinable() const noexcept { return static_cast<bool>(handle); }
+        [[nodiscard]] bool joinable() const noexcept { return static_cast<bool>(handle); }
 
         /**
          * @brief 检查任务是否完成
          *
          * @return 任务是否完成
          */
-        [[nodiscard]] inline bool done() const noexcept { return handle.done(); }
+        [[nodiscard]] bool done() const noexcept { return handle.done(); }
 
         /**
          * @brief 恢复任务执行
          *
          */
-        inline void resume() noexcept { handle.resume(); }
+        void resume() noexcept { handle.resume(); }
 
         /**
          * @brief 重新抛出任务中抛出的异常
          *
          * @note 若任务是通过抛出仿真结束异常结束的，则不重新抛出异常
          */
-        inline void rethrow_exception() const { handle.promise().rethrow_exception(); }
+        void rethrow_exception() const { handle.promise().rethrow_exception(); }
 
         /**
          * @brief 分离任务的协程句柄，此后任务不再持有该句柄
          *
          * @return 任务的协程句柄
          */
-        [[nodiscard]] inline handle_t detach() noexcept { return ::std::exchange(handle, nullptr); }
+        [[nodiscard]] handle_t detach() noexcept { return ::std::exchange(handle, nullptr); }
 
         /**
          * @brief 获取任务的协程句柄
          *
          * @return 任务的协程句柄
          */
-        [[nodiscard]] inline handle_t get_handle() const noexcept { return handle; }
+        [[nodiscard]] handle_t get_handle() const noexcept { return handle; }
 
         /**
          * @brief 获取任务的promise对象
          *
          * @return 任务的promise对象引用
          */
-        [[nodiscard]] inline promise_type& get_promise() const noexcept { return handle.promise(); }
+        [[nodiscard]] promise_type& get_promise() const noexcept { return handle.promise(); }
 
         /**
          * @brief 销毁任务的协程句柄
          *
          */
-        inline void destroy() noexcept
+        void destroy() noexcept
         {
             if(handle) { ::std::exchange(handle, nullptr).destroy(); }
         }
@@ -507,7 +507,7 @@ export namespace verilator_utils
          *
          * @return 可等待体
          */
-        inline friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
+        friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
         {
             REQUIRE(subtask.joinable());
             return {subtask.handle, subtask.get_promise()};
@@ -568,7 +568,7 @@ export namespace verilator_utils
          * @param event_callback 事件回调函数
          * @param edge_to_detect 要检测的边沿
          */
-        inline edge_detector(const ::verilator_utils::is_bit_slice auto& bit, edge_enum edge_to_detect) :
+        edge_detector(const ::verilator_utils::is_bit_slice auto& bit, edge_enum edge_to_detect) :
             callback{[bit] { return static_cast<bool>(bit); }}, previous_value{static_cast<bool>(bit)},
             edge_to_detect{edge_to_detect}
         {
@@ -579,7 +579,7 @@ export namespace verilator_utils
          *
          * @return 是否出现要检测的边沿
          */
-        inline bool operator() ()
+        bool operator() ()
         {
             bool current_value{callback()};
             bool previous_value{::std::exchange(this->previous_value, current_value)};
@@ -596,7 +596,7 @@ export namespace verilator_utils
          *
          * @return 要检测的边沿类型
          */
-        [[nodiscard]] inline edge_enum get_edge_to_detect() const { return edge_to_detect; }
+        [[nodiscard]] edge_enum get_edge_to_detect() const { return edge_to_detect; }
 
         /**
          * @brief 设置要检测的边沿类型
@@ -604,8 +604,7 @@ export namespace verilator_utils
          * @param new_edge_to_detect 要检测的边沿类型
          * @return 先前设置的边沿类型
          */
-        inline edge_enum set_edge_to_detect(edge_enum new_edge_to_detect)
-        { return ::std::exchange(edge_to_detect, new_edge_to_detect); }
+        edge_enum set_edge_to_detect(edge_enum new_edge_to_detect) { return ::std::exchange(edge_to_detect, new_edge_to_detect); }
 
     private:
         ::verilator_utils::default_event_callback callback;
@@ -636,7 +635,7 @@ export namespace verilator_utils::detail
          * @param handle 未类型擦除的协程柄
          */
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline coroutine_pair(::std::coroutine_handle<promise_type> handle) noexcept :
+        coroutine_pair(::std::coroutine_handle<promise_type> handle) noexcept :
             handle{handle}, promise{::std::addressof(handle.promise())}
         {
         }
@@ -646,7 +645,7 @@ export namespace verilator_utils::detail
          *
          * @param subtask_promise 子协程承诺
          */
-        inline coroutine_pair(const ::verilator_utils::detail::promise_base& subtask_promise) noexcept :
+        coroutine_pair(const ::verilator_utils::detail::promise_base& subtask_promise) noexcept :
             handle{subtask_promise.parent}, promise{subtask_promise.parent_promise}
         {
         }
@@ -666,8 +665,7 @@ export namespace verilator_utils::detail
         ::verilator_utils::detail::coroutine_pair pair;
 
         /// 等待队列元素的比较运算符，按等待时间点进行比较
-        inline friend ::std::strong_ordering operator<=> (const wait_queue_element& self,
-                                                          const wait_queue_element& other) noexcept
+        friend ::std::strong_ordering operator<=> (const wait_queue_element& self, const wait_queue_element& other) noexcept
         { return self.target_time <=> other.target_time; }
     };
 
@@ -687,7 +685,7 @@ export namespace verilator_utils::detail
         /// 协程状态对
         ::verilator_utils::detail::coroutine_pair pair;
 
-        [[nodiscard]] inline bool is_ready() const
+        [[nodiscard]] bool is_ready() const
         {
             REQUIRE_NE(event_callback, nullptr);
             return (*event_callback)();
@@ -767,7 +765,7 @@ export namespace verilator_utils
          *
          * @param handle 协程柄
          */
-        inline static void resume_coroutine(::verilator_utils::detail::coroutine_pair pair)
+        static void resume_coroutine(::verilator_utils::detail::coroutine_pair pair)
         {
             auto [handle, promise]{pair};
             // 非根协程执行完承诺可能已销毁，需要先保存一份结果
@@ -781,7 +779,7 @@ export namespace verilator_utils
                 {
                     ::std::coroutine_handle<> handle;
 
-                    inline ~do_destroy() noexcept { handle.destroy(); }
+                    ~do_destroy() noexcept { handle.destroy(); }
                 } _{handle};
 
                 promise->rethrow_exception();
@@ -792,7 +790,7 @@ export namespace verilator_utils
          * @brief 评估等待队列，推进时间步，将就绪协程放入就绪队列
          *
          */
-        inline void wait_queue_eval()
+        void wait_queue_eval()
         {
             if(!wait_queue.empty())
             {
@@ -820,7 +818,7 @@ export namespace verilator_utils
          *
          * @return 是否有协程就绪
          */
-        inline bool event_queue_eval()
+        bool event_queue_eval()
         {
             bool any_coroutine_ready{};
             for(auto index{0zu}; index != event_queue.size();)
@@ -845,7 +843,7 @@ export namespace verilator_utils
          * @brief 评估就绪队列
          *
          */
-        inline bool ready_queue_eval()
+        bool ready_queue_eval()
         {
             bool any_coroutine_run{!ready_queue.empty()};
             auto i{0zu};
@@ -872,7 +870,7 @@ export namespace verilator_utils
          * @note 调度器会缓存time precision和time unit，因此在构造时需要确保二者已经设置
          */
         template <::std::derived_from<::VerilatedModel> dut_t>
-        inline explicit eval_scheduler(dut_t& dut) noexcept
+        explicit eval_scheduler(dut_t& dut) noexcept
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             this->dut = &dut;
@@ -904,38 +902,37 @@ export namespace verilator_utils
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
 
-        inline eval_scheduler(const eval_scheduler&) = delete;
-        inline eval_scheduler& operator= (const eval_scheduler&) = delete;
-        inline eval_scheduler(eval_scheduler&&) noexcept = default;
-        inline eval_scheduler& operator= (eval_scheduler&&) noexcept = default;
+        eval_scheduler(const eval_scheduler&) = delete;
+        eval_scheduler& operator= (const eval_scheduler&) = delete;
+        eval_scheduler(eval_scheduler&&) noexcept = default;
+        eval_scheduler& operator= (eval_scheduler&&) noexcept = default;
 
         /**
          * @brief 检查调度器是否为空
          *
          * @return 调度器是否为空
          */
-        [[nodiscard]] inline bool empty() const noexcept
-        { return wait_queue.empty() && event_queue.empty() && ready_queue.empty(); }
+        [[nodiscard]] bool empty() const noexcept { return wait_queue.empty() && event_queue.empty() && ready_queue.empty(); }
 
         /**
          * @brief 检查仿真是否结束
          *
          * @return 仿真是否结束
          */
-        [[nodiscard]] inline bool is_finish() const noexcept { return dut->contextp()->gotFinish(); }
+        [[nodiscard]] bool is_finish() const noexcept { return dut->contextp()->gotFinish(); }
 
         /**
          * @brief 标记仿真结束
          *
          */
-        inline void finish() noexcept { dut->contextp()->gotFinish(true); }
+        void finish() noexcept { dut->contextp()->gotFinish(true); }
 
         /**
          * @brief 仿真结束时抛出eval_finish_exception异常
          *
          * @throw eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
          */
-        inline void throw_if_finish() const
+        void throw_if_finish() const
         {
             if(is_finish()) { throw ::verilator_utils::eval_finish_exception{}; }
         }
@@ -947,7 +944,7 @@ export namespace verilator_utils
          * @return 待测模型对象的引用
          */
         template <::std::derived_from<::VerilatedModel> dut_t = ::VerilatedModel>
-        inline dut_t& get_dut() const noexcept
+        dut_t& get_dut() const noexcept
         { return *static_cast<dut_t*>(dut); }
 
         /**
@@ -955,14 +952,14 @@ export namespace verilator_utils
          *
          * @return 当前时间
          */
-        [[nodiscard]] inline ::std::uint64_t time_in_time_precision() const noexcept { return dut->contextp()->time(); }
+        [[nodiscard]] ::std::uint64_t time_in_time_precision() const noexcept { return dut->contextp()->time(); }
 
         /**
          * @brief 获取当前时间，单位为dut时间单位
          *
          * @return 当前时间
          */
-        [[nodiscard]] inline double time_in_time_unit() const noexcept
+        [[nodiscard]] double time_in_time_unit() const noexcept
         { return static_cast<double>(time_in_time_precision()) / time_precision_per_time_unit; }
 
         /**
@@ -970,14 +967,14 @@ export namespace verilator_utils
          *
          * @return dut时间精度
          */
-        [[nodiscard]] inline ::std::uint64_t get_time_precision_fs() const noexcept { return time_precision_fs; }
+        [[nodiscard]] ::std::uint64_t get_time_precision_fs() const noexcept { return time_precision_fs; }
 
         /**
          * @brief 获取当前时间，已根据时间单位转换为字符串格式并添加时间单位后缀
          *
          * @return 当前时间的字符串表示
          */
-        [[nodiscard]] inline ::std::string time_in_string() const
+        [[nodiscard]] ::std::string time_in_string() const
         {
             auto time_in_output_unit{static_cast<double>(time_in_time_precision()) * output_unit_per_time_precision};
             return ::std::format("{:.6g}{}", time_in_output_unit, output_unit_suffix);
@@ -987,7 +984,7 @@ export namespace verilator_utils
          * @brief 析构调度器对象
          *
          */
-        inline ~eval_scheduler() noexcept
+        ~eval_scheduler() noexcept
         {
             constexpr static auto do_destroy{
                 [](eval_scheduler& scheduler, const ::verilator_utils::detail::coroutine_pair& pair) static noexcept
@@ -1036,13 +1033,13 @@ export namespace verilator_utils
          *
          * @return eval_stage_enum 评估阶段枚举
          */
-        [[nodiscard]] inline eval_stage_enum get_eval_stage() const noexcept { return eval_stage; }
+        [[nodiscard]] eval_stage_enum get_eval_stage() const noexcept { return eval_stage; }
 
         /**
          * @brief 执行一轮评估
          *
          */
-        inline void loop_once()
+        void loop_once()
         {
             using enum eval_stage_enum;
 
@@ -1073,7 +1070,7 @@ export namespace verilator_utils
          * @brief 循环直到调度器为空或仿真结束
          *
          */
-        inline void loop_until_finish()
+        void loop_until_finish()
         {
             while(!empty() && !is_finish()) { loop_once(); }
         }
@@ -1083,7 +1080,7 @@ export namespace verilator_utils
          *
          * @note 用于在仿真开始时给信号设置初始值，只应该执行一次
          */
-        inline void initial_eval()
+        void initial_eval()
         {
             using namespace ::std::string_view_literals;
             REQUIRE_MESSAGE(eval_stage <= eval_stage_enum::after_initial_eval, "已进入仿真循环阶段，不能执行初始化"sv);
@@ -1098,8 +1095,7 @@ export namespace verilator_utils
          * @param callback 事件回调函数
          * @param pair 协程状态对
          */
-        inline void register_event(::verilator_utils::default_event_callback& callback,
-                                   ::verilator_utils::detail::coroutine_pair pair)
+        void register_event(::verilator_utils::default_event_callback& callback, ::verilator_utils::detail::coroutine_pair pair)
         { event_queue.emplace_back(&callback, pair); }
 
         /**
@@ -1109,7 +1105,7 @@ export namespace verilator_utils
          * @param time_to_wait 等待时间，单位为飞秒，不能为0
          * @param pair 协程状态对
          */
-        inline void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
+        void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
         {
             using namespace ::std::string_view_literals;
             using namespace ::verilator_utils::literals;
@@ -1124,7 +1120,7 @@ export namespace verilator_utils
          *
          * @param pair 协程状态对
          */
-        inline void register_ready(::verilator_utils::detail::coroutine_pair pair) noexcept
+        void register_ready(::verilator_utils::detail::coroutine_pair pair) noexcept
         {
             try
             {
@@ -1141,7 +1137,7 @@ export namespace verilator_utils
          *
          * @param task 要添加的任务
          */
-        inline void add_task(::verilator_utils::task<void> task) noexcept
+        void add_task(::verilator_utils::task<void> task) noexcept
         {
             // 向task中添加调度器
             task.get_promise().scheduler = this;

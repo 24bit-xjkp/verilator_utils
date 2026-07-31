@@ -52,14 +52,13 @@ export namespace verilator_utils
          * @param argc 命令行参数数量，默认为detail::argc
          * @param argv 命令行参数数组，默认为detail::argv
          */
-        inline explicit dut_context(
-            bool coverage,
-            ::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,
-            ::verilator_utils::verilator_time_unit time_precision = ::verilator_utils::verilator_time_unit::ps,
-            ::std::string_view base_name = ::std::string_view{},
-            int trace_level = 0,
-            int argc = ::verilator_utils::detail::argc,
-            const char** argv = ::verilator_utils::detail::argv) : coverage{coverage}
+        explicit dut_context(bool coverage,
+                             ::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,
+                             ::verilator_utils::verilator_time_unit time_precision = ::verilator_utils::verilator_time_unit::ps,
+                             ::std::string_view base_name = ::std::string_view{},
+                             int trace_level = 0,
+                             int argc = ::verilator_utils::detail::argc,
+                             const char** argv = ::verilator_utils::detail::argv) : coverage{coverage}
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
@@ -83,12 +82,12 @@ export namespace verilator_utils
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
 
-        inline dut_context(const dut_context&) = delete;
-        inline dut_context& operator= (const dut_context&) = delete;
-        inline dut_context(dut_context&&) noexcept = default;
-        inline dut_context& operator= (dut_context&&) noexcept = default;
+        dut_context(const dut_context&) = delete;
+        dut_context& operator= (const dut_context&) = delete;
+        dut_context(dut_context&&) noexcept = default;
+        dut_context& operator= (dut_context&&) noexcept = default;
 
-        inline ~dut_context() noexcept
+        ~dut_context() noexcept
         {
             dut->final();
             if(coverage && scheduler->get_eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
@@ -103,7 +102,7 @@ export namespace verilator_utils
          *
          * @return 子组件数量
          */
-        constexpr inline static ::std::size_t components() noexcept { return ::std::same_as<tracer_t, void> ? 3 : 4; }
+        constexpr static ::std::size_t components() noexcept { return ::std::same_as<tracer_t, void> ? 3 : 4; }
 
         /**
          * @brief 获取DUT上下文对象的子组件
@@ -113,7 +112,7 @@ export namespace verilator_utils
          */
         template <::std::size_t index>
             requires (index < components())
-        inline auto&& get() noexcept
+        auto&& get() noexcept
         {
             if constexpr(index == 0) { return *context; }
             else if constexpr(index == 1) { return *dut; }
@@ -125,7 +124,7 @@ export namespace verilator_utils
          * @brief 执行一次调度器循环，如果启用波形记录器，则记录波形
          *
          */
-        inline void loop_once()
+        void loop_once()
         {
             scheduler->loop_once();
             if constexpr(!::std::same_as<tracer_t, void>) { tracer->dump(context->time()); }
@@ -136,7 +135,7 @@ export namespace verilator_utils
          *
          * @note 会创建波形记录文件
          */
-        inline void initial_eval()
+        void initial_eval()
         {
             if constexpr(::std::same_as<tracer_t, ::VerilatedVcdC>)
             {
@@ -160,7 +159,7 @@ export namespace verilator_utils
          *
          * @return 文件基本名称
          */
-        [[nodiscard]] inline ::std::string_view get_base_name() const noexcept { return file_base_name; }
+        [[nodiscard]] ::std::string_view get_base_name() const noexcept { return file_base_name; }
 
         /**
          * @brief 设置生成文件的基本名称，不带后缀名
@@ -168,7 +167,7 @@ export namespace verilator_utils
          * @note 由于initial_eval会创建记录文件，因此必须在initial_eval前设置
          * @param base_name 文件基本名称
          */
-        inline void set_base_name(::std::string_view base_name)
+        void set_base_name(::std::string_view base_name)
         {
             REQUIRE_EQ(scheduler->get_eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin);
             file_base_name = base_name;
@@ -179,21 +178,21 @@ export namespace verilator_utils
          *
          * @return 覆盖率记录是否启用
          */
-        [[nodiscard]] inline bool is_coverage_enabled() const noexcept { return coverage; }
+        [[nodiscard]] bool is_coverage_enabled() const noexcept { return coverage; }
 
         /**
          * @brief 设置覆盖率记录是否启用
          *
          * @param enable_coverage 覆盖率记录是否启用
          */
-        inline void set_coverage_status(bool enable_coverage) noexcept { coverage = enable_coverage; }
+        void set_coverage_status(bool enable_coverage) noexcept { coverage = enable_coverage; }
 
         /**
          * @brief 执行初始化循环，然后执行调度器循环直到调度器队列为空或者仿真结束，如果启用波形记录器，则记录波形
          *
          * @note 会创建波形记录文件
          */
-        inline void loop_until_finish()
+        void loop_until_finish()
         {
             initial_eval();
             while(!scheduler->empty() && !scheduler->is_finish()) { loop_once(); }
@@ -205,7 +204,7 @@ export namespace verilator_utils
          * @param task 要添加的任务
          * @note 相当于在绑定的调度器对象scheduler上调用add_task
          */
-        inline void add_task(::verilator_utils::task<void> task) noexcept { scheduler->add_task(::std::move(task)); }
+        void add_task(::verilator_utils::task<void> task) noexcept { scheduler->add_task(::std::move(task)); }
     };
 }  // namespace verilator_utils
 

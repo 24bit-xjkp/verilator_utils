@@ -29,7 +29,7 @@ export namespace verilator_utils
     {
     private:
         /// 是否为Verilator宽数据类型
-        constexpr inline static bool is_vl_wide{::VlIsVlWide<type>::value};
+        constexpr static bool is_vl_wide{::VlIsVlWide<type>::value};
         using to_verilator_t = ::std::conditional_t<is_vl_wide, const type&, ::std::uint64_t>;
         using set_value_t = ::std::conditional_t<is_vl_wide, const type&, type>;
 
@@ -43,42 +43,41 @@ export namespace verilator_utils
          * @param width 数据宽度
          * @param format 数据格式
          */
-        constexpr inline format_wrapper(type value,
-                                        ::std::size_t width,
-                                        ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
+        constexpr format_wrapper(type value,
+                                 ::std::size_t width,
+                                 ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             underlying_value{value}, data_width{width}, data_format{::std::move(format)}
         {
             check_format();
             check_value();
         }
 
-        constexpr inline format_wrapper(const format_wrapper&) noexcept = default;
-        constexpr inline format_wrapper& operator= (const format_wrapper&) noexcept = default;
-        constexpr inline format_wrapper(format_wrapper&&) noexcept = default;
-        constexpr inline format_wrapper& operator= (format_wrapper&&) noexcept = default;
-        constexpr inline ~format_wrapper() noexcept = default;
+        constexpr format_wrapper(const format_wrapper&) noexcept = default;
+        constexpr format_wrapper& operator= (const format_wrapper&) noexcept = default;
+        constexpr format_wrapper(format_wrapper&&) noexcept = default;
+        constexpr format_wrapper& operator= (format_wrapper&&) noexcept = default;
+        constexpr ~format_wrapper() noexcept = default;
 
         /**
          * @brief 获取数据
          *
          * @return 数据引用
          */
-        [[nodiscard]] constexpr inline const type& value() const noexcept { return underlying_value; }
+        [[nodiscard]] constexpr const type& value() const noexcept { return underlying_value; }
 
         /**
          * @brief 获取位宽
          *
          * @return 数据位宽
          */
-        [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return data_width; }
+        [[nodiscard]] constexpr ::std::size_t width() const noexcept { return data_width; }
 
         /**
          * @brief 获取数据格式
          *
          * @return 数据格式
          */
-        [[nodiscard]] constexpr inline const ::verilator_utils::data_format::format& format() const noexcept
-        { return data_format; }
+        [[nodiscard]] constexpr const ::verilator_utils::data_format::format& format() const noexcept { return data_format; }
 
         /**
          * @brief 设置数据
@@ -86,7 +85,7 @@ export namespace verilator_utils
          * @param value 要设置的数据
          * @return 格式包装器引用
          */
-        constexpr inline format_wrapper& operator= (set_value_t value)
+        constexpr format_wrapper& operator= (set_value_t value)
         {
             underlying_value = value;
             check_value();
@@ -98,7 +97,7 @@ export namespace verilator_utils
          *
          * @return 打包储存的数据，当type为VlWide时返回VlWide，其他时候返回std::uint64_t
          */
-        constexpr inline to_verilator_t to_verilator() const noexcept
+        constexpr to_verilator_t to_verilator() const noexcept
         {
             if constexpr(is_vl_wide) { return underlying_value; }
             else
@@ -131,7 +130,7 @@ export namespace verilator_utils
          * @return 格式化后缓冲区迭代器
          */
         template <typename iter_t>
-        inline iter_t format_to(iter_t iter) const
+        iter_t format_to(iter_t iter) const
         {
             return data_format.visit(
                 [this, iter]<typename format_t>(const format_t& format) -> iter_t
@@ -157,7 +156,7 @@ export namespace verilator_utils
          *
          * @return 字符串表示
          */
-        [[nodiscard]] inline ::std::string to_string() const
+        [[nodiscard]] ::std::string to_string() const
         {
             ::std::string result{};
             // 0b和0x前缀的长度
@@ -187,7 +186,7 @@ export namespace verilator_utils
          * @brief 检查格式是否合法
          *
          */
-        constexpr inline void check_format()
+        constexpr void check_format()
         {
             using namespace ::std::string_view_literals;
 
@@ -306,7 +305,7 @@ export namespace verilator_utils
          * @brief 检查数据是否合法
          *
          */
-        constexpr inline void check_value()
+        constexpr void check_value()
         {
             using namespace ::std::string_view_literals;
 
@@ -422,9 +421,9 @@ export namespace verilator_utils
          * @param index 位索引
          * @param format 数据格式，只影响格式化输出，支持十六进制、二进制、十进制无符号、枚举和布尔型
          */
-        inline explicit bit_slice(value_type& data,
-                                  ::std::size_t index = 0,
-                                  ::verilator_utils::data_format::format format = ::verilator_utils::data_format::dec_unsigned) :
+        explicit bit_slice(value_type& data,
+                           ::std::size_t index = 0,
+                           ::verilator_utils::data_format::format format = ::verilator_utils::data_format::dec_unsigned) :
             data{data}, index{index}, data_format{::std::move(format)}
         { check_format(); }
 
@@ -434,7 +433,7 @@ export namespace verilator_utils
          * @param value 要赋值的值
          * @return bool_wrapper& 赋值后对象的引用
          */
-        inline bit_slice& operator= (::std::uint64_t value)
+        bit_slice& operator= (::std::uint64_t value)
         {
             REQUIRE_MESSAGE(value <= 1, "位包装器只能赋值0或1");
             if constexpr(is_vl_wide)
@@ -457,7 +456,7 @@ export namespace verilator_utils
          *
          * @return 转换后的整数值
          */
-        inline operator ::std::uint64_t () const noexcept // NOLINT(*-explicit-constructor)
+        operator ::std::uint64_t () const noexcept  // NOLINT(*-explicit-constructor)
         {
             if constexpr(is_vl_wide)
             {
@@ -481,7 +480,7 @@ export namespace verilator_utils
          */
         template <typename underlying_type>
             requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
-        inline bit_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
+        bit_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
             REQUIRE_EQ(value.width(), 1);
             return *this = value.to_verilator();
@@ -495,7 +494,7 @@ export namespace verilator_utils
          */
         template <typename underlying_type>
             requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
-        inline friend bool operator== (const bit_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
+        friend bool operator== (const bit_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
             REQUIRE_EQ(value.width(), 1);
             return static_cast<::std::uint64_t>(self) == value.to_verilator();
@@ -506,14 +505,14 @@ export namespace verilator_utils
          *
          * @return std::size_t 位宽
          */
-        [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return 1; }
+        [[nodiscard]] constexpr ::std::size_t width() const noexcept { return 1; }
 
         /**
          * @brief 获取数据类型
          *
          * @return 数据类型
          */
-        [[nodiscard]] inline ::verilator_utils::data_format::format format() const noexcept { return data_format; }
+        [[nodiscard]] ::verilator_utils::data_format::format format() const noexcept { return data_format; }
 
         /**
          * @brief 将数据包装器格式化输出到缓冲区上
@@ -523,7 +522,7 @@ export namespace verilator_utils
          * @return 格式化后缓冲区迭代器
          */
         template <typename iter_t>
-        inline iter_t format_to(iter_t iter) const
+        iter_t format_to(iter_t iter) const
         {
             return data_format.visit(
                 [this, iter]<typename format_t>(const format_t& format) -> iter_t
@@ -553,7 +552,7 @@ export namespace verilator_utils
          *
          * @return 字符串表示
          */
-        [[nodiscard]] inline ::std::string to_string() const
+        [[nodiscard]] ::std::string to_string() const
         {
             // 格式化输出字符较少，一般小于sso容量，因此不进行预留
             ::std::string result{};
@@ -569,12 +568,12 @@ export namespace verilator_utils
         /// 数据格式
         ::verilator_utils::data_format::format data_format;
         /// 每个字的位宽
-        constexpr inline static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
+        constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
         /// 是否为Verilator宽数据类型
-        constexpr inline static bool is_vl_wide{::VlIsVlWide<value_type>::value};
-        constexpr inline static auto hex_index{
+        constexpr static bool is_vl_wide{::VlIsVlWide<value_type>::value};
+        constexpr static auto hex_index{
             ::verilator_utils::variant_type_index<::verilator_utils::data_format::hex_t, ::verilator_utils::data_format::format>};
-        constexpr inline static auto dec_unsigned_index{
+        constexpr static auto dec_unsigned_index{
             ::verilator_utils::variant_type_index<::verilator_utils::data_format::dec_unsigned_t,
                                                   ::verilator_utils::data_format::format>};
 
@@ -582,7 +581,7 @@ export namespace verilator_utils
          * @brief 检查格式是否合法
          *
          */
-        inline void check_format() const
+        void check_format() const
         {
             using namespace ::std::string_view_literals;
             REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::std::monostate>(data_format), "必须设定数据格式"sv);
@@ -606,7 +605,7 @@ export namespace verilator_utils
 
     private:
         /// 是否为Verilator宽数据类型
-        constexpr inline static bool is_vl_wide{::VlIsVlWide<value_type>::value};
+        constexpr static bool is_vl_wide{::VlIsVlWide<value_type>::value};
 
     public:
         /// 可转换的目标类型
@@ -622,10 +621,10 @@ export namespace verilator_utils
          * @param right_bound_index 索引下界
          * @param format 数据格式
          */
-        inline explicit vector_slice(value_type& data,
-                                     ::std::size_t left_bound_index,
-                                     ::std::size_t right_bound_index,
-                                     ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
+        explicit vector_slice(value_type& data,
+                              ::std::size_t left_bound_index,
+                              ::std::size_t right_bound_index,
+                              ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}, data_format{::std::move(format)}
         {
             REQUIRE_GE(left_bound, right_bound);
@@ -639,33 +638,33 @@ export namespace verilator_utils
          * @param width 宽度
          * @param format 数据格式
          */
-        inline explicit vector_slice(value_type& data,
-                                     ::std::size_t width,
-                                     ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
+        explicit vector_slice(value_type& data,
+                              ::std::size_t width,
+                              ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             data{data}, left_bound{width - 1}, right_bound{0}, data_format{::std::move(format)}
         {
             REQUIRE_NE(width, 0);
             ::verilator_utils::data_format::check_format(data_format, width);
         }
 
-        inline vector_slice(const vector_slice&) = default;
-        inline vector_slice(vector_slice&&) = default;
-        inline vector_slice& operator= (vector_slice&&) = default;
-        inline ~vector_slice() = default;
+        vector_slice(const vector_slice&) = default;
+        vector_slice(vector_slice&&) = default;
+        vector_slice& operator= (vector_slice&&) = default;
+        ~vector_slice() = default;
 
         /**
          * @brief 获取位宽
          *
          * @return 位宽
          */
-        [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return left_bound - right_bound + 1; }
+        [[nodiscard]] constexpr ::std::size_t width() const noexcept { return left_bound - right_bound + 1; }
 
         /**
          * @brief 获取数据类型
          *
          * @return 数据类型
          */
-        [[nodiscard]] constexpr inline ::verilator_utils::data_format::format format() const noexcept { return data_format; }
+        [[nodiscard]] constexpr ::verilator_utils::data_format::format format() const noexcept { return data_format; }
 
         /**
          * @brief 下标运算符，用于访问向量切片的指定位
@@ -673,7 +672,7 @@ export namespace verilator_utils
          * @param index 索引值
          * @return bit_slice 对应位的包装对象
          */
-        inline bit_slice<type> operator[] (::std::size_t index) const noexcept
+        bit_slice<type> operator[] (::std::size_t index) const noexcept
         {
             REQUIRE_LE(index, width() - 1);
             return bit_slice<type>{data, index + right_bound};
@@ -687,7 +686,7 @@ export namespace verilator_utils
          * @param format 数据格式，为std::monostate表示使用当前对象的数据格式
          * @return 向量切片的包装对象
          */
-        inline vector_slice operator[] (
+        vector_slice operator[] (
             ::std::size_t left_bound_index,
             ::std::size_t right_bound_index,
             const ::verilator_utils::data_format::format& format = ::verilator_utils::data_format::format{}) const noexcept
@@ -715,7 +714,7 @@ export namespace verilator_utils
          *
          * @return 向量切片的对应的值
          */
-        inline operator cast_type() const noexcept // NOLINT(*-explicit-constructor)
+        operator cast_type() const noexcept  // NOLINT(*-explicit-constructor)
         {
             if constexpr(is_vl_wide)
             {
@@ -750,7 +749,7 @@ export namespace verilator_utils
          * @param value 要赋值的值
          * @return 赋值后对象的引用
          */
-        inline vector_slice& operator= (::std::uint64_t value)
+        vector_slice& operator= (::std::uint64_t value)
         {
             REQUIRE_GE(64, width());
             auto width_is_enough{width() == 64 || (value >> width()) == 0};
@@ -776,7 +775,7 @@ export namespace verilator_utils
          * @param other 要赋值的值
          * @return 赋值后对象的引用
          */
-        inline vector_slice& operator= (const vector_slice& other)
+        vector_slice& operator= (const vector_slice& other)
         {
             REQUIRE_EQ(width(), other.width());
             auto aligned_value{static_cast<cast_type>(other)};
@@ -797,7 +796,7 @@ export namespace verilator_utils
          */
         template <::verilator_utils::is_format_wrapper_data_type underlying_type>
             requires (is_vl_wide || !::VlIsVlWide<underlying_type>::value)
-        inline vector_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
+        vector_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
             REQUIRE_EQ(width(), value.width());
             return *this = value.to_verilator();
@@ -809,7 +808,7 @@ export namespace verilator_utils
          * @param value 要比较的值
          * @return 是否相等
          */
-        inline friend bool operator== (const vector_slice& self, ::std::uint64_t value)
+        friend bool operator== (const vector_slice& self, ::std::uint64_t value)
         {
             REQUIRE_GE(64, self.width());
             auto width_is_enough{self.width() == 64 || (value >> self.width()) == 0};
@@ -828,7 +827,7 @@ export namespace verilator_utils
          * @param value 要比较的值
          * @return 是否相等
          */
-        inline friend bool operator== (const vector_slice& self, const type& value)
+        friend bool operator== (const vector_slice& self, const type& value)
             requires (is_vl_wide)
         {
             auto temp{static_cast<cast_type>(self)};
@@ -844,7 +843,7 @@ export namespace verilator_utils
          * @return 是否相等
          */
         template <::verilator_utils::is_format_wrapper_data_type underlying_type>
-        inline friend bool operator== (const vector_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
+        friend bool operator== (const vector_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
         { return self == value.to_verilator(); }
 
         /**
@@ -855,7 +854,7 @@ export namespace verilator_utils
          */
         template <::verilator_utils::is_cpp_underlying_type underlying_type>
             requires (!::std::same_as<bool, underlying_type>)
-        inline friend ::std::partial_ordering operator<=> (const vector_slice& self, underlying_type value)
+        friend ::std::partial_ordering operator<=> (const vector_slice& self, underlying_type value)
         {
             using namespace ::std::string_view_literals;
             constexpr static auto bin_index{2zu};
@@ -875,8 +874,8 @@ export namespace verilator_utils
          */
         template <::verilator_utils::is_cpp_underlying_type underlying_type>
             requires (!::std::same_as<bool, underlying_type>)
-        inline friend ::std::partial_ordering operator<=> (const vector_slice& self,
-                                                           const ::verilator_utils::format_wrapper<underlying_type>& value)
+        friend ::std::partial_ordering operator<=> (const vector_slice& self,
+                                                    const ::verilator_utils::format_wrapper<underlying_type>& value)
         { return self <=> value.value(); }
 
         /**
@@ -885,7 +884,7 @@ export namespace verilator_utils
          * @param value 要比较的值
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
          */
-        inline friend ::std::partial_ordering operator<=> (const vector_slice& self, const vector_slice& other)
+        friend ::std::partial_ordering operator<=> (const vector_slice& self, const vector_slice& other)
         {
             using namespace ::std::string_view_literals;
             constexpr static auto bin_index{2zu};
@@ -912,7 +911,7 @@ export namespace verilator_utils
          * @return 赋值后对象的引用
          */
         template <::verilator_utils::is_verilator_data_type other_type>
-        inline vector_slice& operator= (const ::verilator_utils::vector_slice<other_type>& other)
+        vector_slice& operator= (const ::verilator_utils::vector_slice<other_type>& other)
         {
             REQUIRE_EQ(width(), other.width());
             auto aligned_value{static_cast<::verilator_utils::vector_slice<other_type>::cast_type>(other)};
@@ -945,7 +944,7 @@ export namespace verilator_utils
             return *this;
         }
 
-        inline vector_slice& operator= (const value_type& value)
+        vector_slice& operator= (const value_type& value)
             requires (is_vl_wide)
         {
             assign_aligned_value(value);
@@ -960,7 +959,7 @@ export namespace verilator_utils
          * @return 是否相等
          */
         template <::verilator_utils::is_verilator_data_type other_type>
-        inline friend bool operator== (const vector_slice& self, const ::verilator_utils::vector_slice<other_type>& other)
+        friend bool operator== (const vector_slice& self, const ::verilator_utils::vector_slice<other_type>& other)
         {
             REQUIRE_EQ(self.width(), other.width());
             auto aligned_other{static_cast<::verilator_utils::vector_slice<other_type>::cast_type>(other)};
@@ -997,7 +996,7 @@ export namespace verilator_utils
          * @param format 数据类型
          * @return 新切片对象
          */
-        inline vector_slice convert(::verilator_utils::data_format::format format)
+        vector_slice convert(::verilator_utils::data_format::format format)
         {
             ::verilator_utils::data_format::check_format(data_format, width());
             return vector_slice{data, left_bound, right_bound, format};
@@ -1008,7 +1007,7 @@ export namespace verilator_utils
          * 整数转化为std::uint64_t，浮点数按格式转化为float或double，定点数转化为double
          * @return C++基础数据类型
          */
-        [[nodiscard]] inline underlying_type to_underlying() const
+        [[nodiscard]] underlying_type to_underlying() const
         {
             REQUIRE_GE(64, width());
             ::std::uint64_t aligned_value{};
@@ -1046,7 +1045,7 @@ export namespace verilator_utils
          * @note 对于枚举等有效值范围可能小于取值范围的格式进行检查，否则总是返回true
          * @return 向量切片的值是否有效
          */
-        [[nodiscard]] inline bool is_valid() const noexcept
+        [[nodiscard]] bool is_valid() const noexcept
         {
             return data_format.visit(
                 [this]<typename format_t>(const format_t& format) noexcept -> bool
@@ -1071,7 +1070,7 @@ export namespace verilator_utils
          * @return 格式化后缓冲区迭代器
          */
         template <typename iter_t>
-        inline iter_t format_to(iter_t iter) const
+        iter_t format_to(iter_t iter) const
         {
             return data_format.visit(
                 [this, iter]<typename format_t>(const format_t& format) -> iter_t
@@ -1100,7 +1099,7 @@ export namespace verilator_utils
          *
          * @return 字符串表示
          */
-        [[nodiscard]] inline ::std::string to_string() const
+        [[nodiscard]] ::std::string to_string() const
         {
             ::std::string result{};
             // 0b和0x前缀的长度
@@ -1123,7 +1122,7 @@ export namespace verilator_utils
 
     private:
         template <::verilator_utils::is_cpp_underlying_type left_type, ::verilator_utils::is_cpp_underlying_type right_type>
-        constexpr inline static ::std::partial_ordering three_way_compare_underlying(left_type left, right_type right) noexcept
+        static ::std::partial_ordering three_way_compare_underlying(left_type left, right_type right) noexcept
         {
             // bool不支持三路比较
             if constexpr(::std::same_as<bool, left_type> || ::std::same_as<bool, right_type>)
@@ -1144,7 +1143,7 @@ export namespace verilator_utils
         }
 
         /// 每个字的位宽
-        constexpr inline static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
+        constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
         /// 数据引用
         value_type& data;
         /// 左边界索引
@@ -1154,21 +1153,21 @@ export namespace verilator_utils
         /// 数据类型
         ::verilator_utils::data_format::format data_format;
 
-        constexpr inline static ::std::uint64_t scalar_mask(::std::size_t width, ::std::size_t right_bound) noexcept
+        constexpr static ::std::uint64_t scalar_mask(::std::size_t width, ::std::size_t right_bound) noexcept
         {
             auto lower_mask{width == 64 ? ::std::numeric_limits<::std::uint64_t>::max() : (::std::uint64_t{1} << width) - 1u};
             return lower_mask << right_bound;
         }
 
         template <typename wide_type>
-        constexpr inline static ::std::uint64_t wide_to_uint64(const wide_type& value) noexcept
+        constexpr static ::std::uint64_t wide_to_uint64(const wide_type& value) noexcept
         {
             ::std::uint64_t result{value.at(0)};
             if constexpr(wide_type::Words > 1) { result |= static_cast<::std::uint64_t>(value.at(1)) << word_width; }
             return result;
         }
 
-        inline void assign_aligned_value(const value_type& aligned_value) noexcept
+        void assign_aligned_value(const value_type& aligned_value) noexcept
             requires (is_vl_wide)
         {
             auto words{(width() + word_width - 1u) / word_width};
@@ -1220,28 +1219,28 @@ export namespace verilator_utils
          *
          * @return std::size_t 数组元素个数
          */
-        constexpr inline static ::std::size_t size() noexcept { return n; }
+        constexpr static ::std::size_t size() noexcept { return n; }
 
         /**
          * @brief 获取元素的切片宽度
          *
          * @return std::size_t 元素的切片宽度
          */
-        [[nodiscard]] inline ::std::size_t width() const noexcept { return data.front().width(); }
+        [[nodiscard]] ::std::size_t width() const noexcept { return data.front().width(); }
 
         /**
          * @brief 获取数据类型
          *
          * @return 数据类型
          */
-        [[nodiscard]] inline ::verilator_utils::data_format::format format() const noexcept { return data.front().format(); }
+        [[nodiscard]] ::verilator_utils::data_format::format format() const noexcept { return data.front().format(); }
 
     private:
         template <::std::size_t... indexes>
-        explicit inline unpacked_array(unpacked_array_type& data,
-                                       ::std::size_t width,
-                                       ::verilator_utils::data_format::format format,
-                                       ::std::index_sequence<indexes...> /* unused */) :
+        explicit unpacked_array(unpacked_array_type& data,
+                                ::std::size_t width,
+                                ::verilator_utils::data_format::format format,
+                                ::std::index_sequence<indexes...> /* unused */) :
             // clang-format off
             data{actual_value_type{data.m_storage[indexes], width, format}...}
         // clang-format on
@@ -1260,17 +1259,17 @@ export namespace verilator_utils
          * @param width 元素的切片宽度
          * @param format 数据类型
          */
-        explicit inline unpacked_array(unpacked_array_type& data,
-                                       ::std::size_t width,
-                                       ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
+        explicit unpacked_array(unpacked_array_type& data,
+                                ::std::size_t width,
+                                ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             unpacked_array{data, width, format, ::std::make_index_sequence<n>{}}
         {
         }
 
-        inline unpacked_array(const unpacked_array&) = default;
-        inline unpacked_array(unpacked_array&&) = default;
-        inline unpacked_array& operator= (unpacked_array&&) = default;
-        inline ~unpacked_array() = default;
+        unpacked_array(const unpacked_array&) = default;
+        unpacked_array(unpacked_array&&) = default;
+        unpacked_array& operator= (unpacked_array&&) = default;
+        ~unpacked_array() = default;
 
         /**
          * @brief 获取数组中的元素
@@ -1285,17 +1284,17 @@ export namespace verilator_utils
          *
          * @return std::span 视图
          */
-        inline auto span(this auto&& self) noexcept { return ::std::span{self.data}; }
+        auto span(this auto&& self) noexcept { return ::std::span{self.data}; }
 
         template <typename span_value_type>
             requires (::std::is_assignable_v<actual_value_type, span_value_type>)
-        inline unpacked_array& operator= (::std::span<span_value_type, n> value)
+        unpacked_array& operator= (::std::span<span_value_type, n> value)
         {
             ::std::ranges::copy(value, data.begin());
             return *this;
         }
 
-        inline unpacked_array& operator= (const unpacked_array& other)
+        unpacked_array& operator= (const unpacked_array& other)
         {
             REQUIRE_EQ(width(), other.width());
             ::std::ranges::copy(other.data, data.begin());
@@ -1303,10 +1302,10 @@ export namespace verilator_utils
         }
 
         template <::std::equality_comparable_with<actual_value_type> span_value_type>
-        inline bool operator== (::std::span<span_value_type, n> value) const
+        bool operator== (::std::span<span_value_type, n> value) const
         { return ::std::ranges::equal(data, value); }
 
-        inline bool operator== (const unpacked_array& other) const
+        bool operator== (const unpacked_array& other) const
         {
             REQUIRE_EQ(width(), other.width());
             return data == other.data;
@@ -1320,7 +1319,7 @@ export namespace verilator_utils
          * @return 格式化后缓冲区迭代器
          */
         template <typename iter_t>
-        inline iter_t format_to(iter_t iter) const
+        iter_t format_to(iter_t iter) const
         { return ::std::format_to(iter, "{}", data); }
 
         /**
@@ -1328,7 +1327,7 @@ export namespace verilator_utils
          *
          * @return 字符串表示
          */
-        [[nodiscard]] inline ::std::string to_string() const
+        [[nodiscard]] ::std::string to_string() const
         {
             ::std::string result{};
             format_to(::std::back_inserter(result));
@@ -1345,7 +1344,7 @@ export namespace verilator_utils
      * @return 一维数组返回unpacked_array，多维数组返回嵌套std::array
      */
     template <::verilator_utils::is_verilator_unpacked_array_type type>
-    inline auto make_unpacked_array(type& data, ::std::size_t width)
+    auto make_unpacked_array(type& data, ::std::size_t width)
     {
         using traits = ::verilator_utils::verilator_unpacked_array_type_traits<type>;
         using value_type = traits::value_type;
@@ -1366,22 +1365,22 @@ export namespace verilator_utils
 namespace verilator_utils::detail
 {
     template <typename type>
-    constexpr inline bool is_bit_slice_impl{false};
+    constexpr bool is_bit_slice_impl{false};
 
     template <::verilator_utils::is_verilator_data_type type>
-    constexpr inline bool is_bit_slice_impl<::verilator_utils::bit_slice<type>>{true};
+    constexpr bool is_bit_slice_impl<::verilator_utils::bit_slice<type>>{true};
 
     template <typename type>
-    constexpr inline bool is_vector_slice_impl{false};
+    constexpr bool is_vector_slice_impl{false};
 
     template <::verilator_utils::is_verilator_data_type type>
-    constexpr inline bool is_vector_slice_impl<::verilator_utils::vector_slice<type>>{true};
+    constexpr bool is_vector_slice_impl<::verilator_utils::vector_slice<type>>{true};
 
     template <typename type>
-    constexpr inline bool is_unpacked_array_impl{false};
+    constexpr bool is_unpacked_array_impl{false};
 
     template <typename type, ::std::size_t n>
-    constexpr inline bool is_unpacked_array_impl<::verilator_utils::unpacked_array<type, n>>{true};
+    constexpr bool is_unpacked_array_impl<::verilator_utils::unpacked_array<type, n>>{true};
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
@@ -1416,44 +1415,44 @@ export namespace std
     template <::verilator_utils::is_verilator_data_type value_type>
     struct formatter<::verilator_utils::bit_slice<value_type>>
     {
-        constexpr inline static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
 
         template <typename iter_t, typename char_t>
-        inline static auto format(const ::verilator_utils::bit_slice<value_type>& value,
-                                  ::std::basic_format_context<iter_t, char_t>& ctx)
+        static auto format(const ::verilator_utils::bit_slice<value_type>& value,
+                           ::std::basic_format_context<iter_t, char_t>& ctx)
         { return value.format_to(ctx.out()); }
     };
 
     template <::verilator_utils::is_verilator_data_type value_type>
     struct formatter<::verilator_utils::vector_slice<value_type>>
     {
-        constexpr inline static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
 
         template <typename iter_t, typename char_t>
-        inline static auto format(const ::verilator_utils::vector_slice<value_type>& value,
-                                  ::std::basic_format_context<iter_t, char_t>& ctx)
+        static auto format(const ::verilator_utils::vector_slice<value_type>& value,
+                           ::std::basic_format_context<iter_t, char_t>& ctx)
         { return value.format_to(ctx.out()); }
     };
 
     template <typename type, ::std::size_t n>
     struct formatter<::verilator_utils::unpacked_array<type, n>>
     {
-        constexpr inline static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
 
         template <typename iter_t, typename char_t>
-        inline static auto format(const ::verilator_utils::unpacked_array<type, n>& value,
-                                  ::std::basic_format_context<iter_t, char_t>& ctx)
+        static auto format(const ::verilator_utils::unpacked_array<type, n>& value,
+                           ::std::basic_format_context<iter_t, char_t>& ctx)
         { return value.format_to(ctx.out()); }
     };
 
     template <::verilator_utils::is_format_wrapper_data_type value_type>
     struct formatter<::verilator_utils::format_wrapper<value_type>>
     {
-        constexpr inline static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
 
         template <typename iter_t, typename char_t>
-        inline static auto format(const ::verilator_utils::format_wrapper<value_type>& value,
-                                  ::std::basic_format_context<iter_t, char_t>& ctx)
+        static auto format(const ::verilator_utils::format_wrapper<value_type>& value,
+                           ::std::basic_format_context<iter_t, char_t>& ctx)
         { return value.format_to(ctx.out()); }
     };
 }  // namespace std

@@ -5,7 +5,7 @@ if get_config("use_sanitizer") then
 end
 
 target("unit_test")
-    add_deps("verilator_utils")
+    add_deps("verilator_utils_full")
     set_default(false)
     local regex = "*.cpp|rtl_*.cpp|main.cpp"
     add_files(regex)
@@ -13,7 +13,6 @@ target("unit_test")
         local name = path.basename(file)
         add_tests(name, {runargs = {"-ts=verilator_utils/" .. name}})
     end
-    add_files("main.cpp")
     after_load(function (target)
         local verilator_root = target:pkgenvs()["VERILATOR_ROOT"];
         target:add("files", path.join(verilator_root, "include", "verilated.cpp"), {warnings = "none"})

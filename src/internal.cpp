@@ -13,7 +13,7 @@ namespace verilator_utils
          * @return type是否在types...中出现一次
          */
         template <typename type, typename... types>
-        inline consteval bool find_once_in_types() noexcept
+        consteval bool find_once_in_types() noexcept
         {
             return []<::std::size_t... indexes>(::std::index_sequence<indexes...> /* unused */) static consteval noexcept
             {
@@ -22,10 +22,10 @@ namespace verilator_utils
         }
 
         template <typename type>
-        constexpr inline bool is_variant_impl{};
+        constexpr bool is_variant_impl{};
 
         template <typename... types>
-        constexpr inline bool is_variant_impl<::std::variant<types...>>{true};
+        constexpr bool is_variant_impl<::std::variant<types...>>{true};
 
         template <typename type, typename type2>
         struct variant_index_impl
@@ -68,5 +68,5 @@ namespace verilator_utils
      * @tparam type在std::variant模板参数包中的索引
      */
     template <typename type, ::verilator_utils::is_variant variant>
-    constexpr inline ::std::size_t variant_type_index{::verilator_utils::detail::variant_index_impl<type, variant>::value};
+    constexpr ::std::size_t variant_type_index{::verilator_utils::detail::variant_index_impl<type, variant>::value};
 }  // namespace verilator_utils

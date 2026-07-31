@@ -56,14 +56,14 @@ export namespace verilator_utils
          *
          * @param rep 飞秒数
          */
-        constexpr inline explicit femtosecond_t(::std::uint64_t rep) noexcept : rep{rep} {}
+        constexpr explicit femtosecond_t(::std::uint64_t rep) noexcept : rep{rep} {}
 
         /**
          * @brief 类型转换运算符，将飞秒时间对象转换为std::uint64_t
          *
          * @return std::uint64_t 飞秒数
          */
-        constexpr inline explicit operator ::std::uint64_t () const noexcept { return rep; }
+        constexpr explicit operator ::std::uint64_t () const noexcept { return rep; }
 
         /**
          * @brief 加法运算
@@ -72,7 +72,7 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 加法结果
          */
-        constexpr inline friend femtosecond_t operator+ (femtosecond_t lhs, femtosecond_t rhs) noexcept
+        constexpr friend femtosecond_t operator+ (femtosecond_t lhs, femtosecond_t rhs) noexcept
         { return femtosecond_t{lhs.rep + rhs.rep}; }
 
         /**
@@ -82,7 +82,7 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 减法结果
          */
-        constexpr inline friend femtosecond_t operator- (femtosecond_t lhs, femtosecond_t rhs) noexcept
+        constexpr friend femtosecond_t operator- (femtosecond_t lhs, femtosecond_t rhs) noexcept
         { return femtosecond_t{lhs.rep - rhs.rep}; }
 
         /**
@@ -92,7 +92,7 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 乘法结果
          */
-        constexpr inline friend femtosecond_t operator* (femtosecond_t lhs, ::std::uint64_t rhs) noexcept
+        constexpr friend femtosecond_t operator* (femtosecond_t lhs, ::std::uint64_t rhs) noexcept
         { return femtosecond_t{lhs.rep * rhs}; }
 
         /**
@@ -102,7 +102,7 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 乘法结果
          */
-        constexpr inline friend femtosecond_t operator* (femtosecond_t lhs, double rhs) noexcept
+        constexpr friend femtosecond_t operator* (femtosecond_t lhs, double rhs) noexcept
         { return femtosecond_t{static_cast<::std::uint64_t>(static_cast<double>(lhs.rep) * rhs)}; }
 
         /**
@@ -112,7 +112,7 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 除法结果
          */
-        constexpr inline friend femtosecond_t operator/ (femtosecond_t lhs, ::std::uint64_t rhs) noexcept
+        constexpr friend femtosecond_t operator/ (femtosecond_t lhs, ::std::uint64_t rhs) noexcept
         { return femtosecond_t{lhs.rep / rhs}; }
 
         /**
@@ -122,11 +122,11 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 除法结果
          */
-        constexpr inline friend femtosecond_t operator/ (femtosecond_t lhs, double rhs) noexcept
+        constexpr friend femtosecond_t operator/ (femtosecond_t lhs, double rhs) noexcept
         { return femtosecond_t{static_cast<::std::uint64_t>(static_cast<double>(lhs.rep) / rhs)}; }
 
-        constexpr inline friend ::std::strong_ordering operator<=> (femtosecond_t, femtosecond_t) noexcept = default;
-        constexpr inline friend bool operator== (femtosecond_t, femtosecond_t) noexcept = default;
+        constexpr friend ::std::strong_ordering operator<=> (femtosecond_t, femtosecond_t) noexcept = default;
+        constexpr friend bool operator== (femtosecond_t, femtosecond_t) noexcept = default;
     };
 }  // namespace verilator_utils
 
@@ -140,7 +140,7 @@ export namespace verilator_utils::literals
      * @param rep 飞秒数
      * @return femtosecond_t 对应的飞秒时间类型
      */
-    consteval inline ::verilator_utils::femtosecond_t operator""_fs (unsigned long long rep) noexcept
+    consteval ::verilator_utils::femtosecond_t operator""_fs (unsigned long long rep) noexcept
     { return ::verilator_utils::femtosecond_t{rep}; }
 
     /**
@@ -149,7 +149,7 @@ export namespace verilator_utils::literals
      * @param rep 飞秒数
      * @return femtosecond_t 对应的飞秒时间类型
      */
-    consteval inline ::verilator_utils::femtosecond_t operator""_fs (long double rep) noexcept
+    consteval ::verilator_utils::femtosecond_t operator""_fs (long double rep) noexcept
     { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep)}; }
 
     /**
@@ -158,7 +158,7 @@ export namespace verilator_utils::literals
      * @param rep 皮秒数
      * @return femtosecond_t 对应的皮秒时间类型
      */
-    consteval inline ::verilator_utils::femtosecond_t operator""_ps (unsigned long long rep) noexcept
+    consteval ::verilator_utils::femtosecond_t operator""_ps (unsigned long long rep) noexcept
     { return ::verilator_utils::femtosecond_t{rep * 1'000u}; }
 
     /**
@@ -167,7 +167,7 @@ export namespace verilator_utils::literals
      * @param rep 皮秒数
      * @return femtosecond_t 对应的皮秒时间类型
      */
-    consteval inline ::verilator_utils::femtosecond_t operator""_ps (long double rep) noexcept
+    consteval ::verilator_utils::femtosecond_t operator""_ps (long double rep) noexcept
     { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000u)}; }
 
     /**
@@ -176,7 +176,7 @@ export namespace verilator_utils::literals
      * @param rep 纳秒数
      * @return femtosecond_t 对应的纳秒时间类型
      */
-    consteval inline ::verilator_utils::femtosecond_t operator""_ns (unsigned long long rep) noexcept
+    consteval ::verilator_utils::femtosecond_t operator""_ns (unsigned long long rep) noexcept
     { return ::verilator_utils::femtosecond_t{rep * 1'000'000u}; }
 
     /**
@@ -185,7 +185,7 @@ export namespace verilator_utils::literals
      * @param rep 纳秒数
      * @return femtosecond_t 对应的纳秒时间类型
      */
-    consteval inline ::verilator_utils::femtosecond_t operator""_ns (long double rep) noexcept
+    consteval ::verilator_utils::femtosecond_t operator""_ns (long double rep) noexcept
     { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000u)}; }
 
     // NOLINTEND(google-runtime-float)
@@ -229,7 +229,7 @@ export namespace verilator_utils
     struct verilator_unpacked_array_type_traits<::VlUnpacked<type, size>>
     {
         using value_type = type;
-        constexpr inline static ::std::size_t n{size};
+        constexpr static ::std::size_t n{size};
     };
 }  // namespace verilator_utils
 
@@ -249,7 +249,7 @@ namespace verilator_utils
              * @return 更新后的迭代器
              */
             template <typename iter_t>
-            [[nodiscard]] inline iter_t format_to(this const auto& self, iter_t iter, double data)
+            [[nodiscard]] iter_t format_to(this const auto& self, iter_t iter, double data)
             {
                 if(self.format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
                 return ::std::format_to(iter, "{}", data);
@@ -271,7 +271,7 @@ namespace verilator_utils
          * @param value 要计算的值
          * @return 绝对值
          */
-        constexpr inline auto abs(::verilator_utils::detail::is_number_type auto value) noexcept
+        constexpr auto abs(::verilator_utils::detail::is_number_type auto value) noexcept
         {
             if consteval
             {
@@ -298,7 +298,7 @@ namespace verilator_utils
          *
          * @return 加载指数后的浮点数
          */
-        constexpr inline auto ldexp(::verilator_utils::detail::is_number_type auto value, int exp) noexcept
+        constexpr auto ldexp(::verilator_utils::detail::is_number_type auto value, int exp) noexcept
         {
             if consteval
             {
@@ -335,7 +335,7 @@ namespace verilator_utils
          * @param value 要计算的值
          * @return 符号位
          */
-        constexpr inline bool signbit(::verilator_utils::detail::is_number_type auto value) noexcept
+        constexpr bool signbit(::verilator_utils::detail::is_number_type auto value) noexcept
         {
             if consteval
             {
@@ -360,7 +360,7 @@ namespace verilator_utils
          * @return 宽度
          */
         template <::std::size_t n>
-        constexpr inline ::std::size_t vlwide_width(const ::VlWide<n>& value) noexcept
+        constexpr ::std::size_t vlwide_width(const ::VlWide<n>& value) noexcept
         {
             constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
             constexpr static auto total_bits{n * word_width};
@@ -383,7 +383,7 @@ namespace verilator_utils
          * @param value 数据
          * @return 宽度
          */
-        constexpr inline ::std::size_t signed_integral_width(::std::int64_t value) noexcept
+        constexpr ::std::size_t signed_integral_width(::std::int64_t value) noexcept
         {
             auto unsigned_value{static_cast<::std::uint64_t>(value)};
             unsigned_value = value < 0 ? -unsigned_value : unsigned_value;
@@ -404,14 +404,14 @@ namespace verilator_utils
              *
              * @return 最大宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t min_width() noexcept { return 1; }
+            [[nodiscard]] constexpr static ::std::size_t min_width() noexcept { return 1; }
 
             /**
              * @brief 获取格式支持的最小宽度
              *
              * @return 最小宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return -1zu; }
+            [[nodiscard]] constexpr static ::std::size_t max_width() noexcept { return -1zu; }
 
             /**
              * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
@@ -424,7 +424,7 @@ namespace verilator_utils
              * @return 更新后的迭代器
              */
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
-            [[nodiscard]] inline iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
+            [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
                 REQUIRE_NE(width, 0);
                 /// 每个字的位宽
@@ -463,7 +463,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
             { return packed_value; }
 
             /**
@@ -472,7 +472,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
             { return underlying_value; }
         };
 
@@ -487,14 +487,14 @@ namespace verilator_utils
              *
              * @return 最大宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t min_width() noexcept { return 1; }
+            [[nodiscard]] constexpr static ::std::size_t min_width() noexcept { return 1; }
 
             /**
              * @brief 获取格式支持的最小宽度
              *
              * @return 最小宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return -1zu; }
+            [[nodiscard]] constexpr static ::std::size_t max_width() noexcept { return -1zu; }
 
             /**
              * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
@@ -507,7 +507,7 @@ namespace verilator_utils
              * @return 更新后的迭代器
              */
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
-            [[nodiscard]] inline iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
+            [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
                 REQUIRE_NE(width, 0);
                 /// 每个字的位宽
@@ -541,7 +541,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
             { return packed_value; }
 
             /**
@@ -550,7 +550,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
             { return underlying_value; }
         };
 
@@ -565,14 +565,14 @@ namespace verilator_utils
              *
              * @return 最小宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t min_width() noexcept { return 2; }
+            [[nodiscard]] constexpr static ::std::size_t min_width() noexcept { return 2; }
 
             /**
              * @brief 获取格式支持的最大宽度
              *
              * @return 最大宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return 64; }
+            [[nodiscard]] constexpr static ::std::size_t max_width() noexcept { return 64; }
 
             /**
              * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
@@ -584,7 +584,7 @@ namespace verilator_utils
              * @return 更新后的迭代器
              */
             template <typename iter_t>
-            [[nodiscard]] inline iter_t format_to(iter_t iter, ::std::int64_t data) const
+            [[nodiscard]] iter_t format_to(iter_t iter, ::std::int64_t data) const
             { return ::std::format_to(iter, "{}", data); }
 
             /**
@@ -594,8 +594,8 @@ namespace verilator_utils
              * @param width 数据宽度
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline static ::std::int64_t to_underlying(::std::uint64_t packed_value,
-                                                                               ::std::size_t width) noexcept
+            [[nodiscard]] constexpr static ::std::int64_t to_underlying(::std::uint64_t packed_value,
+                                                                        ::std::size_t width) noexcept
             {
                 auto shift{64zu - width};
                 // NOLINTNEXTLINE(*-signed-bitwise)
@@ -610,8 +610,8 @@ namespace verilator_utils
              * @param width 数据宽度
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::int64_t underlying_value,
-                                                                               ::std::size_t width) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_verilator(::std::int64_t underlying_value,
+                                                                        ::std::size_t width) noexcept
             {
                 auto shift{64zu - width};
                 return static_cast<::std::uint64_t>(underlying_value) << shift >> shift;
@@ -629,14 +629,14 @@ namespace verilator_utils
              *
              * @return 最小宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t min_width() noexcept { return 1; }
+            [[nodiscard]] constexpr static ::std::size_t min_width() noexcept { return 1; }
 
             /**
              * @brief 获取格式支持的最大宽度
              *
              * @return 最大宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return 64; }
+            [[nodiscard]] constexpr static ::std::size_t max_width() noexcept { return 64; }
 
             /**
              * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
@@ -648,7 +648,7 @@ namespace verilator_utils
              * @return 更新后的迭代器
              */
             template <typename iter_t>
-            [[nodiscard]] inline iter_t format_to(iter_t iter, ::std::uint64_t data) const
+            [[nodiscard]] iter_t format_to(iter_t iter, ::std::uint64_t data) const
             { return ::std::format_to(iter, "{}", data); }
 
             /**
@@ -657,7 +657,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
             { return packed_value; }
 
             /**
@@ -666,7 +666,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
             { return underlying_value; }
         };
 
@@ -684,7 +684,7 @@ namespace verilator_utils
              *
              * @return 数据宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t width() noexcept { return 32; }
+            [[nodiscard]] constexpr static ::std::size_t width() noexcept { return 32; }
 
             /**
              * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
@@ -696,7 +696,7 @@ namespace verilator_utils
              * @return 更新后的迭代器
              */
             template <typename iter_t>
-            [[nodiscard]] inline iter_t format_to(iter_t iter, float data) const
+            [[nodiscard]] iter_t format_to(iter_t iter, float data) const
             {
                 if(format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
                 return ::std::format_to(iter, "{}", data);
@@ -708,7 +708,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline static float to_underlying(::std::uint64_t packed_value) noexcept
+            [[nodiscard]] constexpr static float to_underlying(::std::uint64_t packed_value) noexcept
             { return ::std::bit_cast<float>(static_cast<::std::uint32_t>(packed_value)); }
 
             /**
@@ -717,7 +717,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(float underlying_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_verilator(float underlying_value) noexcept
             { return ::std::bit_cast<::std::uint32_t>(underlying_value); }
         };
 
@@ -735,7 +735,7 @@ namespace verilator_utils
              *
              * @return 数据宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t width() noexcept { return 64; }
+            [[nodiscard]] constexpr static ::std::size_t width() noexcept { return 64; }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -743,7 +743,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline static double to_underlying(::std::uint64_t packed_value) noexcept
+            [[nodiscard]] constexpr static double to_underlying(::std::uint64_t packed_value) noexcept
             { return ::std::bit_cast<double>(packed_value); }
 
             /**
@@ -752,7 +752,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(double underlying_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_verilator(double underlying_value) noexcept
             { return ::std::bit_cast<::std::uint64_t>(underlying_value); }
         };
 
@@ -774,22 +774,21 @@ namespace verilator_utils
              *
              * @return 最小宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t min_width() noexcept { return 1; }
+            [[nodiscard]] constexpr static ::std::size_t min_width() noexcept { return 1; }
 
             /**
              * @brief 获取格式支持的最大宽度
              *
              * @return 最大宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept
-            { return ::std::numeric_limits<double>::digits; }
+            [[nodiscard]] constexpr static ::std::size_t max_width() noexcept { return ::std::numeric_limits<double>::digits; }
 
             /**
              * @brief 获取定点数宽度
              *
              * @return 定点数宽度
              */
-            [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit; }
+            [[nodiscard]] constexpr ::std::size_t width() const noexcept { return integer_bit + fractional_bit; }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -797,7 +796,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline double to_underlying(::std::uint64_t packed_value) const noexcept
+            [[nodiscard]] constexpr double to_underlying(::std::uint64_t packed_value) const noexcept
             { return ::verilator_utils::detail::ldexp(packed_value, -fractional_bit); }
 
             /**
@@ -806,7 +805,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline ::std::uint64_t to_verilator(double underlying_value) const noexcept
+            [[nodiscard]] constexpr ::std::uint64_t to_verilator(double underlying_value) const noexcept
             { return static_cast<::std::uint64_t>(::verilator_utils::detail::ldexp(underlying_value, fractional_bit)); }
         };
 
@@ -828,14 +827,14 @@ namespace verilator_utils
              *
              * @return 最小宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t min_width() noexcept { return 2; }
+            [[nodiscard]] constexpr static ::std::size_t min_width() noexcept { return 2; }
 
             /**
              * @brief 获取格式支持的最大宽度
              *
              * @return 最大宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept
+            [[nodiscard]] constexpr static ::std::size_t max_width() noexcept
             { return ::std::numeric_limits<double>::digits + 1; }
 
             /**
@@ -843,7 +842,7 @@ namespace verilator_utils
              *
              * @return 定点数宽度
              */
-            [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
+            [[nodiscard]] constexpr ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -851,7 +850,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline double to_underlying(::std::uint64_t packed_value) const noexcept
+            [[nodiscard]] constexpr double to_underlying(::std::uint64_t packed_value) const noexcept
             {
                 auto signed_value{::verilator_utils::data_format::dec_signed_t::to_underlying(packed_value, width())};
                 return ::verilator_utils::detail::ldexp(signed_value, -fractional_bit);
@@ -863,7 +862,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline ::std::uint64_t to_verilator(double underlying_value) const noexcept
+            [[nodiscard]] constexpr ::std::uint64_t to_verilator(double underlying_value) const noexcept
             {
                 auto signed_value{
                     static_cast<::std::int64_t>(::verilator_utils::detail::ldexp(underlying_value, fractional_bit))};
@@ -889,14 +888,14 @@ namespace verilator_utils
              *
              * @return 最小宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t min_width() noexcept { return 2; }
+            [[nodiscard]] constexpr static ::std::size_t min_width() noexcept { return 2; }
 
             /**
              * @brief 获取格式支持的最大宽度
              *
              * @return 最大宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept
+            [[nodiscard]] constexpr static ::std::size_t max_width() noexcept
             { return ::std::numeric_limits<double>::digits + 1; }
 
             /**
@@ -904,7 +903,7 @@ namespace verilator_utils
              *
              * @return 定点数宽度
              */
-            [[nodiscard]] constexpr inline ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
+            [[nodiscard]] constexpr ::std::size_t width() const noexcept { return integer_bit + fractional_bit + 1; }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -912,7 +911,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline double to_underlying(::std::uint64_t packed_value) const noexcept
+            [[nodiscard]] constexpr double to_underlying(::std::uint64_t packed_value) const noexcept
             {
                 auto sign_bit_index{width() - 1};
                 auto sign{packed_value >> sign_bit_index};
@@ -927,7 +926,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline ::std::uint64_t to_verilator(double underlying_value) const noexcept
+            [[nodiscard]] constexpr ::std::uint64_t to_verilator(double underlying_value) const noexcept
             {
                 auto sign{static_cast<::std::uint64_t>(::verilator_utils::detail::signbit(underlying_value))};
                 auto magnitude{
@@ -950,7 +949,7 @@ namespace verilator_utils
              *
              * @return 最小宽度
              */
-            [[nodiscard]] constexpr inline ::std::size_t min_width() const noexcept
+            [[nodiscard]] constexpr ::std::size_t min_width() const noexcept
             { return enum_string.size() <= 1 ? 1 : ::std::bit_width(enum_string.size() - 1); }
 
             /**
@@ -958,7 +957,7 @@ namespace verilator_utils
              *
              * @return 最大宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t max_width() noexcept { return 64; }
+            [[nodiscard]] constexpr static ::std::size_t max_width() noexcept { return 64; }
 
             /**
              * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
@@ -970,7 +969,7 @@ namespace verilator_utils
              * @return 更新后的迭代器
              */
             template <typename iter_t>
-            [[nodiscard]] inline iter_t format_to(iter_t iter, ::std::uint64_t data) const
+            [[nodiscard]] iter_t format_to(iter_t iter, ::std::uint64_t data) const
             {
                 return ::std::format_to(iter,
                                         "{}",
@@ -984,7 +983,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_underlying(::std::uint64_t packed_value) noexcept
             { return packed_value; }
 
             /**
@@ -993,7 +992,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_verilator(::std::uint64_t underlying_value) noexcept
             { return underlying_value; }
         };
 
@@ -1008,7 +1007,7 @@ namespace verilator_utils
              *
              * @return 布尔型宽度
              */
-            [[nodiscard]] constexpr inline static ::std::size_t width() noexcept { return 1; }
+            [[nodiscard]] constexpr static ::std::size_t width() noexcept { return 1; }
 
             /**
              * @brief 转换verilator数据对象为字符串表示，写入到缓冲区上
@@ -1020,7 +1019,7 @@ namespace verilator_utils
              * @return 更新后的迭代器
              */
             template <typename iter_t>
-            [[nodiscard]] inline iter_t format_to(iter_t iter, bool data) const
+            [[nodiscard]] iter_t format_to(iter_t iter, bool data) const
             { return ::std::format_to(iter, "{}", data); }
 
             /**
@@ -1029,7 +1028,7 @@ namespace verilator_utils
              * @param packed_value 打包储存的数据
              * @return 转换后的数据
              */
-            [[nodiscard]] constexpr inline static bool to_underlying(::std::uint64_t packed_value) noexcept
+            [[nodiscard]] constexpr static bool to_underlying(::std::uint64_t packed_value) noexcept
             { return static_cast<bool>(packed_value); }
 
             /**
@@ -1038,7 +1037,7 @@ namespace verilator_utils
              * @param underlying_value C++底层数据
              * @return 打包储存的数据
              */
-            [[nodiscard]] constexpr inline static ::std::uint64_t to_verilator(bool underlying_value) noexcept
+            [[nodiscard]] constexpr static ::std::uint64_t to_verilator(bool underlying_value) noexcept
             { return static_cast<::std::uint64_t>(underlying_value); }
         };
 
@@ -1056,13 +1055,13 @@ namespace verilator_utils
                                       ::verilator_utils::data_format::fsm_enum_t,
                                       ::verilator_utils::data_format::boolean_t>;
         /// 十六进制
-        constexpr inline ::verilator_utils::data_format::format hex{::verilator_utils::data_format::hex_t{}};
+        constexpr ::verilator_utils::data_format::format hex{::verilator_utils::data_format::hex_t{}};
         /// 二进制
-        constexpr inline ::verilator_utils::data_format::format bin{::verilator_utils::data_format::bin_t{}};
+        constexpr ::verilator_utils::data_format::format bin{::verilator_utils::data_format::bin_t{}};
         /// 无符号十进制
-        constexpr inline ::verilator_utils::data_format::format dec_unsigned{::verilator_utils::data_format::dec_unsigned_t{}};
+        constexpr ::verilator_utils::data_format::format dec_unsigned{::verilator_utils::data_format::dec_unsigned_t{}};
         /// 有符号十进制
-        constexpr inline ::verilator_utils::data_format::format dec_signed{::verilator_utils::data_format::dec_signed_t{}};
+        constexpr ::verilator_utils::data_format::format dec_signed{::verilator_utils::data_format::dec_signed_t{}};
 
         /**
          * @brief 单精度浮点数
@@ -1070,7 +1069,7 @@ namespace verilator_utils
          * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
          * @return 数据格式对象
          */
-        constexpr inline ::verilator_utils::data_format::format real_float(bool format_as_hex = false)
+        constexpr ::verilator_utils::data_format::format real_float(bool format_as_hex = false)
         { return ::verilator_utils::data_format::real_float_t{format_as_hex}; }
 
         /**
@@ -1079,7 +1078,7 @@ namespace verilator_utils
          * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
          * @return 数据格式对象
          */
-        constexpr inline ::verilator_utils::data_format::format real_double(bool format_as_hex = false)
+        constexpr ::verilator_utils::data_format::format real_double(bool format_as_hex = false)
         { return ::verilator_utils::data_format::real_double_t{.format_as_hex = format_as_hex}; }
 
         /**
@@ -1090,7 +1089,7 @@ namespace verilator_utils
          * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
          * @return 数据格式对象
          */
-        constexpr inline ::verilator_utils::data_format::format
+        constexpr ::verilator_utils::data_format::format
             unsigned_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
             return ::verilator_utils::data_format::unsigned_fixed_point_t{
@@ -1108,7 +1107,7 @@ namespace verilator_utils
          * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
          * @return 数据格式对象
          */
-        constexpr inline ::verilator_utils::data_format::format
+        constexpr ::verilator_utils::data_format::format
             signed_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
             return ::verilator_utils::data_format::signed_fixed_point_t{
@@ -1126,7 +1125,7 @@ namespace verilator_utils
          * @param format_as_hex 格式化时使用十六进制浮点格式，而不是十进制浮点格式
          * @return 数据格式对象
          */
-        constexpr inline ::verilator_utils::data_format::format
+        constexpr ::verilator_utils::data_format::format
             sign_mag_fixed_point(::std::uint8_t integer_bit, ::std::uint8_t fractional_bit, bool format_as_hex = false)
         {
             return ::verilator_utils::data_format::sign_mag_fixed_point_t{
@@ -1142,14 +1141,14 @@ namespace verilator_utils
          * @param enum_string 枚举项名称列表，按枚举顺序排列
          * @return 数据格式对象
          */
-        constexpr inline ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
+        constexpr ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
         {
             REQUIRE_FALSE(enum_string.empty());
             return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
         }
 
         /// 布尔型
-        constexpr inline ::verilator_utils::data_format::format boolean{::verilator_utils::data_format::boolean_t{}};
+        constexpr ::verilator_utils::data_format::format boolean{::verilator_utils::data_format::boolean_t{}};
 
         /**
          * @brief 检查数据格式是否合法
@@ -1157,7 +1156,7 @@ namespace verilator_utils
          * @param format 要检查的数据格式
          * @param width 数据宽度
          */
-        constexpr inline void check_format(const ::verilator_utils::data_format::format& format, ::std::size_t width)
+        constexpr void check_format(const ::verilator_utils::data_format::format& format, ::std::size_t width)
         {
             format.visit(
                 [width]<typename format_t>(const format_t& format) -> void
@@ -1227,7 +1226,7 @@ namespace verilator_utils
          * @param format 要判断的格式
          * @return 是否宽度可变
          */
-        constexpr inline bool is_variable_width_format(const ::verilator_utils::data_format::format& format) noexcept
+        bool is_variable_width_format(const ::verilator_utils::data_format::format& format) noexcept
         {
             constexpr static auto hex_index{::verilator_utils::variant_type_index<::verilator_utils::data_format::hex_t,
                                                                                   ::verilator_utils::data_format::format>};
@@ -1243,9 +1242,9 @@ namespace verilator_utils
 export namespace verilator_utils::detail
 {
     /// 传递给verilator模型的argc
-    inline int argc{};
+    int argc{};
     /// 传递给verilator模型的argv
-    inline const char** argv{};
+    const char** argv{};
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
@@ -1271,19 +1270,18 @@ export namespace verilator_utils
             using value_type = type;
             handle_t handle{};
 
-            constexpr inline iterator& operator++ ()
+            iterator& operator++ ()
             {
                 handle.resume();
                 handle.promise().rethrow_exception();
                 return *this;
             }
 
-            constexpr inline void operator++ (int) { ++(*this); }
+            void operator++ (int) { ++(*this); }
 
-            constexpr inline type& operator* () const noexcept { return *handle.promise().ptr; }
+            type& operator* () const noexcept { return *handle.promise().ptr; }
 
-            constexpr inline friend bool operator== (iterator iter, ::std::default_sentinel_t /* unused */) noexcept
-            { return iter.handle.done(); }
+            friend bool operator== (iterator iter, ::std::default_sentinel_t /* unused */) noexcept { return iter.handle.done(); }
         };
 
         handle_t handle{};
@@ -1299,28 +1297,28 @@ export namespace verilator_utils
              *
              * @return 生成器对象
              */
-            constexpr inline generator get_return_object() noexcept { return generator{handle_t::from_promise(*this)}; }
+            generator get_return_object() noexcept { return generator{handle_t::from_promise(*this)}; }
 
             /**
              * @brief 初始挂起
              *
              * @return 可等待体，总是挂起协程
              */
-            constexpr inline ::std::suspend_always initial_suspend() noexcept { return ::std::suspend_always{}; }
+            ::std::suspend_always initial_suspend() noexcept { return ::std::suspend_always{}; }
 
             /**
              * @brief 最终挂起
              *
              * @return 可等待体，总是挂起协程
              */
-            constexpr inline ::std::suspend_always final_suspend() noexcept { return ::std::suspend_always{}; }
+            ::std::suspend_always final_suspend() noexcept { return ::std::suspend_always{}; }
 
             /**
              * @brief 生产值
              *
              * @param value 要生产的值
              */
-            constexpr inline ::std::suspend_always yield_value(yielded value) noexcept
+            ::std::suspend_always yield_value(yielded value) noexcept
             {
                 ptr = ::std::addressof(value);
                 return ::std::suspend_always{};
@@ -1331,18 +1329,18 @@ export namespace verilator_utils
              *
              * @param value 要生产的值
              */
-            constexpr inline auto yield_value(const ::std::remove_reference_t<yielded>& ref) noexcept
+            auto yield_value(const ::std::remove_reference_t<yielded>& ref) noexcept
                 requires (::std::constructible_from<std::remove_cvref_t<yielded>, const ::std::remove_reference_t<yielded>&>)
             {
                 struct awaiter
                 {
                     ::std::remove_cvref_t<yielded> value;
 
-                    constexpr inline static bool await_ready() noexcept { return false; }
+                    static bool await_ready() noexcept { return false; }
 
-                    constexpr inline void await_suspend(handle_t handle) noexcept { handle.ptr = ::std::addressof(value); }
+                    void await_suspend(handle_t handle) noexcept { handle.ptr = ::std::addressof(value); }
 
-                    constexpr inline static void await_resume() noexcept {}
+                    static void await_resume() noexcept {}
                 };
 
                 return awaiter{ref};
@@ -1352,19 +1350,19 @@ export namespace verilator_utils
              * @brief 退出生成器
              *
              */
-            constexpr inline void return_void() noexcept {}
+            void return_void() noexcept {}
 
             /**
              * @brief 处理未捕获异常
              *
              */
-            constexpr inline void unhandled_exception() noexcept { exception = ::std::current_exception(); }
+            void unhandled_exception() noexcept { exception = ::std::current_exception(); }
 
             /**
              * @brief 重新抛出协程中抛出的异常
              *
              */
-            inline void rethrow_exception() const
+            void rethrow_exception() const
             {
                 if(exception) { ::std::rethrow_exception(exception); }
             }
@@ -1375,35 +1373,33 @@ export namespace verilator_utils
          *
          * @param handle 协程句柄
          */
-        constexpr inline explicit generator(handle_t handle) noexcept : ::std::ranges::view_interface<generator>{}, handle{handle}
-        {
-        }
+        explicit generator(handle_t handle) noexcept : ::std::ranges::view_interface<generator>{}, handle{handle} {}
 
         /**
          * @brief 析构函数
          *
          */
-        constexpr inline ~generator() noexcept
+        ~generator() noexcept
         {
             if(handle) { handle.destroy(); }
         }
 
-        inline generator(const generator&) = delete;
-        inline generator& operator= (const generator&) = delete;
+        generator(const generator&) = delete;
+        generator& operator= (const generator&) = delete;
 
         /**
          * @brief 移动构造函数
          *
          * @param other 要移动的生成器
          */
-        constexpr inline generator(generator&& other) noexcept : handle{::std::exchange(other.handle, nullptr)} {}
+        generator(generator&& other) noexcept : handle{::std::exchange(other.handle, nullptr)} {}
 
         /**
          * @brief 移动赋值函数
          *
          * @param other 要移动的生成器
          */
-        inline generator& operator= (generator&& other) noexcept
+        generator& operator= (generator&& other) noexcept
         {
             if(handle) { handle.destroy(); }
             handle = ::std::exchange(other, nullptr);
@@ -1414,7 +1410,7 @@ export namespace verilator_utils
          *
          * @return 迭代器对象
          */
-        constexpr inline iterator begin() const
+        iterator begin() const
         {
             // 启动生成器
             handle.resume();
@@ -1427,7 +1423,7 @@ export namespace verilator_utils
          *
          * @return 哨位对象
          */
-        constexpr inline static ::std::default_sentinel_t end() noexcept { return ::std::default_sentinel; }
+        static ::std::default_sentinel_t end() noexcept { return ::std::default_sentinel; }
     };
 }  // namespace verilator_utils
 

@@ -20,9 +20,9 @@ export namespace verilator_utils::detail
         using handle_t = ::std::coroutine_handle<promise_type>;
         handle_t handle{};
 
-        inline void set_handle_impl(handle_t handle) noexcept { this->handle = handle; }
+        void set_handle_impl(handle_t handle) noexcept { this->handle = handle; }
 
-        [[nodiscard]] inline handle_t await_resume() const { return handle; }
+        [[nodiscard]] handle_t await_resume() const { return handle; }
     };
 
     /**
@@ -34,10 +34,10 @@ export namespace verilator_utils::detail
         ::verilator_utils::eval_scheduler* scheduler;
 
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
         { scheduler = handle.promise().check_scheduler(); }
 
-        [[nodiscard]] inline ::verilator_utils::eval_scheduler& await_resume() const { return *scheduler; }
+        [[nodiscard]] ::verilator_utils::eval_scheduler& await_resume() const { return *scheduler; }
     };
 
     /**
@@ -47,7 +47,7 @@ export namespace verilator_utils::detail
     struct eval_finish_awaiter : ::verilator_utils::detail::no_suspend_awaiter
     {
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline static void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+        static void set_handle_impl(::std::coroutine_handle<promise_type> handle)
         { handle.promise().check_scheduler()->finish(); }
 
         /**
@@ -55,7 +55,7 @@ export namespace verilator_utils::detail
          *
          * @throws eval_finish_exception 仿真结束，抛出异常终止当前任务的执行
          */
-        inline static void await_resume() { throw ::verilator_utils::eval_finish_exception{}; }
+        static void await_resume() { throw ::verilator_utils::eval_finish_exception{}; }
     };
 
     /**
@@ -67,10 +67,10 @@ export namespace verilator_utils::detail
         ::verilator_utils::eval_scheduler* scheduler;
 
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
         { scheduler = handle.promise().check_scheduler(); }
 
-        [[nodiscard]] inline ::std::string await_resume() const { return scheduler->time_in_string(); }
+        [[nodiscard]] ::std::string await_resume() const { return scheduler->time_in_string(); }
     };
 
     /**
@@ -82,10 +82,10 @@ export namespace verilator_utils::detail
         ::verilator_utils::eval_scheduler* scheduler;
 
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
         { scheduler = handle.promise().check_scheduler(); }
 
-        [[nodiscard]] inline double await_resume() const { return scheduler->time_in_time_unit(); }
+        [[nodiscard]] double await_resume() const { return scheduler->time_in_time_unit(); }
     };
 
     /**
@@ -97,10 +97,10 @@ export namespace verilator_utils::detail
         ::verilator_utils::eval_scheduler* scheduler;
 
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
         { scheduler = handle.promise().check_scheduler(); }
 
-        [[nodiscard]] inline ::std::uint64_t await_resume() const { return scheduler->time_in_time_precision(); }
+        [[nodiscard]] ::std::uint64_t await_resume() const { return scheduler->time_in_time_precision(); }
     };
 
     /**
@@ -115,14 +115,14 @@ export namespace verilator_utils::detail
         /// 调度器指针，自动绑定
         ::verilator_utils::eval_scheduler* scheduler{};
 
-        inline explicit time_awaiter(::verilator_utils::femtosecond_t time_to_wait) noexcept : time_to_wait{time_to_wait} {}
+        explicit time_awaiter(::verilator_utils::femtosecond_t time_to_wait) noexcept : time_to_wait{time_to_wait} {}
 
         /**
          * @brief 判断是否立即就绪
          *
          * @return false 不支持delta延迟，永远不会立即就绪
          */
-        inline static bool await_ready() noexcept { return false; }
+        static bool await_ready() noexcept { return false; }
 
         /**
          * @brief 挂起等待，将当前任务加入等待队列
@@ -131,7 +131,7 @@ export namespace verilator_utils::detail
          * @param handle 当前协程的句柄
          */
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline void await_suspend(::std::coroutine_handle<promise_type> handle)
+        void await_suspend(::std::coroutine_handle<promise_type> handle)
         {
             scheduler = handle.promise().check_scheduler();
             scheduler->register_wait(time_to_wait, handle);
@@ -142,7 +142,7 @@ export namespace verilator_utils::detail
          *
          * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
          */
-        inline void await_resume() const { scheduler->throw_if_finish(); }
+        void await_resume() const { scheduler->throw_if_finish(); }
     };
 
     /**
@@ -163,7 +163,7 @@ export namespace verilator_utils::detail
          * @param callback 事件回调函数
          */
         template <::verilator_utils::is_event_callback callback_t>
-        inline explicit event_awaiter(callback_t&& callback) : event_callback{::std::forward<callback_t>(callback)}
+        explicit event_awaiter(callback_t&& callback) : event_callback{::std::forward<callback_t>(callback)}
         {
         }
 
@@ -172,7 +172,7 @@ export namespace verilator_utils::detail
          *
          * @return 是否立即就绪
          */
-        [[nodiscard]] inline bool await_ready() const { return event_callback(); }
+        [[nodiscard]] bool await_ready() const { return event_callback(); }
 
         /**
          * @brief 挂起等待，将当前任务加入事件队列
@@ -181,7 +181,7 @@ export namespace verilator_utils::detail
          * @param handle 当前协程的句柄
          */
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline void await_suspend(::std::coroutine_handle<promise_type> handle)
+        void await_suspend(::std::coroutine_handle<promise_type> handle)
         {
             scheduler = handle.promise().check_scheduler();
             scheduler->register_event(event_callback, handle);
@@ -192,7 +192,7 @@ export namespace verilator_utils::detail
          *
          * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
          */
-        inline void await_resume() const
+        void await_resume() const
         {
             if(scheduler != nullptr) { scheduler->throw_if_finish(); }
         }
@@ -218,7 +218,7 @@ export namespace verilator_utils::detail
          * @note 目标评估阶段需要可等待，否则断言失败
          * @param eval_stage 目标评估阶段
          */
-        inline explicit eval_stage_awaiter(scheduler_t::eval_stage_enum eval_stage) : eval_stage{eval_stage}
+        explicit eval_stage_awaiter(scheduler_t::eval_stage_enum eval_stage) : eval_stage{eval_stage}
         {
             using namespace std::string_view_literals;
             REQUIRE_MESSAGE(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv);
@@ -229,7 +229,7 @@ export namespace verilator_utils::detail
          *
          * @param handle 协程柄
          */
-        inline void set_handle_impl(auto handle)
+        void set_handle_impl(auto handle)
         {
             scheduler = handle.promise().check_scheduler();
             event_callback = [this] { return scheduler->get_eval_stage() >= eval_stage; };
@@ -240,7 +240,7 @@ export namespace verilator_utils::detail
          *
          * @return 是否立即就绪
          */
-        [[nodiscard]] inline bool await_ready() const { return event_callback(); }
+        [[nodiscard]] bool await_ready() const { return event_callback(); }
 
         /**
          * @brief 挂起等待，将当前任务加入事件队列
@@ -249,7 +249,7 @@ export namespace verilator_utils::detail
          * @param handle 当前协程的句柄
          */
         template <::verilator_utils::is_coroutine_promise promise_type>
-        inline void await_suspend(::std::coroutine_handle<promise_type> handle)
+        void await_suspend(::std::coroutine_handle<promise_type> handle)
         { scheduler->register_event(event_callback, handle); }
 
         /**
@@ -257,7 +257,7 @@ export namespace verilator_utils::detail
          *
          * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
          */
-        inline void await_resume() const { scheduler->throw_if_finish(); }
+        void await_resume() const { scheduler->throw_if_finish(); }
     };
 }  // namespace verilator_utils::detail
 
@@ -278,7 +278,7 @@ export namespace verilator_utils
      */
     template <typename promise_type = void>
         requires (::std::is_void_v<promise_type> || ::verilator_utils::is_coroutine_promise<promise_type>)
-    [[nodiscard]] inline ::verilator_utils::detail::get_handle_awaiter<promise_type> get_handle() noexcept
+    [[nodiscard]] ::verilator_utils::detail::get_handle_awaiter<promise_type> get_handle() noexcept
     { return ::verilator_utils::detail::get_handle_awaiter<promise_type>{}; }
 
     /**
@@ -292,7 +292,7 @@ export namespace verilator_utils
      * }
      * @endcode
      */
-    [[nodiscard]] inline ::verilator_utils::detail::get_scheduler_awaiter get_scheduler() noexcept
+    [[nodiscard]] ::verilator_utils::detail::get_scheduler_awaiter get_scheduler() noexcept
     { return ::verilator_utils::detail::get_scheduler_awaiter{}; }
 
     /**
@@ -307,7 +307,7 @@ export namespace verilator_utils
      * }
      * @endcode
      */
-    [[nodiscard]] inline ::verilator_utils::detail::eval_finish_awaiter eval_finish() noexcept
+    [[nodiscard]] ::verilator_utils::detail::eval_finish_awaiter eval_finish() noexcept
     { return ::verilator_utils::detail::eval_finish_awaiter{}; }
 
     /**
@@ -315,7 +315,7 @@ export namespace verilator_utils
      *
      * @return 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::get_time_in_string_awaiter get_time_in_string() noexcept
+    [[nodiscard]] ::verilator_utils::detail::get_time_in_string_awaiter get_time_in_string() noexcept
     { return ::verilator_utils::detail::get_time_in_string_awaiter{}; }
 
     /**
@@ -323,7 +323,7 @@ export namespace verilator_utils
      *
      * @return 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::get_time_in_time_unit_awaiter get_time_in_time_unit() noexcept
+    [[nodiscard]] ::verilator_utils::detail::get_time_in_time_unit_awaiter get_time_in_time_unit() noexcept
     { return ::verilator_utils::detail::get_time_in_time_unit_awaiter{}; }
 
     /**
@@ -331,7 +331,7 @@ export namespace verilator_utils
      *
      * @return 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::get_time_in_time_precision_awaiter get_time_in_time_precision() noexcept
+    [[nodiscard]] ::verilator_utils::detail::get_time_in_time_precision_awaiter get_time_in_time_precision() noexcept
     { return ::verilator_utils::detail::get_time_in_time_precision_awaiter{}; }
 
     /**
@@ -341,7 +341,7 @@ export namespace verilator_utils
      * @param time_to_wait 等待时间，单位为时间精度，不能为0
      * @return 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::time_awaiter wait_time(::verilator_utils::femtosecond_t time_to_wait)
+    [[nodiscard]] ::verilator_utils::detail::time_awaiter wait_time(::verilator_utils::femtosecond_t time_to_wait)
     { return ::verilator_utils::detail::time_awaiter{time_to_wait}; }
 
     /**
@@ -352,7 +352,7 @@ export namespace verilator_utils
      * @return 可等待体
      */
     template <::verilator_utils::is_event_callback callback_t>
-    [[nodiscard]] inline ::verilator_utils::detail::event_awaiter wait_event(callback_t&& callback)
+    [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_event(callback_t&& callback)
     { return ::verilator_utils::detail::event_awaiter{::std::forward<callback_t>(callback)}; }
 
     /**
@@ -362,8 +362,8 @@ export namespace verilator_utils
      * @param edge_to_wait 要等待到边沿数量
      * @return event_awaiter 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::event_awaiter wait_posedge(const ::verilator_utils::is_bit_slice auto& bit,
-                                                                               ::std::size_t edge_to_wait = 1)
+    [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_posedge(const ::verilator_utils::is_bit_slice auto& bit,
+                                                                        ::std::size_t edge_to_wait = 1)
     {
         REQUIRE_NE(edge_to_wait, 0);
         using edge_detector_t = ::verilator_utils::edge_detector;
@@ -382,8 +382,8 @@ export namespace verilator_utils
      * @param edge_to_wait 要等待到边沿数量
      * @return event_awaiter 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::event_awaiter wait_negedge(const ::verilator_utils::is_bit_slice auto& bit,
-                                                                               ::std::size_t edge_to_wait = 1)
+    [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_negedge(const ::verilator_utils::is_bit_slice auto& bit,
+                                                                        ::std::size_t edge_to_wait = 1)
     {
         REQUIRE_NE(edge_to_wait, 0);
         using edge_detector_t = ::verilator_utils::edge_detector;
@@ -402,8 +402,8 @@ export namespace verilator_utils
      * @param edge_to_wait 要等待到边沿数量
      * @return event_awaiter 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::event_awaiter wait_alledge(const ::verilator_utils::is_bit_slice auto& bit,
-                                                                               ::std::size_t edge_to_wait = 1)
+    [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_alledge(const ::verilator_utils::is_bit_slice auto& bit,
+                                                                        ::std::size_t edge_to_wait = 1)
     {
         REQUIRE_NE(edge_to_wait, 0);
         using edge_detector_t = ::verilator_utils::edge_detector;
@@ -431,7 +431,7 @@ export namespace verilator_utils
      * }
      * @endcode
      */
-    [[nodiscard]] inline ::verilator_utils::detail::eval_stage_awaiter
+    [[nodiscard]] ::verilator_utils::detail::eval_stage_awaiter
         wait_eval_stage(::verilator_utils::eval_scheduler::eval_stage_enum eval_stage)
     { return ::verilator_utils::detail::eval_stage_awaiter{eval_stage}; }
 }  // namespace verilator_utils
@@ -448,7 +448,7 @@ namespace verilator_utils::detail
      * @return 同步任务
      * @note 等待到n个给定时钟边沿后的给定评估阶段
      */
-    [[nodiscard]] inline ::verilator_utils::task<void>
+    [[nodiscard]] ::verilator_utils::task<void>
         wait_edge_and_eval_stage(::verilator_utils::bit_slice<::CData> clk,
                                  ::std::size_t edge_to_wait,
                                  bool activate_posedge,
@@ -474,8 +474,8 @@ export namespace verilator_utils
      * @param period 时钟周期
      * @return 生成时钟信号的任务
      */
-    [[nodiscard]] inline ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData> clk,
-                                                                      ::verilator_utils::femtosecond_t period) noexcept
+    [[nodiscard]] ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData> clk,
+                                                               ::verilator_utils::femtosecond_t period) noexcept
     {
         auto half_period{period / 2zu};
         clk = 0;
@@ -495,10 +495,10 @@ export namespace verilator_utils
      * @param active_high 复位信号的极性，true表示高电平有效，false表示低电平有效
      * @return 生成复位信号的任务
      */
-    [[nodiscard]] inline ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData> reset,
-                                                                      ::verilator_utils::bit_slice<::CData> clk,
-                                                                      ::size_t cycle = 3,
-                                                                      bool active_high = true) noexcept
+    [[nodiscard]] ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData> reset,
+                                                               ::verilator_utils::bit_slice<::CData> clk,
+                                                               ::size_t cycle = 3,
+                                                               bool active_high = true) noexcept
     {
         reset = static_cast<::std::uint64_t>(active_high);
         co_await ::verilator_utils::wait_negedge(clk, cycle);
@@ -516,7 +516,7 @@ export namespace verilator_utils
      * @note 等待到edge_to_wait个给定时钟边沿后的给定评估阶段
      * @note 默认为时钟上升沿且电路 **评估完成后 ** 进行验证
      */
-    [[nodiscard]] inline ::verilator_utils::task<void>
+    [[nodiscard]] ::verilator_utils::task<void>
         wait_verify(const ::verilator_utils::bit_slice<::CData>& clk,
                     ::std::size_t edge_to_wait = 1,
                     bool activate_posedge = true,
@@ -535,7 +535,7 @@ export namespace verilator_utils
      * @note 等待到edge_to_wait个给定时钟边沿前的给定评估阶段
      * @note 默认为时钟下降沿触发时在电路 ** 评估完成前 ** 进行激励，时钟上升沿触发时在电路 ** 评估完成后 ** 进行激励
      */
-    [[nodiscard]] inline ::verilator_utils::task<void>
+    [[nodiscard]] ::verilator_utils::task<void>
         wait_stimulate(const ::verilator_utils::bit_slice<::CData>& clk,
                        ::std::size_t edge_to_wait = 1,
                        bool activate_posedge = false,
@@ -559,8 +559,8 @@ export namespace verilator_utils
      * @return 同步任务
      * @note 等待到复位信号无效且初始评估完成
      */
-    [[nodiscard]] inline ::verilator_utils::task<void> wait_reset_finish(::verilator_utils::bit_slice<::CData> rst,
-                                                                         bool active_high = true)
+    [[nodiscard]] ::verilator_utils::task<void> wait_reset_finish(::verilator_utils::bit_slice<::CData> rst,
+                                                                  bool active_high = true)
     {
         co_await ::verilator_utils::wait_event([rst, active_high] { return rst != active_high; });
     }
@@ -568,7 +568,7 @@ export namespace verilator_utils
     namespace detail
     {
         /// 3~64位LFSR m序列反馈系数表
-        constexpr inline ::std::array lfsr_feedback_mask_table{::std::to_array({
+        constexpr ::std::array lfsr_feedback_mask_table{::std::to_array({
             //  3:  x^3 + x^2 + 1
             (1zu << 2zu) | (1zu << 0zu),
             //  4:  x^4 + x^3 + 1
@@ -704,9 +704,9 @@ export namespace verilator_utils
      * @param initial_value LFSR初始值
      * @return 生成器
      */
-    [[nodiscard]] inline ::verilator_utils::generator<bool> fibonacci_lfsr_generator(::std::size_t width,
-                                                                                     ::std::uint64_t feedback_mask = 0,
-                                                                                     ::std::uint64_t initial_value = 1) noexcept
+    [[nodiscard]] ::verilator_utils::generator<bool> fibonacci_lfsr_generator(::std::size_t width,
+                                                                              ::std::uint64_t feedback_mask = 0,
+                                                                              ::std::uint64_t initial_value = 1) noexcept
     {
         using namespace ::std::string_view_literals;
         REQUIRE_GE(width, 3);
@@ -737,7 +737,7 @@ export namespace verilator_utils
      * @param initial_value LFSR初始值
      * @return 生成器
      */
-    [[nodiscard]] inline ::verilator_utils::generator<bool>
+    [[nodiscard]] ::verilator_utils::generator<bool>
         galois_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1) noexcept
     {
         using namespace ::std::string_view_literals;
@@ -781,7 +781,7 @@ export namespace verilator_utils
          * @param scheduler 调度器引用
          * @param task 同步任务对象
          */
-        inline async_task(::verilator_utils::eval_scheduler& scheduler, ::verilator_utils::task<void> task) :
+        async_task(::verilator_utils::eval_scheduler& scheduler, ::verilator_utils::task<void> task) :
             subhandle{task.get_handle()}
         {
             using namespace ::std::string_view_literals;
@@ -800,19 +800,19 @@ export namespace verilator_utils
          *
          * @note 若协程未完成，则将所有权交给调度器
          */
-        inline ~async_task() noexcept { detach(); }
+        ~async_task() noexcept { detach(); }
 
-        inline async_task(const async_task&) noexcept = delete;
-        inline async_task& operator= (const async_task&) noexcept = delete;
-        inline async_task& operator= (async_task&& other) = delete;
+        async_task(const async_task&) noexcept = delete;
+        async_task& operator= (const async_task&) noexcept = delete;
+        async_task& operator= (async_task&& other) = delete;
 
-        inline async_task(async_task&& other) noexcept : subhandle{::std::exchange(other.subhandle, nullptr)} {}
+        async_task(async_task&& other) noexcept : subhandle{::std::exchange(other.subhandle, nullptr)} {}
 
         /**
          * @brief 销毁绑定的协程柄
          *
          */
-        inline void destroy()
+        void destroy()
         {
             if(subhandle) { ::std::exchange(subhandle, nullptr).destroy(); }
         }
@@ -822,22 +822,21 @@ export namespace verilator_utils
          *
          * @return 任务的协程句柄
          */
-        [[nodiscard]] inline handle_t get_handle() const { return subhandle; }
+        [[nodiscard]] handle_t get_handle() const { return subhandle; }
 
         /**
          * @brief 获取任务的promise引用
          *
          * @return 任务的promise引用
          */
-        [[nodiscard]] inline ::verilator_utils::task<void>::promise_type& get_promise() const noexcept
-        { return subhandle.promise(); }
+        [[nodiscard]] ::verilator_utils::task<void>::promise_type& get_promise() const noexcept { return subhandle.promise(); }
 
         /**
          * @brief 判断子任务是否执行完
          *
          * @return 子任务是否执行完
          */
-        [[nodiscard]] inline bool done() const noexcept { return subhandle.done(); }
+        [[nodiscard]] bool done() const noexcept { return subhandle.done(); }
 
         /**
          * @brief 分离异步任务的协程柄，此后异步任务不再持有该协程柄
@@ -845,7 +844,7 @@ export namespace verilator_utils
          * @note 若任务已完成则销毁协程柄，若任务未完成则托管给调度器
          * @return 异步任务的协程柄
          */
-        inline void detach() noexcept
+        void detach() noexcept
         {
             if(subhandle)
             {
@@ -864,14 +863,14 @@ export namespace verilator_utils
          *
          * @return 是否绑定了协程柄
          */
-        inline explicit operator bool() const noexcept { return static_cast<bool>(subhandle); }
+        explicit operator bool() const noexcept { return static_cast<bool>(subhandle); }
 
         /**
          * @brief 检查任务对象是否可等待
          *
          * @return 是否可等待
          */
-        [[nodiscard]] inline bool joinable() const noexcept { return static_cast<bool>(subhandle); }
+        [[nodiscard]] bool joinable() const noexcept { return static_cast<bool>(subhandle); }
 
         /**
          * @brief 实现异步子任务的可等待体
@@ -889,7 +888,7 @@ export namespace verilator_utils
              *
              * @param subhandle 子任务的协程柄
              */
-            inline explicit async_task_awaiter(handle_t subhandle) :
+            explicit async_task_awaiter(handle_t subhandle) :
                 callback{[subhandle] { return subhandle.done(); }}, subhandle{subhandle}
             {
             }
@@ -899,14 +898,14 @@ export namespace verilator_utils
              *
              * @return 子任务已执行完则立即完成
              */
-            [[nodiscard]] inline bool await_ready() const { return subhandle.done(); }
+            [[nodiscard]] bool await_ready() const { return subhandle.done(); }
 
             /**
              * @brief 向调度器事件队列中注册等待事件，然后挂起协程
              *
              * @param handle 当前任务的协程柄
              */
-            inline void await_suspend(handle_t handle) { subhandle.promise().scheduler->register_event(callback, handle); }
+            void await_suspend(handle_t handle) { subhandle.promise().scheduler->register_event(callback, handle); }
 
             /**
              * @brief 恢复等待任务的执行
@@ -915,7 +914,7 @@ export namespace verilator_utils
              * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
              * @throws 若子任务抛出异常则重新抛出异常
              */
-            inline void await_resume() const
+            void await_resume() const
             {
                 // 协作式取消的优先级更高
                 subhandle.promise().scheduler->throw_if_finish();
@@ -923,7 +922,7 @@ export namespace verilator_utils
             }
         };
 
-        inline async_task_awaiter operator co_await() const
+        async_task_awaiter operator co_await() const
         {
             REQUIRE(joinable());
             return async_task_awaiter{subhandle};
@@ -942,7 +941,7 @@ export namespace verilator_utils
          */
         struct async_task_join_all_awaiter
         {
-            inline explicit async_task_join_all_awaiter(::std::span<::verilator_utils::async_task> tasks) :
+            explicit async_task_join_all_awaiter(::std::span<::verilator_utils::async_task> tasks) :
                 callback{[tasks] { return all_tasks_done(tasks); }}, tasks{tasks}
             {
                 using namespace ::std::string_view_literals;
@@ -959,14 +958,14 @@ export namespace verilator_utils
              *
              * @return 所有子任务都已执行完则立即完成
              */
-            inline bool await_ready() { return callback(); }
+            bool await_ready() { return callback(); }
 
             /**
              * @brief 向调度器事件队列中注册等待事件，然后挂起协程
              *
              * @param handle 当前任务的协程柄
              */
-            inline void await_suspend(::verilator_utils::async_task::handle_t handle)
+            void await_suspend(::verilator_utils::async_task::handle_t handle)
             {
                 using namespace ::std::string_view_literals;
 
@@ -985,7 +984,7 @@ export namespace verilator_utils
              * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
              * @throws unhandled_exception_vector 子任务中未处理的异常
              */
-            inline void await_resume()
+            void await_resume()
             {
                 tasks.front().get_promise().scheduler->throw_if_finish();
                 auto vec{::std::views::filter(tasks,
@@ -1007,7 +1006,7 @@ export namespace verilator_utils
              *
              * @return 是否所有子任务都执行完毕
              */
-            inline static bool all_tasks_done(::std::span<::verilator_utils::async_task> tasks)
+            static bool all_tasks_done(::std::span<::verilator_utils::async_task> tasks)
             {
                 return ::std::ranges::all_of(tasks, [](::verilator_utils::async_task& task) { return task.done(); });
             }
@@ -1024,7 +1023,7 @@ export namespace verilator_utils
          */
         struct async_task_join_any_awaiter
         {
-            inline explicit async_task_join_any_awaiter(::std::span<::verilator_utils::async_task> tasks) :
+            explicit async_task_join_any_awaiter(::std::span<::verilator_utils::async_task> tasks) :
                 callback{[this] { return any_tasks_done(); }}, tasks{tasks}, iter{tasks.end()}
             {
                 using namespace ::std::string_view_literals;
@@ -1041,14 +1040,14 @@ export namespace verilator_utils
              *
              * @return 所有子任务都已执行完则立即完成
              */
-            inline bool await_ready() { return callback(); }
+            bool await_ready() { return callback(); }
 
             /**
              * @brief 向调度器事件队列中注册等待事件，然后挂起协程
              *
              * @param handle 当前任务的协程柄
              */
-            inline void await_suspend(::verilator_utils::async_task::handle_t handle)
+            void await_suspend(::verilator_utils::async_task::handle_t handle)
             {
                 using namespace ::std::string_view_literals;
 
@@ -1064,7 +1063,7 @@ export namespace verilator_utils
              * @throws eval_finish_exception 若仿真已结束，抛出异常以实现协作式取消
              * @throws 子任务中未处理的异常
              */
-            inline void await_resume()
+            void await_resume()
             {
                 auto&& promise{iter->get_promise()};
                 promise.scheduler->throw_if_finish();
@@ -1077,7 +1076,7 @@ export namespace verilator_utils
              *
              * @return 是否所有子任务都执行完毕
              */
-            inline bool any_tasks_done()
+            bool any_tasks_done()
             {
                 iter = ::std::ranges::find(tasks, true, [](::verilator_utils::async_task& task) { return task.done(); });
                 return iter != tasks.end();
@@ -1099,8 +1098,7 @@ export namespace verilator_utils
          */
         struct async_task_join_none_awaiter : ::std::suspend_always
         {
-            inline explicit async_task_join_none_awaiter(::std::span<::verilator_utils::async_task> tasks) :
-                ::std::suspend_always{}
+            explicit async_task_join_none_awaiter(::std::span<::verilator_utils::async_task> tasks) : ::std::suspend_always{}
             {
                 using namespace ::std::string_view_literals;
                 REQUIRE_FALSE_MESSAGE(tasks.empty(), "任务集合不能为空"sv);
@@ -1120,7 +1118,7 @@ export namespace verilator_utils
      * @param tasks 异步任务集合
      * @return 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::async_task_join_all_awaiter
+    [[nodiscard]] ::verilator_utils::detail::async_task_join_all_awaiter
         async_task_join_all(::std::span<::verilator_utils::async_task> tasks)
     { return ::verilator_utils::detail::async_task_join_all_awaiter{tasks}; }
 
@@ -1130,7 +1128,7 @@ export namespace verilator_utils
      * @param tasks 异步任务集合
      * @return 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::async_task_join_any_awaiter
+    [[nodiscard]] ::verilator_utils::detail::async_task_join_any_awaiter
         async_task_join_any(::std::span<::verilator_utils::async_task> tasks)
     { return ::verilator_utils::detail::async_task_join_any_awaiter{tasks}; }
 
@@ -1140,7 +1138,7 @@ export namespace verilator_utils
      * @param tasks 异步任务集合
      * @return 可等待体
      */
-    [[nodiscard]] inline ::verilator_utils::detail::async_task_join_none_awaiter
+    [[nodiscard]] ::verilator_utils::detail::async_task_join_none_awaiter
         async_task_join_none(::std::span<::verilator_utils::async_task> tasks)
     { return ::verilator_utils::detail::async_task_join_none_awaiter{tasks}; }
 
@@ -1163,20 +1161,20 @@ export namespace verilator_utils
          *
          * @param scheduler 调度器引用
          */
-        inline explicit spawn_pool(::verilator_utils::eval_scheduler& scheduler) noexcept : pool{}, scheduler{scheduler} {}
+        explicit spawn_pool(::verilator_utils::eval_scheduler& scheduler) noexcept : pool{}, scheduler{scheduler} {}
 
-        inline spawn_pool(const spawn_pool&) = delete;
-        inline spawn_pool& operator= (const spawn_pool&) = delete;
-        inline spawn_pool& operator= (spawn_pool&&) = delete;
-        inline spawn_pool(spawn_pool&& other) noexcept = default;
-        inline ~spawn_pool() noexcept = default;
+        spawn_pool(const spawn_pool&) = delete;
+        spawn_pool& operator= (const spawn_pool&) = delete;
+        spawn_pool& operator= (spawn_pool&&) = delete;
+        spawn_pool(spawn_pool&& other) noexcept = default;
+        ~spawn_pool() noexcept = default;
 
         /**
          * @brief 将同步任务转化为异步任务并添加到任务池中
          *
          * @param task 同步任务
          */
-        inline void add_task(::verilator_utils::task<void> task) { pool.emplace_back(scheduler, ::std::move(task)); }
+        void add_task(::verilator_utils::task<void> task) { pool.emplace_back(scheduler, ::std::move(task)); }
 
         /**
          * @brief 实现等待任务池中所有任务完成使用的可等待体
@@ -1189,9 +1187,9 @@ export namespace verilator_utils
             /// 任务池引用
             pool_t& pool;
 
-            inline explicit join_all_awaiter(pool_t& pool) : base_t{pool}, pool{pool} {}
+            explicit join_all_awaiter(pool_t& pool) : base_t{pool}, pool{pool} {}
 
-            inline void await_resume()  // NOLINT(bugprone-derived-method-shadowing-base-method)
+            void await_resume()  // NOLINT(bugprone-derived-method-shadowing-base-method)
             {
                 try
                 {
@@ -1217,9 +1215,9 @@ export namespace verilator_utils
             /// 任务池引用
             pool_t& pool;
 
-            inline explicit join_any_awaiter(pool_t& pool) : base_t{pool}, pool{pool} {}
+            explicit join_any_awaiter(pool_t& pool) : base_t{pool}, pool{pool} {}
 
-            inline void await_resume()  // NOLINT(bugprone-derived-method-shadowing-base-method)
+            void await_resume()  // NOLINT(bugprone-derived-method-shadowing-base-method)
             {
                 auto do_erase{
                     [this]
@@ -1248,28 +1246,28 @@ export namespace verilator_utils
          *
          * @return 任务池是否为空
          */
-        [[nodiscard]] inline bool empty() const { return pool.empty(); };
+        [[nodiscard]] bool empty() const { return pool.empty(); };
 
         /**
          * @brief 判断任务池是否可等待
          *
          * @return 任务池是否可等待
          */
-        [[nodiscard]] inline bool joinable() const { return !pool.empty(); };
+        [[nodiscard]] bool joinable() const { return !pool.empty(); };
 
         /**
          * @brief 等待任务池中所有任务完成
          *
          * @return 可等待体
          */
-        [[nodiscard]] inline join_all_awaiter join_all() { return join_all_awaiter{pool}; }
+        [[nodiscard]] join_all_awaiter join_all() { return join_all_awaiter{pool}; }
 
         /**
          * @brief 等待任务池中任意任务完成
          *
          * @return 可等待体
          */
-        [[nodiscard]] inline join_any_awaiter join_any() { return join_any_awaiter{pool}; }
+        [[nodiscard]] join_any_awaiter join_any() { return join_any_awaiter{pool}; }
 
         /**
          * @brief 将池中所有任务托管给调度器
@@ -1277,7 +1275,7 @@ export namespace verilator_utils
          * @note 会挂起当前任务以便开始执行异步子任务
          * @return 可等待体
          */
-        [[nodiscard]] inline ::std::suspend_always join_none()
+        [[nodiscard]] ::std::suspend_always join_none()
         {
             using namespace ::std::string_view_literals;
             REQUIRE_MESSAGE(joinable(), "任务集合不能为空"sv);
@@ -1298,11 +1296,10 @@ export namespace verilator_utils
             ::verilator_utils::eval_scheduler* scheduler;
 
             template <::verilator_utils::is_coroutine_promise promise_type>
-            inline void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+            void set_handle_impl(::std::coroutine_handle<promise_type> handle)
             { scheduler = handle.promise().check_scheduler(); }
 
-            [[nodiscard]] inline ::verilator_utils::spawn_pool await_resume() const
-            { return ::verilator_utils::spawn_pool{*scheduler}; }
+            [[nodiscard]] ::verilator_utils::spawn_pool await_resume() const { return ::verilator_utils::spawn_pool{*scheduler}; }
         };
     }  // namespace detail
 
@@ -1317,7 +1314,7 @@ export namespace verilator_utils
      * }
      * @endcode
      */
-    [[nodiscard]] inline ::verilator_utils::detail::get_spawn_pool_awaiter get_spawn_pool() noexcept
+    [[nodiscard]] ::verilator_utils::detail::get_spawn_pool_awaiter get_spawn_pool() noexcept
     { return ::verilator_utils::detail::get_spawn_pool_awaiter{}; }
 }  // namespace verilator_utils
 
@@ -1340,14 +1337,14 @@ export namespace verilator_utils
         {
             ::std::vector<type>& queue;
 
-            constexpr inline explicit do_pop(::std::vector<type>& queue) noexcept : queue{queue} {}
+            constexpr explicit do_pop(::std::vector<type>& queue) noexcept : queue{queue} {}
 
-            constexpr inline ~do_pop() noexcept { queue.erase(queue.begin()); }
+            constexpr ~do_pop() noexcept { queue.erase(queue.begin()); }
 
-            constexpr inline do_pop(const do_pop&) noexcept = delete;
-            constexpr inline do_pop(do_pop&&) noexcept = delete;
-            constexpr inline do_pop& operator= (const do_pop&) noexcept = delete;
-            constexpr inline do_pop& operator= (do_pop&&) noexcept = delete;
+            constexpr do_pop(const do_pop&) noexcept = delete;
+            constexpr do_pop(do_pop&&) noexcept = delete;
+            constexpr do_pop& operator= (const do_pop&) noexcept = delete;
+            constexpr do_pop& operator= (do_pop&&) noexcept = delete;
         };
 
     public:
@@ -1356,7 +1353,7 @@ export namespace verilator_utils
          *
          * @param max_count 邮箱最大容量，为0表示无限容量
          */
-        constexpr inline explicit mailbox(::std::size_t max_count = 0) : max_count{max_count}
+        explicit mailbox(::std::size_t max_count = 0) : max_count{max_count}
         {
             if(max_count != 0) { queue.reserve(max_count); }
         }
@@ -1366,7 +1363,7 @@ export namespace verilator_utils
          *
          * @return 元素数量
          */
-        [[nodiscard]] constexpr inline ::std::size_t num() const noexcept { return queue.size(); }
+        [[nodiscard]] ::std::size_t num() const noexcept { return queue.size(); }
 
         /**
          * @brief 向邮箱末尾放入元素，容量不足时会阻塞
@@ -1376,7 +1373,7 @@ export namespace verilator_utils
          * @return 子任务，配合co_await使用
          */
         template <typename... args_t>
-        [[nodiscard]] inline ::verilator_utils::task<void> put(args_t&&... args) noexcept
+        [[nodiscard]] ::verilator_utils::task<void> put(args_t&&... args) noexcept
             requires (::std::constructible_from<value_type, args_t...>)
         {
             if(max_count != 0 && queue.size() == max_count)
@@ -1394,7 +1391,7 @@ export namespace verilator_utils
          * @return 是否成功放入元素
          */
         template <typename... args_t>
-        inline bool try_put(args_t&&... args) noexcept
+        bool try_put(args_t&&... args) noexcept
             requires (::std::constructible_from<value_type, args_t...>)
         {
             if(max_count == 0 || queue.size() < max_count)
@@ -1413,7 +1410,7 @@ export namespace verilator_utils
          *
          * @return 子任务，配合co_await使用
          */
-        [[nodiscard]] inline ::verilator_utils::task<value_type> get() noexcept
+        [[nodiscard]] ::verilator_utils::task<value_type> get() noexcept
         {
             if(queue.empty())
             {
@@ -1428,7 +1425,7 @@ export namespace verilator_utils
          *
          * @return std::optional 成功获取时包含元素，否则为空
          */
-        constexpr inline ::std::optional<value_type> try_get() noexcept
+        ::std::optional<value_type> try_get() noexcept
         {
             if(!queue.empty())
             {
@@ -1446,7 +1443,7 @@ export namespace verilator_utils
          *
          * @return 子任务，配合co_await使用
          */
-        inline auto peek(this auto&& self) noexcept -> ::verilator_utils::task<decltype(self.queue.front())>
+        auto peek(this auto&& self) noexcept -> ::verilator_utils::task<decltype(self.queue.front())>
         {
             if(self.queue.empty())
             {
@@ -1460,7 +1457,7 @@ export namespace verilator_utils
          *
          * @return std::optional 成功获取时包含元素引用，否则为空
          */
-        constexpr inline auto try_peek(this auto&& self) noexcept
+        auto try_peek(this auto&& self) noexcept
         {
             using optional_t = ::std::optional<decltype(self.queue.front())>;
             return self.queue.empty() ? ::std::nullopt : optional_t{self.queue.front()};
@@ -1482,14 +1479,14 @@ export namespace verilator_utils
          *
          * @param initial_count 计数器初值
          */
-        constexpr inline explicit semaphore(::std::size_t initial_count = 0) noexcept : count{initial_count} {}
+        explicit semaphore(::std::size_t initial_count = 0) noexcept : count{initial_count} {}
 
         /**
          * @brief 增加内部计数器
          *
          * @param update 要增加的量
          */
-        constexpr inline void put(::std::size_t update = 1) noexcept { count += update; }
+        void put(::std::size_t update = 1) noexcept { count += update; }
 
         /**
          * @brief 减少内部计数器，阻塞直到能如此
@@ -1497,7 +1494,7 @@ export namespace verilator_utils
          * @param update 要减小的量
          * @return 子任务，配合co_await使用
          */
-        inline ::verilator_utils::task<void> get(::std::size_t update = 1) noexcept
+        ::verilator_utils::task<void> get(::std::size_t update = 1) noexcept
         {
             if(count >= update)
             {
@@ -1517,7 +1514,7 @@ export namespace verilator_utils
          * @param update 要减小的量
          * @return 是否成功减小计数器
          */
-        inline bool try_get(::std::size_t update = 1) noexcept
+        bool try_get(::std::size_t update = 1) noexcept
         {
             if(count >= update)
             {
