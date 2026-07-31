@@ -3,19 +3,15 @@
 import std;
 import std.compat;
 import verilator_utils;
-
-extern "C++"
-{
 #include <unit_test_rtl_dual_ram_verilator.h>
 #include <doctest.h>
-}
+#include <verilator_bwd.hpp>
 
 TEST_SUITE("dual_ram")
 {
     using namespace verilator_utils;
     namespace views = std::views;
     namespace ranges = std::ranges;
-
     using dut_t = unit_test_rtl_dual_ram_verilator;
     using dut_context_t = dut_context<dut_t, VerilatedFstC>;
 
@@ -71,7 +67,7 @@ TEST_SUITE("dual_ram")
         dut_context.add_task(generate_clock(port.read_clk, read_clk_period, read_clk_delay));
 
         const auto do_write{
-            [&](this auto) -> task<void>
+            [&] -> task<void>
             {
                 constexpr static auto enable_iters{(epochs - 1) * ram_depth};
                 // 测试写入使能情况
@@ -99,7 +95,7 @@ TEST_SUITE("dual_ram")
         };
 
         const auto do_read{
-            [&](this auto) -> task<void>
+            [&] -> task<void>
             {
                 co_await wait_event([&] { return queue.num() != 0; });
                 while(queue.num() != 0)
@@ -119,7 +115,7 @@ TEST_SUITE("dual_ram")
         };
 
         const auto do_verify{
-            [&](this auto) -> task<void>
+            [&] -> task<void>
             {
                 auto tasks{co_await get_spawn_pool()};
                 tasks.add_task(do_write());

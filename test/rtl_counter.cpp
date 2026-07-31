@@ -3,13 +3,9 @@
 import std;
 import std.compat;
 import verilator_utils;
-
-extern "C++"
-{
 #include <unit_test_rtl_counter_verilator.h>
 #include <doctest.h>
 #include <verilator_bwd.hpp>
-}
 
 TEST_SUITE("counter")
 {
@@ -41,7 +37,7 @@ TEST_SUITE("counter")
 
         dut_context.add_task(generate_clock(port.clk, 2_ns));
         const auto do_verify{
-            [&](this auto) -> task<void>
+            [&] -> task<void>
             {
                 constexpr static auto period{16zu};
                 port.enable = false;

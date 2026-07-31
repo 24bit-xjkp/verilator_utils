@@ -1,11 +1,7 @@
 #include <doctest_fwd.hpp>
 import std;
 import verilator_utils;
-
-extern "C++"
-{
 #include <doctest.h>
-}
 using namespace ::verilator_utils::verilator;
 
 TEST_SUITE("verilator_utils/wrapper")

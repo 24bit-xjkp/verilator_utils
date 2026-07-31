@@ -3,13 +3,9 @@
 import std;
 import std.compat;
 import verilator_utils;
-
-extern "C++"
-{
 #include <unit_test_rtl_lfsr_m7_verilator.h>
 #include <doctest.h>
 #include <verilator_bwd.hpp>
-}
 
 TEST_SUITE("lfsr_m7")
 {
@@ -68,7 +64,7 @@ TEST_SUITE("lfsr_m7")
         dut_context.set_base_name(std::format("lfsr_m7_{}", lfsr_feedback));
 
         const auto do_verify{
-            [&](this auto) -> task<void>
+            [&] -> task<void>
             {
                 constexpr static auto period{(1zu << port.lfsr_width) - 1zu};
                 auto&& ref{port.lfsr_feedback == std::to_underlying(lfsr_feedback_t::fibonacci) ? fibonacci_lfsr_generator

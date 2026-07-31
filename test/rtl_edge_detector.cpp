@@ -3,13 +3,9 @@
 import std;
 import std.compat;
 import verilator_utils;
-
-extern "C++"
-{
 #include <unit_test_rtl_edge_detector_verilator.h>
 #include <doctest.h>
 #include <verilator_bwd.hpp>
-}
 
 TEST_SUITE("edge_detector")
 {
@@ -47,7 +43,7 @@ TEST_SUITE("edge_detector")
         dut_context.add_task(generate_reset(port.rst, port.clk));
 
         const auto verify{
-            [&](this auto, bool rising, bool falling) -> task<void>
+            [&](bool rising, bool falling) -> task<void>
             {
                 co_await wait_verify(port.clk, delay);
 
@@ -59,7 +55,7 @@ TEST_SUITE("edge_detector")
             },
         };
         const auto stimulate{
-            [&](this auto) -> task<void>
+            [&] -> task<void>
             {
                 port.signal = 0;
                 // 等待复位完成

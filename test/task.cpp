@@ -1,11 +1,7 @@
 #include <doctest_fwd.hpp>
 import std;
 import verilator_utils;
-
-extern "C++"
-{
 #include <doctest.h>
-}
 
 namespace
 {
