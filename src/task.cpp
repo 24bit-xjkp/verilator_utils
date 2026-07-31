@@ -472,13 +472,16 @@ export namespace verilator_utils
      * @param scheduler 调度器引用
      * @param clk 时钟信号切片
      * @param period 时钟周期
+     * @param delay 时钟发生延迟
      * @return 生成时钟信号的任务
      */
     [[nodiscard]] ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData> clk,
-                                                               ::verilator_utils::femtosecond_t period) noexcept
+                                                               ::verilator_utils::femtosecond_t period,
+                                                               ::verilator_utils::femtosecond_t delay = 0_fs) noexcept
     {
-        auto half_period{period / 2zu};
         clk = 0;
+        if(delay != 0_fs) { co_await ::verilator_utils::wait_time(delay); }
+        auto half_period{period / 2zu};
         while(true)
         {
             co_await ::verilator_utils::wait_time(half_period);
