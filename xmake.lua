@@ -12,12 +12,12 @@ set_defaultmode("release")
 
 option("use_sanitizer")
     set_default(false)
-    set_description("Enable sanitizer for unit tests")
+    set_description("Enable sanitizer for unit tests.")
 option_end()
 
 option("use_std_harden")
     set_default(false)
-    set_description("Enable c++ standard library harden")
+    set_description("Enable c++ standard library harden.")
 option_end()
 if get_config("use_std_harden") then
     if is_mode("debug") then
@@ -45,6 +45,11 @@ option("check_kind")
         assert(kind == "static" or kind == "shared", [[The kind "%s" is not supported.]], kind)
         option:enable(true)
     end)
+option_end()
+
+option("with_main")
+    set_default(true)
+    set_description("Enable main function support.")
 option_end()
 
 rule("verilator_include")

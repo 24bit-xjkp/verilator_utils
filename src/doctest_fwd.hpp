@@ -28,7 +28,6 @@
 #endif  // DOCTEST_PLATFORM_MAC
 
 #ifdef DOCTEST_PLATFORM_WINDOWS
-
     // defines for a leaner windows.h
     #ifndef WIN32_LEAN_AND_MEAN
         #define WIN32_LEAN_AND_MEAN
@@ -55,13 +54,20 @@
         #undef NOMINMAX
         #undef DOCTEST_UNDEF_NOMINMAX
     #endif  // DOCTEST_UNDEF_NOMINMAX
-
-#else  // DOCTEST_PLATFORM_WINDOWS
-
+#else       // DOCTEST_PLATFORM_WINDOWS
     #include <sys/time.h>
     #include <unistd.h>
-
+    #include <signal.h>
 #endif  // DOCTEST_PLATFORM_WINDOWS
+
+#ifdef DOCTEST_CONFIG_IMPLEMENT
+    #include <limits.h>
+    #include <stdlib.h>
+    #include <float.h>
+    #include <errno.h>
+    #include <time.h>
+    #include <version>
+#endif
 
 #undef DOCTEST_PLATFORM_MAC
 #undef DOCTEST_PLATFORM_IPHONE
@@ -70,6 +76,6 @@
 #undef DOCTEST_PLATFORM_LINUX
 
 #ifdef __clang__
-#pragma clang diagnostic ignored "-Winclude-angled-in-module-purview"
+    #pragma clang diagnostic ignored "-Winclude-angled-in-module-purview"
 #endif
 #include <clear_all_cpp_std_headers.h>

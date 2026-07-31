@@ -1,11 +1,10 @@
-#ifdef __clang__
-    #pragma clang diagnostic ignored "-W#warnings"
-#endif
-
-#define DOCTEST_CONFIG_IMPLEMENT
-#include <doctest.h>
+#include "doctest_fwd.hpp"
 import std;
 import verilator_utils;
+extern "C++"
+{
+#include <doctest.h>
+}
 
 int main(int argc, const char* argv[])
 {
