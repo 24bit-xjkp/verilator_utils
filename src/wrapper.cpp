@@ -18,6 +18,9 @@ export namespace verilator_utils
     template <typename type>
     concept is_format_wrapper_data_type = ::verilator_utils::is_cpp_underlying_type<type> || ::VlIsVlWide<type>::value;
 
+    /// 打包储存的格式，包含宽度和数据格式
+    using packed_format = ::std::pair<::std::size_t, ::verilator_utils::data_format::format>;
+
     /**
      * @brief 格式包装器，将数据和数据格式绑定
      * 用于在测试激励中构造带有格式的数据
@@ -50,6 +53,17 @@ export namespace verilator_utils
         {
             check_format();
             check_value();
+        }
+
+        /**
+         * @brief 构造格式包装器对象
+         *
+         * @param value 数据
+         * @param packed_format 打包在std::pair中的格式
+         */
+        constexpr format_wrapper(type value, ::verilator_utils::packed_format packed_format) :
+            format_wrapper{value, packed_format.first, packed_format.second}
+        {
         }
 
         constexpr format_wrapper(const format_wrapper&) noexcept = default;
@@ -559,6 +573,25 @@ export namespace verilator_utils
             format_to(::std::back_inserter(result));
             return result;
         }
+
+        /**
+         * @brief 将当前位切片的值和格式转化为格式包装器对象
+         *
+         * @tparam underlying_type 数据类型，需要和格式兼容
+         * @return 格式包装器对象
+         */
+        template <typename underlying_type = ::std::uint64_t>
+            requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
+        [[nodiscard]] ::verilator_utils::format_wrapper<underlying_type> dump() const
+        { return ::verilator_utils::format_wrapper{static_cast<underlying_type>(*this), width(), format()}; }
+
+        /**
+         * @brief 打包当前位切片的格式
+         *
+         * @return 打包的格式
+         */
+        [[nodiscard]] ::verilator_utils::packed_format dump_format() const noexcept
+        { return ::verilator_utils::packed_format{width(), format()}; }
 
     private:
         /// 数据引用
@@ -1120,6 +1153,40 @@ export namespace verilator_utils
             return result;
         }
 
+        /**
+         * @brief 将当前向量切片的值和格式转化为格式包装器对象
+         *
+         * @tparam underlying_type
+         * 数据类型，需要和格式兼容。对于VlWide的切片，underlying_type默认为VlWide，否则默认为std::uint64_t
+         * @return 格式包装器对象
+         */
+        template <::verilator_utils::is_format_wrapper_data_type underlying_type =
+                      ::std::conditional_t<is_vl_wide, value_type, ::std::uint64_t>>
+            requires (!::VlIsVlWide<underlying_type>::value || ::std::same_as<underlying_type, value_type>)
+        [[nodiscard]] ::verilator_utils::format_wrapper<underlying_type> dump() const
+        {
+            if constexpr(::VlIsVlWide<underlying_type>::value)
+            {
+                return ::verilator_utils::format_wrapper{static_cast<value_type>(*this), width(), format()};
+            }
+            else
+            {
+                using namespace ::std::string_view_literals;
+                auto underlying_value{to_underlying()};
+                auto* ptr{::std::get_if<underlying_type>(&underlying_value)};
+                REQUIRE_MESSAGE(ptr != nullptr, "dump_当前切片对象绑定的格式与设定的underlying_type不兼容"sv);
+                return ::verilator_utils::format_wrapper{*ptr, width(), format()};
+            }
+        }
+
+        /**
+         * @brief 打包当前位切片的格式
+         *
+         * @return 打包的格式
+         */
+        [[nodiscard]] ::verilator_utils::packed_format dump_format() const noexcept
+        { return ::verilator_utils::packed_format{width(), format()}; }
+
     private:
         template <::verilator_utils::is_cpp_underlying_type left_type, ::verilator_utils::is_cpp_underlying_type right_type>
         static ::std::partial_ordering three_way_compare_underlying(left_type left, right_type right) noexcept
@@ -1333,6 +1400,14 @@ export namespace verilator_utils
             format_to(::std::back_inserter(result));
             return result;
         }
+
+        /**
+         * @brief 打包当前位切片的格式
+         *
+         * @return 打包的格式
+         */
+        [[nodiscard]] ::verilator_utils::packed_format dump_format() const noexcept
+        { return ::verilator_utils::packed_format{width(), format()}; }
     };
 
     /**
