@@ -5,6 +5,7 @@ if get_config("use_sanitizer") then
 end
 
 target("unit_test")
+    set_group("unit_test")
     add_deps("verilator_utils_full")
     set_default(false)
     local regex = "*.cpp|rtl_*.cpp|main.cpp"
@@ -22,6 +23,7 @@ target_end()
 
 for name, _ in pairs(rtl_verilator_target) do
     target("unit_test_rtl_"..name)
+        set_group("unit_test")
         add_deps(format("unit_test_rtl_%s_verilator", name), "verilator_utils_full")
         add_packages("zlib", "lz4")
         set_default(false)
