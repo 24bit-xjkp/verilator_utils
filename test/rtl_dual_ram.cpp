@@ -49,7 +49,7 @@ TEST_SUITE("dual_ram")
         using pair_t = std::pair<std::uint8_t, std::uint8_t>;
         mailbox<std::uint8_t> queue{};
         constexpr static auto ram_depth{1zu << port.addr_width};
-        std::array<std::uint8_t, ram_depth> ram{};
+        auto ram{views::repeat(format_wrapper<std::uint64_t>{0, port.data_width}, ram_depth) | ranges::to<std::vector>()};
         constexpr static auto epochs{8zu};
         std::array<pair_t, ram_depth * epochs> operation_list{};
 
@@ -111,10 +111,9 @@ TEST_SUITE("dual_ram")
 
                     co_await wait_verify(port.read_clk);
                     auto eval_time{co_await get_time_in_string()};
-                    format_wrapper<std::uint64_t> data{ram[addr], port.data_width};
                     CAPTURE(eval_time);
                     CAPTURE(addr);
-                    CHECK_EQ(port.read_data, data);
+                    CHECK_EQ(port.read_data, ram[addr]);
                 }
             },
         };
@@ -128,7 +127,7 @@ TEST_SUITE("dual_ram")
                 co_await tasks.join_all();
 
                 // 测试内存内容是否符合预期
-                for(auto&& [addr, unwrapped_data]: views::enumerate(ram))
+                for(auto&& [addr, data]: views::enumerate(ram))
                 {
                     co_await wait_stimulate(port.read_clk);
                     port.read_enable = true;
@@ -136,12 +135,11 @@ TEST_SUITE("dual_ram")
 
                     co_await wait_verify(port.read_clk);
                     auto eval_time{co_await get_time_in_string()};
-                    format_wrapper<std::uint64_t> data{unwrapped_data, port.data_width};
                     CAPTURE(eval_time);
                     CHECK_EQ(port.read_data, data);
                 }
 
-                format_wrapper<std::uint64_t> previous_data{port.read_data, port.data_width};
+                auto previous_data{port.read_data.dump()};
                 co_await wait_stimulate(port.read_clk);
                 port.read_enable = false;
                 port.read_addr = (port.read_addr + 1) % ram_depth;

@@ -33,9 +33,10 @@ TEST_SUITE("lfsr_m7")
         vector_slice<CData> initial_value;
         bit_slice<CData> lfsr_feedback;
         bit_slice<CData> result;
+        constexpr static auto lfsr_width{7zu};
 
         inline explicit port_t(dut_t& dut) :
-            clk{dut.clk}, rst{dut.rst}, enable{dut.enable}, initial_value{dut.initial_value, 7, dec_unsigned},
+            clk{dut.clk}, rst{dut.rst}, enable{dut.enable}, initial_value{dut.initial_value, lfsr_width, dec_unsigned},
             lfsr_feedback{dut.lfsr_feedback, 0, fsm_enum({"fibonacci"s, "galois"s})}, result{dut.result}
         {
         }
@@ -69,18 +70,13 @@ TEST_SUITE("lfsr_m7")
         const auto do_verify{
             [&](this auto) -> task<void>
             {
-                auto width{port.initial_value.width()};
-                auto period{(1zu << port.initial_value.width()) - 1zu};
-                auto&& scoreboard{port.lfsr_feedback == std::to_underlying(lfsr_feedback_t::fibonacci) ? fibonacci_lfsr_generator
-                                                                                                       : galois_lfsr_generator};
+                constexpr static auto period{(1zu << port.lfsr_width) - 1zu};
+                auto&& ref{port.lfsr_feedback == std::to_underlying(lfsr_feedback_t::fibonacci) ? fibonacci_lfsr_generator
+                                                                                                : galois_lfsr_generator};
 
                 for(auto unwrapped_initial_value: initial_value_table)
                 {
-                    format_wrapper initial_value{
-                        unwrapped_initial_value,
-                        port.initial_value.width(),
-                        port.initial_value.format(),
-                    };
+                    format_wrapper initial_value{unwrapped_initial_value, port.initial_value.dump_format()};
                     CAPTURE(initial_value);
                     co_await wait_stimulate(port.clk);
                     port.initial_value = initial_value;
@@ -89,19 +85,17 @@ TEST_SUITE("lfsr_m7")
                     co_await generate_reset(port.rst, port.clk);
 
                     // 验证模型的周期性
-                    for(std::uint64_t ground_truth_value: scoreboard(width, 0, initial_value.value()) | views::take(period * 2))
+                    for(std::uint64_t unwrapped_result: ref(port.lfsr_width, 0, initial_value.value()) | views::take(period * 2))
                     {
-                        format_wrapper ground_truth{ground_truth_value, port.result.width(), port.result.format()};
+                        format_wrapper result{unwrapped_result, port.result.dump_format()};
                         co_await wait_verify(port.clk);
                         auto eval_time{co_await get_time_in_string()};
                         CAPTURE(eval_time);
-                        CHECK_EQ(ground_truth, port.result);
+                        CHECK_EQ(result, port.result);
                     }
 
                     // 验证失能后模型输出不变
-                    format_wrapper current_result{static_cast<std::uint64_t>(port.result),
-                                                  port.result.width(),
-                                                  port.result.format()};
+                    format_wrapper current_result{port.result.dump()};
                     co_await wait_stimulate(port.clk);
                     port.enable = false;
                     for(auto i{0zu}; i != 3; ++i)

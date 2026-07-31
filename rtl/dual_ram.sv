@@ -1,7 +1,10 @@
 /* verilator lint_off DECLFILENAME */
+`ifndef RTL_DUAL_RAM
+`define RTL_DUAL_RAM
+
 interface dual_ram_port #(
-    parameter integer data_width = 8,
-    parameter integer addr_width = 3
+    parameter int data_width = 8,
+    parameter int addr_width = 3
 ) (
     input logic clk
 );
@@ -17,8 +20,8 @@ module dual_ram (
     dual_ram_port.read  read_port,
     dual_ram_port.write write_port
 );
-    localparam integer data_width = read_port.data_width;
-    localparam integer addr_width = read_port.addr_width;
+    localparam int data_width = read_port.data_width;
+    localparam int addr_width = read_port.addr_width;
 
     logic [data_width - 1:0] ram[1 << addr_width];
 
@@ -35,9 +38,10 @@ module dual_ram (
     end
 endmodule
 
+`ifndef NO_TOP_MODULE_WRAPPER
 module dual_ram_wrapper #(
-    parameter integer data_width = 8,
-    parameter integer addr_width = 3
+    parameter int data_width = 8,
+    parameter int addr_width = 3
 ) (
     input  logic                      read_clk,
     input  logic                      read_enable,
@@ -73,3 +77,5 @@ module dual_ram_wrapper #(
     assign write_port.addr   = write_addr;
     assign write_port.data   = write_data;
 endmodule
+`endif
+`endif
