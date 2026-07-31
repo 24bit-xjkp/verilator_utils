@@ -48,9 +48,14 @@ TEST_SUITE("verilator_utils/wrapper")
         constexpr ::verilator_utils::format_wrapper<::std::uint64_t> constant_value{0xa6u,
                                                                                     8,
                                                                                     ::verilator_utils::data_format::hex};
+        constexpr ::verilator_utils::packed_format constant_format{8, ::verilator_utils::data_format::bin};
+        constexpr ::verilator_utils::format_wrapper<::std::uint64_t> packed_constant_value{0xa6u, constant_format};
         static_assert(constant_value.value() == 0xa6u);
         static_assert(constant_value.width() == 8u);
         static_assert(constant_value.to_verilator() == 0xa6u);
+        static_assert(packed_constant_value.value() == 0xa6u);
+        static_assert(packed_constant_value.width() == 8u);
+        static_assert(::std::holds_alternative<::verilator_utils::data_format::bin_t>(packed_constant_value.format()));
 
         auto value{
             ::verilator_utils::format_wrapper<::std::uint64_t>{0x2au, 8, ::verilator_utils::data_format::bin}
@@ -65,6 +70,18 @@ TEST_SUITE("verilator_utils/wrapper")
         value = 0xau;
         CHECK_EQ(value.value(), 0xau);
         CHECK_EQ(value.to_string(), "0b00001010");
+    }
+
+    TEST_CASE("format wrapper reuses packed slice format")
+    {
+        ::CData data{0xa6u};
+        ::verilator_utils::vector_slice<::CData> source{data, 8, ::verilator_utils::data_format::bin};
+        ::verilator_utils::format_wrapper<::std::uint64_t> value{0x2au, source.dump_format()};
+
+        CHECK_EQ(value.value(), 0x2au);
+        CHECK_EQ(value.width(), source.width());
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::bin_t>(value.format()));
+        CHECK_EQ(value.to_string(), "0b00101010");
     }
 
     TEST_CASE("format wrapper converts scalar values for every supported format")
@@ -176,6 +193,31 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(data, 1u);
         CHECK_EQ(boolean_bit.to_string(), "true");
         CHECK(boolean_bit == ::verilator_utils::format_wrapper<bool>{true, 1, ::verilator_utils::data_format::boolean});
+    }
+
+    TEST_CASE("bit slice dumps current value and format")
+    {
+        ::CData data{1u};
+        ::verilator_utils::bit_slice<::CData> unsigned_bit{data, 0};
+        ::verilator_utils::bit_slice<::CData> boolean_bit{data, 0, ::verilator_utils::data_format::boolean};
+
+        auto unsigned_dump{unsigned_bit.dump()};
+        auto boolean_dump{boolean_bit.dump<bool>()};
+        auto [width, format]{boolean_bit.dump_format()};
+
+        static_assert(::std::same_as<decltype(unsigned_dump), ::verilator_utils::format_wrapper<::std::uint64_t>>);
+        static_assert(::std::same_as<decltype(boolean_dump), ::verilator_utils::format_wrapper<bool>>);
+        CHECK_EQ(unsigned_dump.value(), 1u);
+        CHECK_EQ(unsigned_dump.width(), 1u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(unsigned_dump.format()));
+        CHECK(boolean_dump.value());
+        CHECK_EQ(boolean_dump.to_string(), "true");
+        CHECK_EQ(width, 1u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(format));
+
+        boolean_bit = 0;
+        CHECK(boolean_dump.value());
+        CHECK_EQ(boolean_dump.to_string(), "true");
     }
 
     TEST_CASE("bit slice reads and writes bits in every scalar data type")
@@ -311,6 +353,48 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(signed_value.to_string(), "-1");
         CHECK_EQ(::std::get<double>(sign_magnitude_value.to_underlying()), -2.5);
         CHECK_EQ(sign_magnitude_value.to_string(), "-2.5");
+    }
+
+    TEST_CASE("vector slice dumps values represented by scalar formats")
+    {
+        ::CData unsigned_data{166u};
+        ::CData signed_data{0xa6u};
+        ::IData float_data{::std::bit_cast<::std::uint32_t>(1.5F)};
+        ::QData double_data{::std::bit_cast<::std::uint64_t>(-2.25)};
+        ::CData fixed_point_data{0b0110u};
+        ::CData boolean_data{1u};
+        ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
+        ::verilator_utils::vector_slice<::IData> float_value{float_data, 32, ::verilator_utils::data_format::real_float()};
+        ::verilator_utils::vector_slice<::QData> double_value{double_data, 64, ::verilator_utils::data_format::real_double()};
+        ::verilator_utils::vector_slice<::CData> fixed_point_value{fixed_point_data,
+                                                                   4,
+                                                                   ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
+        ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
+
+        auto unsigned_dump{unsigned_value.dump()};
+        auto signed_dump{signed_value.dump<::std::int64_t>()};
+        auto float_dump{float_value.dump<float>()};
+        auto double_dump{double_value.dump<double>()};
+        auto fixed_point_dump{fixed_point_value.dump<double>()};
+        auto boolean_dump{boolean_value.dump<bool>()};
+
+        CHECK_EQ(unsigned_dump.value(), 166u);
+        CHECK_EQ(unsigned_dump.to_string(), "166");
+        CHECK_EQ(signed_dump.value(), -90);
+        CHECK_EQ(signed_dump.to_string(), "-90");
+        CHECK_EQ(float_dump.value(), 1.5F);
+        CHECK_EQ(float_dump.to_string(), "1.5");
+        CHECK_EQ(double_dump.value(), -2.25);
+        CHECK_EQ(double_dump.to_string(), "-2.25");
+        CHECK_EQ(fixed_point_dump.value(), 1.5);
+        CHECK_EQ(fixed_point_dump.to_string(), "1.5");
+        CHECK(boolean_dump.value());
+        CHECK_EQ(boolean_dump.to_string(), "true");
+
+        unsigned_data = 0;
+        CHECK_EQ(unsigned_dump.value(), 166u);
+        CHECK_EQ(unsigned_dump.to_string(), "166");
     }
 
     TEST_CASE("vector slice formats FSM enum values and reports invalid states")
@@ -463,6 +547,24 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(static_cast<::VlWide<3>>(full_slice[35, 32]).at(0), 0x7u);
     }
 
+    TEST_CASE("wide vector slice dumps aligned value and format")
+    {
+        ::VlWide<3> data{0x89ab'cdefu, 0x0123'4567u, 0x0000'00f0u};
+        ::verilator_utils::vector_slice<::VlWide<3>> value{data, 67, 12, ::verilator_utils::data_format::bin};
+
+        auto dump{value.dump()};
+        auto [width, format]{value.dump_format()};
+
+        static_assert(::std::same_as<decltype(dump), ::verilator_utils::format_wrapper<::VlWide<3>>>);
+        CHECK_EQ(dump.value().at(0), 0x5678'9abcu);
+        CHECK_EQ(dump.value().at(1), 0x0000'1234u);
+        CHECK_EQ(dump.value().at(2), 0u);
+        CHECK_EQ(dump.width(), 56u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::bin_t>(dump.format()));
+        CHECK_EQ(width, 56u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::bin_t>(format));
+    }
+
     TEST_CASE("vector slice assigns scalar values without touching surrounding bits")
     {
         ::IData data{0xffff'0000u};
@@ -581,9 +683,12 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::VlUnpacked<::CData, 3> data{0xau, 0xbu, 0xcu};
         ::verilator_utils::unpacked_array<::CData, 3> wrapper{data, 8, ::verilator_utils::data_format::dec_unsigned};
+        auto [width, format]{wrapper.dump_format()};
 
         CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(wrapper.format()));
         CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(wrapper[0].format()));
+        CHECK_EQ(width, 8u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(format));
         CHECK_EQ(wrapper.to_string(), "[10, 11, 12]");
         CHECK_EQ(::std::format("{}", wrapper), "[10, 11, 12]");
     }
