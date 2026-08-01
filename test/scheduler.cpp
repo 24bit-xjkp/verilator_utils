@@ -116,7 +116,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
     TEST_CASE("task preserves mutable references through suspension and nested awaits")
     {
-        static_assert(::std::same_as<::verilator_utils::task<int&>::return_type, int&>);
+        static_assert(::std::same_as<::verilator_utils::task<int&>::promise_type::return_type, int&>);
 
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
@@ -150,7 +150,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
     TEST_CASE("task preserves const references")
     {
-        static_assert(::std::same_as<::verilator_utils::task<const int&>::return_type, const int&>);
+        static_assert(::std::same_as<::verilator_utils::task<const int&>::promise_type::return_type, const int&>);
 
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};

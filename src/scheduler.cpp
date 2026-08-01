@@ -365,8 +365,6 @@ export namespace verilator_utils
         struct promise_type;
         /// 协程句柄类型
         using handle_t = ::std::coroutine_handle<promise_type>;
-        /// 返回值类型
-        using return_type = return_t;
         /// 协程状态枚举
         using status_enum = ::verilator_utils::detail::status_enum;
 
@@ -377,15 +375,15 @@ export namespace verilator_utils
         struct promise_type final  // NOLINT(cppcoreguidelines-special-member-functions,misc-multiple-inheritance)
             :
             ::verilator_utils::detail::promise_base,
-            ::verilator_utils::detail::promise_with_return<return_type>
+            ::verilator_utils::detail::promise_with_return<return_t>
         {
         private:
-            using base_t = ::verilator_utils::detail::promise_with_return<return_type>;
+            using base_t = ::verilator_utils::detail::promise_with_return<return_t>;
             using base_t::destroy_return_value;
             using base_t::get_return_value;
 
         public:
-            using return_type = base_t::return_type;
+            using typename base_t::return_type;
 
             /**
              * @brief 析构协程帧内储存的返回值
