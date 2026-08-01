@@ -582,6 +582,7 @@ export namespace verilator_utils
                 case rising: return !previous_value && current_value;
                 case falling: return previous_value && !current_value;
                 case both: return previous_value != current_value;
+                default: ::std::unreachable();
             }
         }
 

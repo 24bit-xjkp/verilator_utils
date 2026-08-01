@@ -79,3 +79,5 @@
     #pragma clang diagnostic ignored "-Winclude-angled-in-module-purview"
 #endif
 #include <clear_all_cpp_std_headers.h>
+#define DOCTEST_CONFIG_USE_STD_HEADERS
+#define DOCTEST_CONFIG_INCLUDE_TYPE_TRAITS
