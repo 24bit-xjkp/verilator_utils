@@ -1,6 +1,5 @@
-#include <doctest_fwd.hpp>
+#include "doctest_macros.hpp"
 import verilator_utils.full;
-#include <doctest.h>
 using namespace ::verilator_utils::verilator;
 
 TEST_SUITE("verilator_utils/wrapper")

@@ -2,15 +2,11 @@ module;
 #if _WIN32
     #include <wincon.h>
 #endif
-#include <doctest_fwd.hpp>
+#include <doctest_macros.hpp>
 export module verilator_utils:utils;
 import :verilator;
 import :internal;
-
-extern "C++"
-{
-#include <doctest.h>
-}
+import verilator_utils.doctest;
 
 export namespace verilator_utils
 {

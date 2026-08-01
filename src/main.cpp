@@ -1,6 +1,4 @@
-#include "doctest_fwd.hpp"
 import verilator_utils.full;
-#include <doctest.h>
 
 int main(int argc, const char* argv[])
 {

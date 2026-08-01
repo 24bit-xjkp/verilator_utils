@@ -1,8 +1,7 @@
 #include <verilator_fwd.hpp>
-#include <doctest_fwd.hpp>
+#include "doctest_macros.hpp"
 import verilator_utils.full;
 #include <unit_test_rtl_lfsr_m7_verilator.h>
-#include <doctest.h>
 #include <verilator_bwd.hpp>
 
 TEST_SUITE("lfsr_m7")

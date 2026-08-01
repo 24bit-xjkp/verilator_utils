@@ -1,12 +1,7 @@
 module;
-#include <doctest_fwd.hpp>
+#include <doctest_macros.hpp>
 export module verilator_utils:task;
 import :scheduler;
-
-extern "C++"
-{
-#include <doctest.h>
-}
 
 export namespace verilator_utils::detail
 {
