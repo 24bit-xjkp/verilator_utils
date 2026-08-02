@@ -763,20 +763,13 @@ export namespace verilator_utils
         static void resume_coroutine(::verilator_utils::detail::coroutine_pair pair)
         {
             auto [handle, promise]{pair};
-            // 非根协程执行完承诺可能已销毁，需要先保存一份结果
-            bool is_root_coroutine{promise->is_root_coroutine()};
             handle.resume();
             // 协程为根协程时执行销毁和异常传播
-            if(is_root_coroutine && handle.done())
+            if(promise->is_root_coroutine() && handle.done())
             {
                 // 利用raii确保在异常时销毁handle
-                struct do_destroy  // NOLINT(cppcoreguidelines-special-member-functions)
-                {
-                    ::std::coroutine_handle<> handle;
-
-                    ~do_destroy() noexcept { handle.destroy(); }
-                } _{handle};
-
+                constexpr static auto deleter{[](::std::coroutine_handle<>* handle) static noexcept { handle->destroy(); }};
+                std::unique_ptr<::std::coroutine_handle<>, decltype(deleter)> _{&handle};
                 promise->rethrow_exception();
             }
         }

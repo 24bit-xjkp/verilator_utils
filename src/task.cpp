@@ -1331,19 +1331,8 @@ export namespace verilator_utils
         using const_reference = const value_type&;
 
     private:
-        struct do_pop
-        {
-            ::std::vector<type>& queue;
-
-            constexpr explicit do_pop(::std::vector<type>& queue) noexcept : queue{queue} {}
-
-            constexpr ~do_pop() noexcept { queue.erase(queue.begin()); }
-
-            constexpr do_pop(const do_pop&) noexcept = delete;
-            constexpr do_pop(do_pop&&) noexcept = delete;
-            constexpr do_pop& operator= (const do_pop&) noexcept = delete;
-            constexpr do_pop& operator= (do_pop&&) noexcept = delete;
-        };
+        constexpr static auto do_pop{[](::std::vector<type>* queue) static noexcept { queue->erase(queue->begin()); }};
+        using do_pop_t = ::std::unique_ptr<::std::vector<type>, decltype(do_pop)>;
 
     public:
         /**
@@ -1414,7 +1403,7 @@ export namespace verilator_utils
             {
                 co_await ::verilator_utils::wait_event([this] { return !queue.empty(); });
             }
-            do_pop _{queue};
+            do_pop_t _{&queue};
             co_return ::std::move(queue.front());
         }
 
@@ -1427,7 +1416,7 @@ export namespace verilator_utils
         {
             if(!queue.empty())
             {
-                do_pop _{queue};
+                do_pop_t _{&queue};
                 return ::std::optional<value_type>{::std::move(queue.front())};
             }
             else
