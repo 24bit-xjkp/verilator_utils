@@ -788,111 +788,136 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(runner.done());
     }
 
-    TEST_CASE("async_task joins and propagates child exceptions")
+    TEST_CASE("root coroutine resumes after a synchronous child completes")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
+        bool resumed{};
+        auto child{[](this auto) -> ::verilator_utils::task<void> { co_return; }()};
+        auto root{[&](this auto) -> ::verilator_utils::task<void>
+                  {
+                      co_await child;
+                      resumed = true;
+                  }()};
 
-        auto ok_task{[](this auto) -> ::verilator_utils::task<void>
-                     {
-                         co_await ::verilator_utils::wait_eval_stage(
-                             ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
-                     }()};
-        auto failing_task{[](this auto) -> ::verilator_utils::task<void>
-                          {
-                              co_await ::verilator_utils::wait_eval_stage(
-                                  ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
-                              throw ::std::runtime_error{"boom"};
-                              co_return;
-                          }()};
-
-        ::std::vector<::verilator_utils::async_task> tasks;
-        tasks.reserve(2);
-        tasks.emplace_back(scheduler, ::std::move(ok_task));
-        tasks.emplace_back(scheduler, ::std::move(failing_task));
-
+        scheduler.add_task(::std::move(root));
         scheduler.loop_once();
-        CHECK(tasks[0].done());
-        CHECK(tasks[1].done());
-
-        auto joiner{::verilator_utils::async_task_join_all(tasks)};
-        CHECK(joiner.await_ready());
-        CHECK_THROWS_AS(joiner.await_resume(),
-                        ::verilator_utils::detail::async_task_join_all_awaiter::unhandled_exception_vector);
+        CHECK(resumed);
+        CHECK(child.done());
+        CHECK(scheduler.empty());
     }
 
-    TEST_CASE("async_task can be awaited and propagates child exceptions")
+    TEST_CASE("async_task created inside a coroutine resumes its parent and propagates exceptions")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
-        bool observed_completion{};
-        bool observed_exception{};
+        bool completed{};
+        bool caught{};
 
-        auto child_task{[](this auto) -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }()};
-        ::verilator_utils::async_task child{scheduler, ::std::move(child_task)};
-        auto watcher_task{[&](this auto) -> ::verilator_utils::task<void>
-                          {
-                              co_await child;
-                              observed_completion = true;
-                          }()};
-        ::verilator_utils::async_task watcher{scheduler, ::std::move(watcher_task)};
+        const auto& parent{
+            [&] -> ::verilator_utils::task<void>
+            {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task([](this auto) -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }());
+                co_await pool.join_any();
+                completed = true;
 
+                pool.add_task(
+                    [](this auto) -> ::verilator_utils::task<void>
+                    {
+                        co_await ::verilator_utils::wait_time(1_ps);
+                        throw ::std::runtime_error{"async child failure"};
+                    }());
+                try
+                {
+                    co_await pool.join_any();
+                }
+                catch(const ::std::runtime_error& exception)
+                {
+                    caught = exception.what() == ::std::string{"async child failure"};
+                }
+            },
+        };
+
+        scheduler.add_task(parent());
         scheduler.loop_until_finish();
-        CHECK(observed_completion);
-        CHECK(watcher.done());
-        watcher.get_promise().rethrow_exception();
-
-        auto failing_task{[](this auto) -> ::verilator_utils::task<void>
-                          {
-                              co_await ::verilator_utils::wait_time(1_ps);
-                              throw ::std::runtime_error{"async child failure"};
-                          }()};
-        ::verilator_utils::async_task failing_child{scheduler, ::std::move(failing_task)};
-        auto failing_watcher_task{[&](this auto) -> ::verilator_utils::task<void>
-                                  {
-                                      try
-                                      {
-                                          co_await failing_child;
-                                      }
-                                      catch(const ::std::runtime_error&)
-                                      {
-                                          observed_exception = true;
-                                      }
-                                  }()};
-        ::verilator_utils::async_task failing_watcher{scheduler, ::std::move(failing_watcher_task)};
-
-        scheduler.loop_until_finish();
-        CHECK(observed_exception);
-        CHECK(failing_watcher.done());
-        failing_watcher.get_promise().rethrow_exception();
+        CHECK(completed);
+        CHECK(caught);
     }
 
-    TEST_CASE("task_join waits for all children and succeeds without exceptions")
+    TEST_CASE("spawn_pool join_all waits for every child and collects exceptions")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         bool joined{};
+        ::std::size_t exception_count{};
 
-        auto child_a{[](this auto) -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }()};
-        auto child_b{[](this auto) -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(2_ps); }()};
-
-        ::std::vector<::verilator_utils::async_task> tasks;
-        tasks.reserve(2);
-        tasks.emplace_back(scheduler, ::std::move(child_a));
-        tasks.emplace_back(scheduler, ::std::move(child_b));
-
-        auto join_task{[&](this auto) -> ::verilator_utils::task<void>
-                       {
-                           co_await ::verilator_utils::async_task_join_all(tasks);
-                           joined = true;
-                       }()};
-        ::verilator_utils::async_task join_runner{scheduler, ::std::move(join_task)};
-
+        const auto parent{
+            [&] -> ::verilator_utils::task<void>
+            {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task([](this auto) -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }());
+                pool.add_task(
+                    [](this auto) -> ::verilator_utils::task<void>
+                    {
+                        co_await ::verilator_utils::wait_time(2_ps);
+                        throw ::std::runtime_error{"first failure"};
+                    }());
+                pool.add_task(
+                    [](this auto) -> ::verilator_utils::task<void>
+                    {
+                        co_await ::verilator_utils::wait_time(3_ps);
+                        throw ::std::logic_error{"second failure"};
+                    }());
+                try
+                {
+                    co_await pool.join_all();
+                }
+                catch(const ::std::vector<::std::exception_ptr>& exceptions)
+                {
+                    exception_count = exceptions.size();
+                }
+                joined = pool.empty();
+            },
+        };
+        scheduler.add_task(parent());
         scheduler.loop_until_finish();
         CHECK(joined);
-        CHECK(join_runner.done());
-        CHECK(::std::ranges::all_of(tasks, [](::verilator_utils::async_task& task) { return task.done(); }));
-        join_runner.get_promise().rethrow_exception();
+        CHECK_EQ(exception_count, 2u);
+    }
+
+    TEST_CASE("spawn_pool join_any removes the completed child regardless of position")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::vector<int> completed;
+        bool joined{};
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void>
+            {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task(
+                    [&](this auto) -> ::verilator_utils::task<void>
+                    {
+                        co_await ::verilator_utils::wait_time(2_ps);
+                        completed.emplace_back(1);
+                    }());
+                pool.add_task(
+                    [&](this auto) -> ::verilator_utils::task<void>
+                    {
+                        co_await ::verilator_utils::wait_time(1_ps);
+                        completed.emplace_back(2);
+                    }());
+                co_await pool.join_any();
+                co_await pool.join_any();
+                joined = pool.empty();
+            },
+        };
+        scheduler.add_task(parent());
+        scheduler.loop_until_finish();
+        CHECK(joined);
+        CHECK_EQ(completed, (::std::vector<int>{2, 1}));
     }
 
     TEST_CASE("finish cooperatively cancels waiting tasks")
@@ -901,25 +926,24 @@ TEST_SUITE("verilator_utils/scheduler")
         auto scheduler{fixture.make_scheduler()};
         bool resumed{};
 
-        auto task{[&](this auto) -> ::verilator_utils::task<void>
-                  {
-                      try
-                      {
-                          co_await ::verilator_utils::wait_time(10_ps);
-                      }
-                      catch(const ::verilator_utils::eval_finish_exception&)
-                      {
-                          resumed = true;
-                          throw;
-                      }
-                  }()};
+        const auto task{
+            [&] -> ::verilator_utils::task<void>
+            {
+                try
+                {
+                    co_await ::verilator_utils::wait_time(10_ps);
+                }
+                catch(const ::verilator_utils::eval_finish_exception&)
+                {
+                    resumed = true;
+                    throw;
+                }
+            },
+        };
 
-        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
+        scheduler.add_task(task());
         scheduler.finish();
         scheduler.loop_once();
         CHECK(resumed);
-        CHECK(runner.done());
-        CHECK(runner.get_promise().is_eval_finish_exception);
-        CHECK_FALSE(runner.get_promise().with_unhandled_exception());
     }
 }
