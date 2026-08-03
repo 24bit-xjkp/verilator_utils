@@ -22,6 +22,20 @@ export namespace verilator_utils
 
     namespace detail
     {
+        struct promise_base;
+    }
+
+    /**
+     * @brief 判断类型promise_type是否为协程框架支持的承诺类型
+     *
+     * @tparam promise_type 要判断的类型
+     */
+    template <typename promise_type>
+    concept is_coroutine_promise =
+        ::std::derived_from<promise_type, ::verilator_utils::detail::promise_base> && ::std::is_final_v<promise_type>;
+
+    namespace detail
+    {
         /**
          * @brief 永不挂起的可等待体
          *
@@ -79,7 +93,7 @@ export namespace verilator_utils
             /// - 无父的同步协程为根协程，生命周期由调度器管理
             /// - 有父的同步协程为同步子协程，生命周期由父协程的task对象管理
             /// - 无父的异步协程为异步子协程，生命周期由父协程的async_task对象管理
-            /// - 有父的异步协程不存在，因为禁止将有父的同步协程转化为异步
+            /// - 有父的异步协程为等待被join的异步子协程，生命周期由父协程的async_task对象管理
 
             /**
              * @brief 协程初始挂起
@@ -105,9 +119,9 @@ export namespace verilator_utils
             /**
              * @brief 协程最终挂起
              *
-             * @return 挂起协程，若存在父协程则将父协程放入就绪队列
+             * @return 挂起协程，若存在父协程则跳转到父协程执行，
              */
-            ::std::suspend_always final_suspend() noexcept;
+            auto final_suspend() noexcept;
 
             /**
              * @brief 判断该协程是不是由调度器直接管理的根协程
@@ -171,8 +185,7 @@ export namespace verilator_utils
              *
              * @return 是否已退出
              */
-            template <typename promise_type>
-                requires (::std::is_final_v<promise_type>)
+            template <::verilator_utils::is_coroutine_promise promise_type>
             bool is_coroutine_returned(this promise_type& self) noexcept
             {
                 auto handle{::std::coroutine_handle<promise_type>::from_promise(self)};
@@ -186,8 +199,7 @@ export namespace verilator_utils
              * @param awaiter 可等待体对象
              * @return auto&& 转发的可等待体对象
              */
-            template <typename promise_type, typename type>
-                requires (::std::is_final_v<promise_type>)
+            template <::verilator_utils::is_coroutine_promise promise_type, typename type>
             auto&& await_transform(this promise_type& self, type&& awaiter)
             {
                 if constexpr(::std::derived_from<type, ::verilator_utils::detail::no_suspend_awaiter>)
@@ -512,15 +524,6 @@ export namespace verilator_utils
     };
 
     /**
-     * @brief 判断类型promise_type是否为协程框架支持的承诺类型
-     *
-     * @tparam promise_type 要判断的类型
-     */
-    template <typename promise_type>
-    concept is_coroutine_promise =
-        ::std::derived_from<promise_type, ::verilator_utils::detail::promise_base> && ::std::is_final_v<promise_type>;
-
-    /**
      * @brief 检查类型是否为事件回调函数，即返回bool的可调用类型
      *
      * @note 回调函数返回true表示事件发生
@@ -763,9 +766,10 @@ export namespace verilator_utils
         static void resume_coroutine(::verilator_utils::detail::coroutine_pair pair)
         {
             auto [handle, promise]{pair};
+            auto is_root{promise->is_root_coroutine()};
             handle.resume();
             // 协程为根协程时执行销毁和异常传播
-            if(promise->is_root_coroutine() && handle.done())
+            if(is_root && handle.done())
             {
                 // 利用raii确保在异常时销毁handle
                 constexpr static auto deleter{[](::std::coroutine_handle<>* handle) static noexcept { handle->destroy(); }};
@@ -1132,12 +1136,41 @@ export namespace verilator_utils
         }
     };
 
-    auto ::verilator_utils::detail::promise_base::final_suspend() noexcept -> ::std::suspend_always
+    auto verilator_utils::detail::promise_base::final_suspend() noexcept
     {
-
         status = status_enum::finial_suspend;
-        if(parent) { scheduler->register_ready(*this); }
-        return ::std::suspend_always{};
+
+        struct finial_awaiter
+        {
+            promise_base* promise;
+
+            static bool await_ready() noexcept { return false; }
+
+            [[nodiscard]] ::std::coroutine_handle<> await_suspend(::std::coroutine_handle<> /* unused */) const noexcept
+            {
+                // 无父协程则不进行回溯
+                if(promise->parent == nullptr) { return ::std::noop_coroutine(); }
+                else
+                {
+                    if(promise->parent_promise->is_root_coroutine())
+                    {
+                        // 父协程为根协程时需要调度器进行异常传播
+                        // 因此将父协程放入调度器就绪队列
+                        promise->scheduler->register_ready(*promise);
+                        return ::std::noop_coroutine();
+                    }
+                    else
+                    {
+                        // 父协程为非根协程直接回溯
+                        return promise->parent;
+                    }
+                }
+            }
+
+            static void await_resume() noexcept {}
+        };
+
+        return finial_awaiter{this};
     }
 
     template <typename promise_type>
