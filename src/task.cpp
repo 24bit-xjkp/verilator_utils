@@ -701,6 +701,29 @@ export namespace verilator_utils
             // 64:  x^64 + x^63 + x^61 + x^60 + 1
             (1zu << 63zu) | (1zu << 61zu) | (1zu << 60zu) | (1zu << 0zu),
         })};
+
+        /**
+         * @brief 检查LFSR生成器参数是否合法
+         *
+         * @param width LFSR宽度
+         * @param feedback_mask 反馈表达式
+         * @param initial_value LFSR初始值
+         */
+        void check_lfsr_generator_args(::std::size_t width, ::std::uint64_t& feedback_mask, ::std::uint64_t initial_value)
+        {
+            using namespace ::std::string_view_literals;
+            REQUIRE_GE(width, 3);
+            REQUIRE_LE(width, 64);
+            REQUIRE_MESSAGE(initial_value != 0, "初始值为0时LFSR输出恒为0"sv);
+            if(width != 64)
+            {
+                REQUIRE_MESSAGE((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度"sv);
+                REQUIRE_MESSAGE((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度"sv);
+            }
+
+            if(feedback_mask == 0) { feedback_mask = ::verilator_utils::detail::lfsr_feedback_mask_table[width - 3]; }
+            REQUIRE_MESSAGE((feedback_mask & 1zu) != 0, "反馈表达式必须包含常数项"sv);
+        }
     }  // namespace detail
 
     /**
@@ -711,22 +734,10 @@ export namespace verilator_utils
      * @param initial_value LFSR初始值
      * @return 生成器
      */
-    [[nodiscard]] ::verilator_utils::generator<bool> fibonacci_lfsr_generator(::std::size_t width,
-                                                                              ::std::uint64_t feedback_mask = 0,
-                                                                              ::std::uint64_t initial_value = 1) noexcept
+    [[nodiscard]] ::verilator_utils::generator<bool>
+        fibonacci_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1)
     {
-        using namespace ::std::string_view_literals;
-        REQUIRE_GE(width, 3);
-        REQUIRE_LE(width, 64);
-        REQUIRE_MESSAGE(initial_value != 0, "初始值为0时LFSR输出恒为0"sv);
-        if(width != 64)
-        {
-            REQUIRE_MESSAGE((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度"sv);
-            REQUIRE_MESSAGE((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度"sv);
-        }
-
-        if(feedback_mask == 0) { feedback_mask = ::verilator_utils::detail::lfsr_feedback_mask_table[width - 3]; }
-        REQUIRE_MESSAGE((feedback_mask & 1zu) != 0, "反馈表达式必须包含常数项"sv);
+        ::verilator_utils::detail::check_lfsr_generator_args(width, feedback_mask, initial_value);
         ::std::uint64_t value{initial_value};
         while(true)
         {
@@ -745,26 +756,15 @@ export namespace verilator_utils
      * @return 生成器
      */
     [[nodiscard]] ::verilator_utils::generator<bool>
-        galois_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1) noexcept
+        galois_lfsr_generator(::std::size_t width, ::std::uint64_t feedback_mask = 0, ::std::uint64_t initial_value = 1)
     {
-        using namespace ::std::string_view_literals;
-        REQUIRE_GE(width, 3);
-        REQUIRE_LE(width, 64);
-        REQUIRE_MESSAGE(initial_value != 0, "初始值为0时LFSR输出恒为0"sv);
-        if(width != 64)
-        {
-            REQUIRE_MESSAGE((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度"sv);
-            REQUIRE_MESSAGE((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度"sv);
-        }
-
-        if(feedback_mask == 0) { feedback_mask = ::verilator_utils::detail::lfsr_feedback_mask_table[width - 3]; }
-        REQUIRE_MESSAGE((feedback_mask & 1zu) != 0, "反馈表达式必须包含常数项"sv);
+        ::verilator_utils::detail::check_lfsr_generator_args(width, feedback_mask, initial_value);
         ::std::uint64_t value{initial_value};
         while(true)
         {
             auto out{value & 1zu};
             co_yield static_cast<bool>(out);
-            auto masked_broadcast_out{(0 - out) & feedback_mask};
+            auto masked_broadcast_out{(0zu - out) & feedback_mask};
             value = (value ^ masked_broadcast_out) >> 1zu | out << (width - 1);
         }
     }
