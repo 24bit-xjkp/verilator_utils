@@ -6,7 +6,7 @@ module;
 export module verilator_utils:utils;
 import :verilator;
 import :internal;
-import verilator_utils.doctest;
+import doctest;
 
 export namespace verilator_utils
 {

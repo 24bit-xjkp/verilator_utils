@@ -3,6 +3,9 @@ if get_config("use_sanitizer") then
     set_policy("build.sanitizer.address", true)
     set_policy("build.sanitizer.undefined", true)
 end
+if get_config("use_lto") then
+    set_policy("build.optimization.lto", true)
+end
 
 target("unit_test")
     set_group("unit_test")

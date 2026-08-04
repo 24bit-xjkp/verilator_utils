@@ -4,8 +4,19 @@ set_warnings("allextra")
 includes("script/*.lua")
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 set_allowedmodes("debug", "release", "releasedbg")
-add_requires("doctest", "verilator", "clean_std_heads")
-add_packages("doctest", "verilator", "clean_std_heads")
+add_requires("verilator")
+add_packages("verilator")
+local config = {
+    debug = is_mode("debug"),
+    configs = {
+        shared = is_kind("shared"),
+        main = false,
+        std_harden = get_config("use_std_harden"),
+        asan = get_config("use_sanitizer"),
+        lto = get_config("use_lto")
+    }
+}
+add_requires("doctest_module", config)
 set_exceptions("cxx")
 set_policy("build.c++.modules.hide_dependencies", true)
 set_defaultmode("release")
@@ -19,6 +30,12 @@ option("use_std_harden")
     set_default(false)
     set_description("Enable c++ standard library harden.")
 option_end()
+
+option("use_lto")
+    set_default(false)
+    set_description("Enable link time optimization.")
+option_end()
+
 if get_config("use_std_harden") then
     if is_mode("debug") then
         add_defines("_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG", "_GLIBCXX_DEBUG")

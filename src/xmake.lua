@@ -3,13 +3,17 @@ if get_config("use_sanitizer") then
     set_policy("build.sanitizer.address", true)
     set_policy("build.sanitizer.undefined", true)
 end
+if get_config("use_lto") then
+    set_policy("build.optimization.lto", true)
+end
 target("verilator_utils")
     set_kind("$(kind)")
-    add_files("*.cpp|*_impl.cpp|main.cpp", {public = true, install = true})
+    add_packages("doctest_module", {components = "core", public = true})
+    add_files("*.cpp|main.cpp", {public = true, install = true})
     add_includedirs(".", {public = true})
     add_headerfiles("*.hpp")
-    add_files("*_impl.cpp")
     set_group("verilator_utils")
+    set_policy("build.merge_archive", true)
 target_end()
 
 target("verilator_utils_main")
