@@ -353,9 +353,10 @@ export namespace verilator_utils
     /**
      * @brief 等待上升沿
      *
-     * @param callback 事件回调函数
+     * @param bit 时钟信号
      * @param edge_to_wait 要等待到边沿数量
      * @return event_awaiter 可等待体
+     * @note 在测试激励中通常应该使用wait_verify
      */
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_posedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
@@ -373,9 +374,10 @@ export namespace verilator_utils
     /**
      * @brief 等待下降沿
      *
-     * @param callback 事件回调函数
+     * @param bit 时钟信号
      * @param edge_to_wait 要等待到边沿数量
      * @return event_awaiter 可等待体
+     * @note 在测试激励中通常应该使用wait_stimulate
      */
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_negedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
@@ -393,9 +395,10 @@ export namespace verilator_utils
     /**
      * @brief 等待双边沿
      *
-     * @param callback 事件回调函数
+     * @param bit 时钟信号
      * @param edge_to_wait 要等待到边沿数量
      * @return event_awaiter 可等待体
+     * @note 在测试激励中很少使用
      */
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_alledge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
@@ -438,7 +441,7 @@ namespace verilator_utils::detail
      *
      * @param clk 时钟信号切片
      * @param edge_to_wait 要等待到边沿个数
-     * @param activate_posedge 时钟沿极性，true表示上升沿有效，false表示下降沿有效
+     * @param edge 时钟沿极性
      * @param eval_stage 目标评估阶段
      * @return 同步任务
      * @note 等待到n个给定时钟边沿后的给定评估阶段
@@ -446,10 +449,10 @@ namespace verilator_utils::detail
     [[nodiscard]] ::verilator_utils::task<void>
         wait_edge_and_eval_stage(::verilator_utils::bit_slice<::CData> clk,
                                  ::std::size_t edge_to_wait,
-                                 bool activate_posedge,
-                                 ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage) noexcept
+                                 ::verilator_utils::edge_enum edge,
+                                 ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage)
     {
-        if(activate_posedge) [[likely]] { co_await ::verilator_utils::wait_posedge(clk, edge_to_wait); }
+        if(edge == ::verilator_utils::edge_enum::rising) { co_await ::verilator_utils::wait_posedge(clk, edge_to_wait); }
         else
         {
             co_await ::verilator_utils::wait_negedge(clk, edge_to_wait);
@@ -472,7 +475,7 @@ export namespace verilator_utils
      */
     [[nodiscard]] ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData> clk,
                                                                ::verilator_utils::femtosecond_t period,
-                                                               ::verilator_utils::femtosecond_t delay = 0_fs) noexcept
+                                                               ::verilator_utils::femtosecond_t delay = 0_fs)
     {
         clk = 0;
         if(delay != 0_fs) { co_await ::verilator_utils::wait_time(delay); }
@@ -496,7 +499,7 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData> reset,
                                                                ::verilator_utils::bit_slice<::CData> clk,
                                                                ::size_t cycle = 3,
-                                                               bool active_high = true) noexcept
+                                                               bool active_high = true)
     {
         reset = static_cast<::std::uint64_t>(active_high);
         co_await ::verilator_utils::wait_negedge(clk, cycle);
@@ -508,7 +511,7 @@ export namespace verilator_utils
      *
      * @param clk 时钟信号切片
      * @param edge_to_wait 要等待到边沿个数
-     * @param activate_posedge 时钟沿极性，true表示上升沿有效，false表示下降沿有效
+     * @param edge 时钟沿极性
      * @param eval_stage 目标评估阶段
      * @return 同步任务
      * @note 等待到edge_to_wait个给定时钟边沿后的给定评估阶段
@@ -517,17 +520,20 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::task<void>
         wait_verify(const ::verilator_utils::bit_slice<::CData>& clk,
                     ::std::size_t edge_to_wait = 1,
-                    bool activate_posedge = true,
+                    ::verilator_utils::edge_enum edge = ::verilator_utils::edge_enum::rising,
                     ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
-                        ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval) noexcept
-    { return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, activate_posedge, eval_stage); }
+                        ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval)
+    {
+        REQUIRE_NE(edge, ::verilator_utils::edge_enum::both);
+        return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, edge, eval_stage);
+    }
 
     /**
      * @brief 等待到激励时机
      *
      * @param clk 时钟信号切片
      * @param edge_to_wait 要等待到边沿个数
-     * @param activate_posedge 时钟沿极性，true表示上升沿有效，false表示下降沿有效
+     * @param edge 时钟沿极性
      * @param eval_stage 目标评估阶段，默认根据时钟沿极性选择目标阶段
      * @return 同步任务
      * @note 等待到edge_to_wait个给定时钟边沿前的给定评估阶段
@@ -536,16 +542,19 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::task<void>
         wait_stimulate(const ::verilator_utils::bit_slice<::CData>& clk,
                        ::std::size_t edge_to_wait = 1,
-                       bool activate_posedge = false,
+                       ::verilator_utils::edge_enum edge = ::verilator_utils::edge_enum::falling,
                        ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
-                           ::verilator_utils::eval_scheduler::eval_stage_enum::invalid) noexcept
+                           ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
     {
+        REQUIRE_NE(edge, ::verilator_utils::edge_enum::both);
+
         if(eval_stage == ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
         {
-            eval_stage = activate_posedge ? ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval
-                                          : ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval;
+            eval_stage = edge == ::verilator_utils::edge_enum::rising
+                             ? ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval
+                             : ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval;
         }
-        return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, activate_posedge, eval_stage);
+        return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, edge, eval_stage);
     }
 
     /**

@@ -80,15 +80,15 @@ TEST_SUITE("edge_detector")
                 do_verify(false, true);
 
                 // 上升沿产生同步输入信号
-                co_await wait_stimulate(port.clk, 1, true);
+                co_await wait_stimulate(port.clk, 1, edge_enum::rising);
                 port.signal = 1;
                 do_verify(true, false);
-                co_await wait_stimulate(port.clk, 1, true);
+                co_await wait_stimulate(port.clk, 1, edge_enum::rising);
                 port.signal = 0;
                 do_verify(false, true);
 
                 // 无输入信号
-                co_await wait_stimulate(port.clk, 1, true);
+                co_await wait_stimulate(port.clk, 1, edge_enum::rising);
                 do_verify(false, false);
 
                 co_await verify_tasks.join_all();

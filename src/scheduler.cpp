@@ -536,27 +536,27 @@ export namespace verilator_utils
     using default_event_callback = ::std::function<bool()>;
 
     /**
+     * @brief 边沿类型
+     *
+     */
+    enum class edge_enum : ::std::uint8_t
+    {
+        /// 上升沿
+        rising = 1,
+        /// 下降沿
+        falling = 2,
+        /// 双边沿
+        both = rising | falling,
+    };
+
+    /**
      * @brief 边沿检测器
      *
      */
     struct edge_detector
     {
     public:
-        /**
-         * @brief 要检测的边沿类型
-         *
-         */
-        enum class edge_enum : ::std::uint8_t
-        {
-            /// 上升沿
-            rising = 1,
-            /// 下降沿
-            falling = 2,
-            /// 双边沿
-            both = rising | falling,
-        };
-
-        using enum edge_enum;
+        using enum ::verilator_utils::edge_enum;
 
         /**
          * @brief 构造边沿检测器对象
@@ -565,7 +565,7 @@ export namespace verilator_utils
          * @param event_callback 事件回调函数
          * @param edge_to_detect 要检测的边沿
          */
-        edge_detector(const ::verilator_utils::is_bit_slice auto& bit, edge_enum edge_to_detect) :
+        edge_detector(const ::verilator_utils::is_bit_slice auto& bit, ::verilator_utils::edge_enum edge_to_detect) :
             callback{[bit] { return static_cast<bool>(bit); }}, previous_value{static_cast<bool>(bit)},
             edge_to_detect{edge_to_detect}
         {
@@ -594,7 +594,7 @@ export namespace verilator_utils
          *
          * @return 要检测的边沿类型
          */
-        [[nodiscard]] edge_enum get_edge_to_detect() const { return edge_to_detect; }
+        [[nodiscard]] ::verilator_utils::edge_enum get_edge_to_detect() const { return edge_to_detect; }
 
         /**
          * @brief 设置要检测的边沿类型
@@ -602,12 +602,13 @@ export namespace verilator_utils
          * @param new_edge_to_detect 要检测的边沿类型
          * @return 先前设置的边沿类型
          */
-        edge_enum set_edge_to_detect(edge_enum new_edge_to_detect) { return ::std::exchange(edge_to_detect, new_edge_to_detect); }
+        ::verilator_utils::edge_enum set_edge_to_detect(::verilator_utils::edge_enum new_edge_to_detect)
+        { return ::std::exchange(edge_to_detect, new_edge_to_detect); }
 
     private:
         ::verilator_utils::default_event_callback callback;
         bool previous_value;
-        edge_enum edge_to_detect;
+        ::verilator_utils::edge_enum edge_to_detect;
     };
 }  // namespace verilator_utils
 
