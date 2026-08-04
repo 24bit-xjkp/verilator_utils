@@ -1272,7 +1272,7 @@ export namespace verilator_utils
          * @return 子任务，配合co_await使用
          */
         template <typename... args_t>
-        [[nodiscard]] ::verilator_utils::task<void> put(args_t&&... args) noexcept
+        [[nodiscard]] ::verilator_utils::task<void> put(args_t&&... args)
             requires (::std::constructible_from<value_type, args_t...>)
         {
             if(max_count != 0 && queue.size() == max_count)
@@ -1309,13 +1309,13 @@ export namespace verilator_utils
          *
          * @return 子任务，配合co_await使用
          */
-        [[nodiscard]] ::verilator_utils::task<value_type> get() noexcept
+        [[nodiscard]] ::verilator_utils::task<value_type> get()
         {
             if(queue.empty())
             {
                 co_await ::verilator_utils::wait_event([this] { return !queue.empty(); });
             }
-            do_pop_t _{&queue};
+            do_pop_t _{::std::addressof(queue)};
             co_return ::std::move(queue.front());
         }
 
@@ -1324,11 +1324,11 @@ export namespace verilator_utils
          *
          * @return std::optional 成功获取时包含元素，否则为空
          */
-        ::std::optional<value_type> try_get() noexcept
+        ::std::optional<value_type> try_get() noexcept(::std::is_nothrow_move_constructible_v<value_type>)
         {
             if(!queue.empty())
             {
-                do_pop_t _{&queue};
+                do_pop_t _{::std::addressof(queue)};
                 return ::std::optional<value_type>{::std::move(queue.front())};
             }
             else
@@ -1393,7 +1393,7 @@ export namespace verilator_utils
          * @param update 要减小的量
          * @return 子任务，配合co_await使用
          */
-        ::verilator_utils::task<void> get(::std::size_t update = 1) noexcept
+        ::verilator_utils::task<void> get(::std::size_t update = 1)
         {
             if(count >= update)
             {
