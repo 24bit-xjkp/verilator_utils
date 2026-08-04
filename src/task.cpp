@@ -1118,7 +1118,7 @@ export namespace verilator_utils
          */
         struct join_any_awaiter
         {
-            explicit join_any_awaiter(pool_t& pool) : pool{pool}, iter{pool.end()} {}
+            explicit join_any_awaiter(pool_t& pool) noexcept : pool{pool} {}
 
             /**
              * @brief 判断是否立即完成
@@ -1150,26 +1150,33 @@ export namespace verilator_utils
             void await_resume()
             {
                 // 没有子任务立即就绪，需要遍历任务池查找就绪任务
-                if(iter == pool.end())
+                if(ptr == nullptr)
                 {
-                    for(auto ptr{pool.begin()}, end{pool.end()}; ptr != end; ++ptr)
+                    for(auto&& subtask: pool)
                     {
-                        ptr->get_promise().parent = nullptr;
-                        ptr->get_promise().parent_promise = nullptr;
-                        if(ptr->done()) { iter = ptr; }
+                        subtask.get_promise().parent = nullptr;
+                        subtask.get_promise().parent_promise = nullptr;
+                        if(subtask.done()) { ptr = ::std::addressof(subtask); }
                     }
+
+                    // 标记ptr为空的情况不可达以消除静态分析警告
+                    if(ptr == nullptr) { ::std::unreachable(); }
                 }
                 constexpr static auto deleter{
                     [](join_any_awaiter* self)
                     {
-                        auto* ptr{::std::to_address(self->iter)};
-                        ::std::destroy_at(ptr);
-                        ::std::construct_at(ptr, ::std::move(self->pool.back()));
+                        // 若待析构的元素不为最后一个元素，则将最后的元素移动到当前位置，然后析构最后的空元素
+                        // 否则直接析构元素
+                        if(self->ptr != ::std::addressof(self->pool.back()))
+                        {
+                            ::std::destroy_at(self->ptr);
+                            ::std::construct_at(self->ptr, ::std::move(self->pool.back()));
+                        }
                         self->pool.pop_back();
                     },
                 };
                 ::std::unique_ptr<join_any_awaiter, decltype(deleter)> _{this, deleter};
-                auto&& promise{iter->get_promise()};
+                auto&& promise{ptr->get_promise()};
                 promise.scheduler->throw_if_finish();
                 promise.rethrow_exception();
             }
@@ -1182,14 +1189,15 @@ export namespace verilator_utils
              */
             bool any_tasks_done()
             {
-                iter = ::std::ranges::find(pool, true, [](::verilator_utils::async_task& task) { return task.done(); });
-                return iter != pool.end();
+                auto iter{::std::ranges::find(pool, true, [](::verilator_utils::async_task& task) { return task.done(); })};
+                if(iter != pool.end()) { ptr = ::std::to_address(iter); }
+                return ptr != nullptr;
             }
 
             /// 子任务视图
             pool_t& pool;
-            /// 首个完成任务的迭代器
-            pool_t::iterator iter;
+            /// 首个完成任务的指针
+            ::verilator_utils::async_task* ptr{};
         };
 
         /**
