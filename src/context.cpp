@@ -1,7 +1,7 @@
 module;
 #include <doctest_macros.hpp>
 export module verilator_utils:context;
-import :scheduler;
+import :task;
 
 export namespace verilator_utils
 {
@@ -185,10 +185,12 @@ export namespace verilator_utils
         /**
          * @brief 执行初始化循环，然后执行调度器循环直到调度器队列为空或者仿真结束，如果启用波形记录器，则记录波形
          *
+         * @param max_eval_time 最大仿真时长，为0表示无限制
          * @note 会创建波形记录文件
          */
-        void loop_until_finish()
+        void loop_until_finish(::verilator_utils::femtosecond_t max_eval_time = 0_fs)
         {
+            if(max_eval_time != 0_fs) { add_task(::verilator_utils::max_eval_time(max_eval_time)); }
             initial_eval();
             while(!scheduler->empty() && !scheduler->is_finish()) { loop_once(); }
         }
