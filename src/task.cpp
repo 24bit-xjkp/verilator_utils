@@ -465,25 +465,30 @@ export namespace verilator_utils
 {
 
     /**
-     * @brief 生成时钟信号，占空比为50%
+     * @brief 生成时钟信号
      *
      * @param scheduler 调度器引用
      * @param clk 时钟信号切片
      * @param period 时钟周期
      * @param delay 时钟发生延迟
+     * @param duty_ratio 占空比
      * @return 生成时钟信号的任务
      */
-    [[nodiscard]] ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData> clk,
+    [[nodiscard]] ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData>& clk,
                                                                ::verilator_utils::femtosecond_t period,
-                                                               ::verilator_utils::femtosecond_t delay = 0_fs)
+                                                               ::verilator_utils::femtosecond_t delay = 0_fs,
+                                                               double duty_ratio = 0.5)
     {
         clk = 0;
         if(delay != 0_fs) { co_await ::verilator_utils::wait_time(delay); }
-        auto half_period{period / 2zu};
+        auto positive_duration{period * duty_ratio};
+        auto negative_duration{period - positive_duration};
         while(true)
         {
-            co_await ::verilator_utils::wait_time(half_period);
-            clk = static_cast<::std::uint64_t>(!static_cast<bool>(clk));
+            clk = 0;
+            co_await ::verilator_utils::wait_time(negative_duration);
+            clk = 1;
+            co_await ::verilator_utils::wait_time(positive_duration);
         }
     }
 
@@ -496,14 +501,51 @@ export namespace verilator_utils
      * @param active_high 复位信号的极性，true表示高电平有效，false表示低电平有效
      * @return 生成复位信号的任务
      */
-    [[nodiscard]] ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData> reset,
-                                                               ::verilator_utils::bit_slice<::CData> clk,
+    [[nodiscard]] ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData>& reset,
+                                                               ::verilator_utils::bit_slice<::CData>& clk,
                                                                ::size_t cycle = 3,
                                                                bool active_high = true)
     {
         reset = static_cast<::std::uint64_t>(active_high);
         co_await ::verilator_utils::wait_negedge(clk, cycle);
         reset = static_cast<::std::uint64_t>(!active_high);
+    }
+
+    /**
+     * @brief 生成异步复位信号，持续duration时间
+     *
+     * @param reset 复位信号引用
+     * @param duration 持续时间
+     * @param active_high 复位信号的极性，true表示高电平有效，false表示低电平有效
+     * @return 生成复位信号的任务
+     */
+    [[nodiscard]] ::verilator_utils::task<void> generate_async_reset(::verilator_utils::bit_slice<::CData>& reset,
+                                                                     ::verilator_utils::femtosecond_t duration,
+                                                                     bool active_high = true)
+    {
+        reset = static_cast<::std::uint64_t>(active_high);
+        co_await ::verilator_utils::wait_time(duration);
+        reset = static_cast<::std::uint64_t>(!active_high);
+    }
+
+    /**
+     * @brief 设置最大仿真时间
+     * 由于generate_clock会不断生成时钟激励，因此需要手动通过eval_finish结束仿真，否则仿真会无限执行。
+     * 该函数会在到达最大仿真时间时自动通过eval_finish结束仿真。
+     * @param duration 最大仿真时间
+     * @return 子任务，通常应通过add_task放入调度器中
+     * @code {.cpp}
+     * dut_context<dut_t, void> ctx;
+     * // 添加时钟激励
+     * ctx.add_task(generate_clock(2_ns));
+     * // 设置最大仿真时间为100ns，避免因时钟激励导致仿真无限执行
+     * ctx.add_task(max_eval_time(100_ns));
+     * @endcode
+     */
+    [[nodiscard]] ::verilator_utils::task<void> max_eval_time(::verilator_utils::femtosecond_t duration)
+    {
+        co_await ::verilator_utils::wait_time(duration);
+        co_await ::verilator_utils::eval_finish();
     }
 
     /**
