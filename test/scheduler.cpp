@@ -537,11 +537,12 @@ TEST_SUITE("verilator_utils/scheduler")
         auto scheduler{fixture.make_scheduler()};
         ::CData clk{};
         ::std::uint64_t resumed_times{};
+        ::verilator_utils::bit_slice clk_ref{clk};
 
-        auto clock_task{::verilator_utils::generate_clock(::verilator_utils::bit_slice<::CData>{clk}, 4_ps)};
+        auto clock_task{::verilator_utils::generate_clock(clk_ref, 4_ps)};
         auto stimulus_task{[&](this auto) -> ::verilator_utils::task<void>
                            {
-                               co_await ::verilator_utils::wait_stimulate(::verilator_utils::bit_slice<::CData>{clk}, 2);
+                               co_await ::verilator_utils::wait_stimulate(clk_ref, 2);
                                resumed_times = scheduler.time_in_time_precision();
                                co_await ::verilator_utils::eval_finish();
                            }()};
@@ -648,16 +649,13 @@ TEST_SUITE("verilator_utils/scheduler")
         ::CData clk{};
         ::CData reset{};
         ::CData reset_n{};
+        ::verilator_utils::bit_slice clk_ref{clk};
+        ::verilator_utils::bit_slice reset_ref{reset};
+        ::verilator_utils::bit_slice reset_n_ref{reset_n};
 
-        auto clock_task{::verilator_utils::generate_clock(::verilator_utils::bit_slice<::CData>{clk}, 4_ps)};
-        auto reset_task{::verilator_utils::generate_reset(::verilator_utils::bit_slice<::CData>{reset},
-                                                          ::verilator_utils::bit_slice<::CData>{clk},
-                                                          1,
-                                                          true)};
-        auto reset_n_task{::verilator_utils::generate_reset(::verilator_utils::bit_slice<::CData>{reset_n},
-                                                            ::verilator_utils::bit_slice<::CData>{clk},
-                                                            1,
-                                                            false)};
+        auto clock_task{::verilator_utils::generate_clock(clk_ref, 4_ps)};
+        auto reset_task{::verilator_utils::generate_reset(reset_ref, clk_ref, 1, true)};
+        auto reset_n_task{::verilator_utils::generate_reset(reset_n_ref, clk_ref, 1, false)};
 
         ::verilator_utils::async_task clock_runner{scheduler, ::std::move(clock_task)};
         ::verilator_utils::async_task reset_runner{scheduler, ::std::move(reset_task)};
@@ -693,8 +691,9 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         ::CData clk{1};
+        ::verilator_utils::bit_slice clk_ref{clk};
 
-        auto clock_task{::verilator_utils::generate_clock(::verilator_utils::bit_slice<::CData>{clk}, 4_ps, 3_ps)};
+        auto clock_task{::verilator_utils::generate_clock(clk_ref, 4_ps, 3_ps)};
         auto probe_task{[&](this auto) -> ::verilator_utils::task<void>
                         {
                             co_await ::verilator_utils::wait_time(2_ps);
@@ -726,6 +725,122 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(clock_runner.done());
         clock_runner.get_promise().rethrow_exception();
         probe_runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("clock generation honors its duty ratio")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::CData clk{};
+        ::verilator_utils::bit_slice clk_ref{clk};
+
+        auto clock_task{::verilator_utils::generate_clock(clk_ref, 10_ps, 0_fs, 0.3)};
+        ::verilator_utils::async_task clock_runner{scheduler, ::std::move(clock_task)};
+
+        scheduler.loop_once();
+        CHECK_EQ(scheduler.time_in_time_precision(), 7u);
+        CHECK_EQ(clk, 1);
+        scheduler.loop_once();
+        CHECK_EQ(scheduler.time_in_time_precision(), 10u);
+        CHECK_EQ(clk, 0);
+        scheduler.loop_once();
+        CHECK_EQ(scheduler.time_in_time_precision(), 17u);
+        CHECK_EQ(clk, 1);
+
+        scheduler.finish();
+        scheduler.loop_once();
+        CHECK(clock_runner.done());
+        clock_runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("asynchronous reset asserts immediately and releases after its duration")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::CData reset{};
+        ::verilator_utils::bit_slice reset_ref{reset};
+
+        auto reset_task{::verilator_utils::generate_async_reset(reset_ref, 3_ps)};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(reset_task)};
+
+        scheduler.initial_eval();
+        CHECK_EQ(reset, 1);
+        CHECK_EQ(scheduler.time_in_time_precision(), 0u);
+        CHECK_FALSE(runner.done());
+        scheduler.loop_once();
+        CHECK_EQ(reset, 0);
+        CHECK_EQ(scheduler.time_in_time_precision(), 3u);
+        CHECK(runner.done());
+        runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("asynchronous reset supports active-low polarity")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::CData reset{};
+        ::verilator_utils::bit_slice reset_ref{reset};
+
+        auto reset_task{::verilator_utils::generate_async_reset(reset_ref, 2_ps, false)};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(reset_task)};
+
+        scheduler.initial_eval();
+        CHECK_EQ(reset, 0);
+        scheduler.loop_once();
+        CHECK_EQ(reset, 1);
+        CHECK_EQ(scheduler.time_in_time_precision(), 2u);
+        CHECK(runner.done());
+        runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("maximum evaluation time finishes the scheduler")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+
+        auto task{::verilator_utils::max_eval_time(4_ps)};
+        ::verilator_utils::async_task runner{scheduler, ::std::move(task)};
+        scheduler.loop_until_finish();
+
+        CHECK_EQ(scheduler.time_in_time_precision(), 4u);
+        CHECK(scheduler.is_finish());
+        CHECK(runner.done());
+        runner.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("edge wait helpers select the expected default evaluation stages")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::CData clk{};
+        ::verilator_utils::bit_slice clk_ref{clk};
+        ::verilator_utils::eval_scheduler::eval_stage_enum falling_stage{};
+        ::verilator_utils::eval_scheduler::eval_stage_enum rising_stage{};
+
+        auto falling_task{[&](this auto) -> ::verilator_utils::task<void>
+                          {
+                              co_await ::verilator_utils::wait_stimulate(clk_ref);
+                              falling_stage = scheduler.get_eval_stage();
+                          }()};
+        auto rising_task{[&](this auto) -> ::verilator_utils::task<void>
+                         {
+                             co_await ::verilator_utils::wait_stimulate(clk_ref, 1, ::verilator_utils::edge_enum::rising);
+                             rising_stage = scheduler.get_eval_stage();
+                         }()};
+        ::verilator_utils::async_task falling_runner{scheduler, ::std::move(falling_task)};
+        ::verilator_utils::async_task rising_runner{scheduler, ::std::move(rising_task)};
+
+        scheduler.loop_once();
+        clk = 1;
+        scheduler.loop_once();
+        CHECK_EQ(rising_stage, ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
+        clk = 0;
+        scheduler.loop_once();
+        CHECK_EQ(falling_stage, ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
+        CHECK(falling_runner.done());
+        CHECK(rising_runner.done());
+        falling_runner.get_promise().rethrow_exception();
+        rising_runner.get_promise().rethrow_exception();
     }
 
     TEST_CASE("scheduler exposes stage transitions and empty state")
