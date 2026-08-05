@@ -38,11 +38,10 @@ TEST_SUITE("sequence_detector")
 
     TEST_CASE("sequence_detector")
     {
-        dut_context_t dut_context{true, verilator_time_unit::ns, verilator_time_unit::ns};
-        auto&& [_, dut, _, _]{dut_context};
-        port_t port{dut};
+        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        port_t port{ctx.get_dut()};
 
-        dut_context.add_task(generate_clock(port.clk, 2_ns));
+        ctx.add_task(generate_clock(port.clk, 2_ns));
         const auto do_verify{
             [&] -> task<void>
             {
@@ -76,7 +75,7 @@ TEST_SUITE("sequence_detector")
                 co_await eval_finish();
             },
         };
-        dut_context.add_task(do_verify());
-        dut_context.loop_until_finish();
+        ctx.add_task(do_verify());
+        ctx.loop_until_finish();
     }
 }

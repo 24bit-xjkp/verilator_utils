@@ -36,9 +36,8 @@ TEST_SUITE("dual_ram")
 
     TEST_CASE("dual_ram")
     {
-        dut_context_t dut_context{true, verilator_time_unit::ns, verilator_time_unit::ns};
-        auto&& [context, dut, _, _]{dut_context};
-        port_t port{dut};
+        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        port_t port{ctx.get_dut()};
         using pair_t = std::pair<std::uint8_t, std::uint8_t>;
         mailbox<std::uint8_t> queue{};
         constexpr static auto ram_depth{1zu << port.addr_width};
@@ -46,7 +45,9 @@ TEST_SUITE("dual_ram")
         constexpr static auto epochs{8zu};
         std::array<pair_t, ram_depth * epochs> operation_list{};
 
-        std::mt19937 engine{static_cast<std::uint32_t>(context.randSeed())};
+        auto seed{static_cast<std::uint32_t>(ctx.get_context().randSeed())};
+        CAPTURE(seed);
+        std::mt19937 engine{seed};
         for(auto&& [i, pair]: views::enumerate(operation_list))
         {
             auto&& [addr, data]{pair};
@@ -60,8 +61,8 @@ TEST_SUITE("dual_ram")
         constexpr static auto read_clk_period{26_ns};
         constexpr static auto read_clk_delay{9_ns};
 
-        dut_context.add_task(generate_clock(port.write_clk, write_clk_period, write_clk_delay));
-        dut_context.add_task(generate_clock(port.read_clk, read_clk_period, read_clk_delay));
+        ctx.add_task(generate_clock(port.write_clk, write_clk_period, write_clk_delay));
+        ctx.add_task(generate_clock(port.read_clk, read_clk_period, read_clk_delay));
 
         const auto do_write{
             [&] -> task<void>
@@ -145,7 +146,7 @@ TEST_SUITE("dual_ram")
                 co_await eval_finish();
             },
         };
-        dut_context.add_task(do_verify());
-        dut_context.loop_until_finish();
+        ctx.add_task(do_verify());
+        ctx.loop_until_finish();
     }
 }

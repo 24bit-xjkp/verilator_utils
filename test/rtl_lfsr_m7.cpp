@@ -46,10 +46,8 @@ TEST_SUITE("lfsr_m7")
             }(),
         };
 
-        dut_context_t dut_context{true, verilator_time_unit::ns, verilator_time_unit::ns};
-        auto&& [_, dut, _, _]{dut_context};
-        port_t port{dut};
-        dut.eval();
+        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        port_t port{ctx.get_dut()};
 
         format_wrapper lfsr_feedback{
             std::to_underlying(GENERATE(lfsr_feedback_t::fibonacci, lfsr_feedback_t::galois)),
@@ -58,7 +56,7 @@ TEST_SUITE("lfsr_m7")
         };
         CAPTURE(lfsr_feedback);
         port.lfsr_feedback = lfsr_feedback;
-        dut_context.set_base_name(std::format("lfsr_m7_{}", lfsr_feedback));
+        ctx.set_base_name(std::format("lfsr_m7_{}", lfsr_feedback));
 
         const auto do_verify{
             [&] -> task<void>
@@ -88,7 +86,7 @@ TEST_SUITE("lfsr_m7")
                     }
 
                     // 验证失能后模型输出不变
-                    format_wrapper current_result{port.result.dump()};
+                    auto current_result{port.result.dump()};
                     co_await wait_stimulate(port.clk);
                     port.enable = false;
                     for(auto i{0zu}; i != 3; ++i)
@@ -105,8 +103,8 @@ TEST_SUITE("lfsr_m7")
             },
         };
 
-        dut_context.add_task(generate_clock(port.clk, 2_ns));
-        dut_context.add_task(do_verify());
-        dut_context.loop_until_finish();
+        ctx.add_task(generate_clock(port.clk, 2_ns));
+        ctx.add_task(do_verify());
+        ctx.loop_until_finish();
     }
 }

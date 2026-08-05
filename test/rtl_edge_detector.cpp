@@ -28,16 +28,14 @@ TEST_SUITE("edge_detector")
 
     TEST_CASE("edge_detector")
     {
-        dut_context_t dut_context{true, verilator_time_unit::ns, verilator_time_unit::ps_10};
-        auto&& [_, dut, _, _]{dut_context};
-        port_t port{dut};
+        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ps_10};
+        port_t port{ctx.get_dut()};
 
         constexpr static auto period{1_ns};
         constexpr static auto pipeline{3zu};
         // 流水线级数为3，倒数第二级表示当前信号
         constexpr static auto delay{pipeline - 1};
-        dut_context.add_task(generate_clock(port.clk, period));
-        dut_context.add_task(generate_reset(port.rst, port.clk));
+        ctx.add_task(generate_clock(port.clk, period));
 
         const auto verify{
             [&](bool rising, bool falling) -> task<void>
@@ -55,8 +53,7 @@ TEST_SUITE("edge_detector")
             [&] -> task<void>
             {
                 port.signal = 0;
-                // 等待复位完成
-                co_await wait_reset_finish(port.rst);
+                co_await generate_reset(port.rst, port.clk);
                 auto verify_tasks{co_await get_spawn_pool()};
                 const auto do_verify{[&](bool rising, bool falling) { verify_tasks.add_task(verify(rising, falling)); }};
 
@@ -97,8 +94,8 @@ TEST_SUITE("edge_detector")
                 co_await eval_finish();
             },
         };
-        dut_context.add_task(stimulate());
+        ctx.add_task(stimulate());
 
-        dut_context.loop_until_finish();
+        ctx.loop_until_finish();
     }
 }
