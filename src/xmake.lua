@@ -9,7 +9,7 @@ end
 target("verilator_utils")
     set_kind("$(kind)")
     add_packages("doctest_module", {components = "core", public = true})
-    add_files("*.cpp|main.cpp", {public = true, install = true})
+    add_files("*.cppm", {public = true, install = true})
     add_includedirs(".", {public = true})
     add_headerfiles("*.hpp")
     set_group("verilator_utils")
