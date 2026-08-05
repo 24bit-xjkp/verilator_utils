@@ -140,6 +140,30 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(mailbox.num(), 0u);
     }
 
+    TEST_CASE("mailbox formatter renders values and detailed state")
+    {
+        using mailbox_t = ::verilator_utils::mailbox<int>;
+        static_assert(::std::formattable<mailbox_t, char>);
+
+        mailbox_t bounded_mailbox{3};
+        CHECK(bounded_mailbox.try_put(10));
+        CHECK(bounded_mailbox.try_put(20));
+
+        CHECK_EQ(::std::format("{}", bounded_mailbox), "[10, 20]");
+        CHECK_EQ(::std::format("{:#}", bounded_mailbox), "{max_count: 3, value: [10, 20]}");
+        CHECK_EQ(::doctest::StringMaker<mailbox_t>::convert(bounded_mailbox), "{max_count: 3, value: [10, 20]}");
+
+        mailbox_t empty_mailbox{};
+        CHECK_EQ(::std::format("{:#}", empty_mailbox), "{max_count: 0, value: []}");
+    }
+
+    TEST_CASE("mailbox formatter rejects unsupported format specifiers")
+    {
+        ::verilator_utils::mailbox<int> mailbox{};
+
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}", ::std::make_format_args(mailbox))), ::std::format_error);
+    }
+
     TEST_CASE("mailbox get and peek wait until a value is available")
     {
         scheduler_fixture fixture{};
