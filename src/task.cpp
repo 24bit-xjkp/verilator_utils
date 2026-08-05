@@ -1307,6 +1307,7 @@ export namespace verilator_utils
     private:
         constexpr static auto do_pop{[](::std::vector<type>* queue) static noexcept { queue->erase(queue->begin()); }};
         using do_pop_t = ::std::unique_ptr<::std::vector<type>, decltype(do_pop)>;
+        friend struct ::std::formatter<mailbox>;
 
     public:
         /**
@@ -1494,3 +1495,60 @@ export namespace verilator_utils
         ::std::size_t next_ticket{};
     };
 }  // namespace verilator_utils
+
+export namespace std
+{
+    /**
+     * @brief 邮箱格式化支持
+     *
+     * 支持的格式符：
+     * - #: 输出详细信息
+     * @tparam type 元素类型
+     */
+    template <::std::move_constructible type>
+    struct formatter<::verilator_utils::mailbox<type>>
+    {
+        bool with_detail{};
+
+        constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        {
+            auto iter{ctx.begin()}; // NOLINT(readability-qualified-auto)
+            auto end{ctx.end()}; // NOLINT(readability-qualified-auto)
+            using namespace ::std::string_literals;
+
+            while(iter != end)
+            {
+                if(*iter == '#')
+                {
+                    ++iter;
+                    with_detail = true;
+                }
+                else if(*iter == '}') { break; }
+                else
+                {
+                    throw ::std::format_error{"无效的verilator_utils::mailbox格式符"s};
+                }
+            }
+            return iter;
+        }
+
+        template <typename iter_t, typename char_t>
+        auto format(const ::verilator_utils::mailbox<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx) const
+        {
+            if(with_detail) { return ::std::format_to(ctx.out(), "{{max_count: {}, value: {}}}", value.max_count, value.queue); }
+            else
+            {
+                return ::std::format_to(ctx.out(), "{}", value.queue);
+            }
+        }
+    };
+}  // namespace std
+
+export namespace doctest
+{
+    template <::std::move_constructible type>
+    struct StringMaker<::verilator_utils::mailbox<type>>
+    {
+        static ::doctest::String convert(const ::verilator_utils::mailbox<type>& value) { return ::std::format("{:#}", value); }
+    };
+}  // namespace doctest
