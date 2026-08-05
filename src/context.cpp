@@ -8,7 +8,7 @@ export namespace verilator_utils
     /**
      * @brief 判断类型是否是受支持的Verilator波形记录器
      *
-     * @note 支持VCD、FST、SAIF，为void表示不使用波形记录
+     * 支持VCD、FST、SAIF，为void表示不使用波形记录
      * @tparam type 要判断的类型
      */
     template <typename type>
@@ -38,7 +38,6 @@ export namespace verilator_utils
         /**
          * @brief 构造一个DUT上下文对象
          *
-         * @note 记录文件会在initial_eval时才打开
          * @param coverage 是否启用覆盖率记录
          * @param time_unit 时间单位，默认值为ns，会覆盖dut内设置
          * @param time_precision 时间精度，默认值为ps，会覆盖dut内设置
@@ -46,6 +45,7 @@ export namespace verilator_utils
          * @param trace_level 跟踪级别，默认值为0
          * @param argc 命令行参数数量，默认为detail::argc
          * @param argv 命令行参数数组，默认为detail::argv
+         * @note 记录文件会在initial_eval时才打开
          */
         explicit dut_context(bool coverage,
                              ::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,

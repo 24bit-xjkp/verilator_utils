@@ -696,6 +696,7 @@ export namespace verilator_utils
 
         /**
          * @brief 下标运算符，用于访问向量切片的指定位
+         *
          * 索引为当前切片范围内的相对索引，范围为[0, width() - 1]
          * @param index 索引值
          * @return bit_slice 对应位的包装对象
@@ -708,6 +709,7 @@ export namespace verilator_utils
 
         /**
          * @brief 下标运算符，用于访问向量切片的指定切片
+         *
          * 索引为当前切片范围内的相对索引，范围为[0, width() - 1]
          * @param left_bound_index 左边界索引
          * @param right_bound_index 右边界索引
@@ -897,8 +899,8 @@ export namespace verilator_utils
          * @brief 三路比较运算符
          *
          * @param value 要比较的值
-         * @note 数据类型为VlWide的format_wrapper只支持十六进制和二进制，因此不能用于三路比较
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
+         * @note 数据类型为VlWide的format_wrapper只支持十六进制和二进制，因此不能用于三路比较
          */
         template <::verilator_utils::is_cpp_underlying_type underlying_type>
             requires (!::std::same_as<bool, underlying_type>)
@@ -1032,7 +1034,21 @@ export namespace verilator_utils
 
         /**
          * @brief 转化为C++基础数据类型
-         * 整数转化为std::uint64_t，浮点数按格式转化为float或double，定点数转化为double
+         *
+         * 数据格式与基础类型的对应关系为：
+         * | 格式                   | 基础类型      |
+         * | ---------------------- | ------------- |
+         * | hex_t                  | std::uint64_t |
+         * | bin_t                  | std::uint64_t |
+         * | dec_unsigned_t         | std::uint64_t |
+         * | dec_signed_t           | std::int64_t  |
+         * | real_float_t           | float         |
+         * | real_double_t          | double        |
+         * | unsigned_fixed_point_t | double        |
+         * | signed_fixed_point_t   | double        |
+         * | sign_mag_fixed_point_t | double        |
+         * | fsm_enum_t             | std::uint64_t |
+         * | boolean_t              | bool          |
          * @return C++基础数据类型
          */
         [[nodiscard]] underlying_type to_underlying() const

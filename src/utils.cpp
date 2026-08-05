@@ -1223,7 +1223,13 @@ namespace verilator_utils
     {
         /**
          * @brief 判断是否是宽度可变的数据格式
-         * hex, bin, signed、unsigned和enum是可变宽度的
+         *
+         * 可变宽度格式为：
+         * - hex
+         * - bin
+         * - signed
+         * - unsigned
+         * - enum
          * @param format 要判断的格式
          * @return 是否宽度可变
          */
@@ -1252,6 +1258,7 @@ export namespace verilator_utils
 {
     /**
      * @brief 协程生成器
+     *
      * 由于libc++尚未支持std::generator，因此添加该简易实现
      * @note 为了可以优化掉堆分配，不支持生成器嵌套
      * @tparam type 生成器值类型
