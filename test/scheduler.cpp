@@ -761,9 +761,10 @@ TEST_SUITE("verilator_utils/scheduler")
         auto scheduler{fixture.make_scheduler()};
 
         scheduler.add_task(::verilator_utils::max_eval_time(4_ps));
-        scheduler.loop_until_finish();
+        CHECK_THROWS_AS(scheduler.loop_until_finish(), ::verilator_utils::eval_timeout_exception);
 
         CHECK_EQ(scheduler.time_in_time_precision(), 4u);
+        CHECK(scheduler.is_error());
         CHECK(scheduler.is_finish());
     }
 

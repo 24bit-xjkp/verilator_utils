@@ -545,7 +545,10 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::task<void> max_eval_time(::verilator_utils::femtosecond_t duration)
     {
         co_await ::verilator_utils::wait_time(duration);
-        co_await ::verilator_utils::eval_finish();
+        auto&& scheduler{co_await get_scheduler()};
+        scheduler.error();
+        scheduler.finish();
+        throw ::verilator_utils::eval_timeout_exception{};
     }
 
     /**

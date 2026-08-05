@@ -15,6 +15,14 @@ export namespace verilator_utils
     };
 
     /**
+     * @brief 仿真超时异常类
+     *
+     */
+    struct eval_timeout_exception
+    {
+    };
+
+    /**
      * @brief 基于协程的电路评估调度器
      *
      */
@@ -915,10 +923,23 @@ export namespace verilator_utils
         [[nodiscard]] bool is_finish() const noexcept { return dut->contextp()->gotFinish(); }
 
         /**
+         * @brief 检查仿真是否存在错误
+         *
+         * @return 仿真是否存在错误
+         */
+        [[nodiscard]] bool is_error() const noexcept { return dut->contextp()->gotError(); }
+
+        /**
          * @brief 标记仿真结束
          *
          */
         void finish() noexcept { dut->contextp()->gotFinish(true); }
+
+        /**
+         * @brief 标记仿真中出现错误
+         *
+         */
+        void error() noexcept { dut->contextp()->gotError(true); }
 
         /**
          * @brief 仿真结束时抛出eval_finish_exception异常
