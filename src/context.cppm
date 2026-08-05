@@ -59,7 +59,8 @@ export namespace verilator_utils
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
             context = ::std::make_unique<::VerilatedContext>();
             context->commandArgs(argc, argv);
-            dut = ::std::make_unique<dut_t>(context.get(), current_test.m_test_suite);
+            dut = ::std::make_unique<dut_t>(context.get(),
+                                            current_test.m_test_suite == nullptr ? "TOP" : current_test.m_test_suite);
             // 覆盖dut内的timescale设置
             context->timeprecision(::std::to_underlying(time_precision));
             context->timeunit(::std::to_underlying(time_unit));
@@ -167,6 +168,37 @@ export namespace verilator_utils
             REQUIRE_EQ(scheduler->get_eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin);
             file_base_name = base_name;
         }
+
+        /**
+         * @brief 获取Verilator上下文对象引用
+         *
+         * @return Verilator上下文对象引用
+         */
+        auto&& get_context(this auto&& self) noexcept { return *self.context; }
+
+        /**
+         * @brief 获取DUT对象引用
+         *
+         * @return DUT对象引用
+         */
+        auto&& get_dut(this auto&& self) noexcept { return *self.dut; }
+
+        /**
+         * @brief 获取调度器对象引用
+         *
+         * @return 调度器对象引用
+         */
+        auto&& get_scheduler(this auto&& self) noexcept { return *self.scheduler; }
+
+        /**
+         * @brief 获取跟踪器引用
+         *
+         * 只有当tracer_t不为void，即启用跟踪器时可调用
+         * @return 跟踪器引用
+         */
+        auto&& get_tracer(this auto&& self) noexcept
+            requires (!::std::same_as<void, tracer_t>)
+        { return *self.tracer; }
 
         /**
          * @brief 判断当前上下文中覆盖率记录是否启用
