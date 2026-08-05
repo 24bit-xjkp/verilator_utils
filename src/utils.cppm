@@ -385,6 +385,21 @@ namespace verilator_utils
             unsigned_value = value < 0 ? -unsigned_value : unsigned_value;
             return ::std::bit_width(unsigned_value);
         }
+
+        /**
+         * @brief 解析不带格式符的格式串
+         *
+         * @param ctx 格式串上下文
+         * @param message 解析失败时的消息
+         * @return 解析后的迭代器
+         */
+        constexpr ::std::format_parse_context::iterator parse_format_string_without_flags(::std::format_parse_context& ctx,
+                                                                                          const char* message)
+        {
+            auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
+            if(iter != ctx.end() && *iter != '}') { throw ::std::format_error{message}; }
+            return iter;
+        }
     }  // namespace detail
 
     export namespace data_format

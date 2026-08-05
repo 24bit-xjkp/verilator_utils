@@ -1514,7 +1514,6 @@ export namespace std
         {
             auto iter{ctx.begin()}; // NOLINT(readability-qualified-auto)
             auto end{ctx.end()}; // NOLINT(readability-qualified-auto)
-            using namespace ::std::string_literals;
 
             while(iter != end)
             {
@@ -1526,7 +1525,7 @@ export namespace std
                 else if(*iter == '}') { break; }
                 else
                 {
-                    throw ::std::format_error{"无效的verilator_utils::mailbox格式符"s};
+                    throw ::std::format_error{"无效的verilator_utils::mailbox格式符"};
                 }
             }
             return iter;

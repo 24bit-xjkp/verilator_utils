@@ -1498,10 +1498,17 @@ export namespace verilator_utils
 
 export namespace std
 {
+    /**
+     * @brief bit_slice格式化支持
+     *
+     * 不支持格式符
+     * @tparam value_type Verilator数据类型
+     */
     template <::verilator_utils::is_verilator_data_type value_type>
     struct formatter<::verilator_utils::bit_slice<value_type>>
     {
-        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        { return ::verilator_utils::detail::parse_format_string_without_flags(ctx, "无效的verilator_utils::bit_slice格式符"); }
 
         template <typename iter_t, typename char_t>
         static auto format(const ::verilator_utils::bit_slice<value_type>& value,
@@ -1509,10 +1516,17 @@ export namespace std
         { return value.format_to(ctx.out()); }
     };
 
+    /**
+     * @brief vector_slice格式化支持
+     *
+     * 不支持格式符
+     * @tparam value_type Verilator数据类型
+     */
     template <::verilator_utils::is_verilator_data_type value_type>
     struct formatter<::verilator_utils::vector_slice<value_type>>
     {
-        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        { return ::verilator_utils::detail::parse_format_string_without_flags(ctx, "无效的verilator_utils::vector_slice格式符"); }
 
         template <typename iter_t, typename char_t>
         static auto format(const ::verilator_utils::vector_slice<value_type>& value,
@@ -1520,10 +1534,21 @@ export namespace std
         { return value.format_to(ctx.out()); }
     };
 
-    template <typename type, ::std::size_t n>
+    /**
+     * @brief unpacked_array格式化支持
+     *
+     * 不支持格式符
+     * @tparam type Verilator数据类型
+     * @tparam n 数组元素个数
+     */
+    template <::verilator_utils::is_verilator_data_type type, ::std::size_t n>
     struct formatter<::verilator_utils::unpacked_array<type, n>>
     {
-        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_without_flags(ctx,
+                                                                                "无效的verilator_utils::unpacked_array格式符");
+        }
 
         template <typename iter_t, typename char_t>
         static auto format(const ::verilator_utils::unpacked_array<type, n>& value,
@@ -1531,10 +1556,20 @@ export namespace std
         { return value.format_to(ctx.out()); }
     };
 
+    /**
+     * @brief format_wrapper格式化支持
+     *
+     * 不支持格式符
+     * @tparam value_type Verilator数据类型
+     */
     template <::verilator_utils::is_format_wrapper_data_type value_type>
     struct formatter<::verilator_utils::format_wrapper<value_type>>
     {
-        constexpr static auto parse(::std::format_parse_context& ctx) noexcept { return ctx.begin(); }
+        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_without_flags(ctx,
+                                                                                "无效的verilator_utils::format_wrapper格式符");
+        }
 
         template <typename iter_t, typename char_t>
         static auto format(const ::verilator_utils::format_wrapper<value_type>& value,
