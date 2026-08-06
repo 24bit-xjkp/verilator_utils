@@ -1,16 +1,7 @@
 ﻿Diagnostics:
   UnusedIncludes: None
   ClangTidy:
-    Remove:
-    - performance-*
-    - readability-*
-    - clang-analyzer-*
-    - modernize-*
-    - cert-*
-    - portability-*
-    - cppcoreguidelines-*
-    - hicpp-*
-    - concurrency-*
+    FastCheckFilter: Loose
 Hover:
   ShowAKA: Yes
 Documentation:
