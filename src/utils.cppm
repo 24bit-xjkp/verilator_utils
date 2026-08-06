@@ -155,7 +155,7 @@ export namespace verilator_utils::inline literals
      * @return femtosecond_t 对应的皮秒时间类型
      */
     consteval ::verilator_utils::femtosecond_t operator""_ps (unsigned long long rep) noexcept
-    { return ::verilator_utils::femtosecond_t{rep * 1'000u}; }
+    { return ::verilator_utils::femtosecond_t{rep * 1'000zu}; }
 
     /**
      * @brief 皮秒时间字面值运算符
@@ -164,7 +164,7 @@ export namespace verilator_utils::inline literals
      * @return femtosecond_t 对应的皮秒时间类型
      */
     consteval ::verilator_utils::femtosecond_t operator""_ps (long double rep) noexcept
-    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000u)}; }
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000zu)}; }
 
     /**
      * @brief 纳秒时间字面值运算符
@@ -173,7 +173,7 @@ export namespace verilator_utils::inline literals
      * @return femtosecond_t 对应的纳秒时间类型
      */
     consteval ::verilator_utils::femtosecond_t operator""_ns (unsigned long long rep) noexcept
-    { return ::verilator_utils::femtosecond_t{rep * 1'000'000u}; }
+    { return ::verilator_utils::femtosecond_t{rep * 1'000'000zu}; }
 
     /**
      * @brief 纳秒时间字面值运算符
@@ -182,7 +182,43 @@ export namespace verilator_utils::inline literals
      * @return femtosecond_t 对应的纳秒时间类型
      */
     consteval ::verilator_utils::femtosecond_t operator""_ns (long double rep) noexcept
-    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000u)}; }
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000zu)}; }
+
+    /**
+     * @brief 微秒时间字面值运算符
+     *
+     * @param rep 微秒数
+     * @return femtosecond_t 对应的微秒时间类型
+     */
+    consteval ::verilator_utils::femtosecond_t operator""_us (unsigned long long rep) noexcept
+    { return ::verilator_utils::femtosecond_t{rep * 1'000'000'000zu}; }
+
+    /**
+     * @brief 微秒时间字面值运算符
+     *
+     * @param rep 微秒数
+     * @return femtosecond_t 对应的微秒时间类型
+     */
+    consteval ::verilator_utils::femtosecond_t operator""_us (long double rep) noexcept
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000'000zu)}; }
+
+    /**
+     * @brief 微秒时间字面值运算符
+     *
+     * @param rep 微秒数
+     * @return femtosecond_t 对应的微秒时间类型
+     */
+    consteval ::verilator_utils::femtosecond_t operator""_ms (unsigned long long rep) noexcept
+    { return ::verilator_utils::femtosecond_t{rep * 1'000'000'000'000zu}; }
+
+    /**
+     * @brief 微秒时间字面值运算符
+     *
+     * @param rep 微秒数
+     * @return femtosecond_t 对应的微秒时间类型
+     */
+    consteval ::verilator_utils::femtosecond_t operator""_ms (long double rep) noexcept
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000'000'000zu)}; }
 
     // NOLINTEND(google-runtime-float)
 }  // namespace verilator_utils::inline literals
