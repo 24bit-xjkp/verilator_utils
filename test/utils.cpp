@@ -20,6 +20,27 @@ TEST_SUITE("verilator_utils/utils")
         CHECK_EQ(static_cast<::std::uint64_t>(0.000'001_ns), 1u);
     }
 
+    TEST_CASE("microsecond literals convert to femtoseconds")
+    {
+        CHECK_EQ(static_cast<::std::uint64_t>(0_us), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_us), 1'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(2_us), 2'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(1.5_us), 1'500'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(0.5_us), 500'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(0.000'001_us), 1'000u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1.000'000'001_us), 1'000'000'001ull);
+    }
+
+    TEST_CASE("millisecond literals convert to femtoseconds")
+    {
+        CHECK_EQ(static_cast<::std::uint64_t>(0_ms), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_ms), 1'000'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(2_ms), 2'000'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(1.5_ms), 1'500'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(0.5_ms), 500'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(0.000'001_ms), 1'000'000ull);
+    }
+
     TEST_CASE("femtosecond arithmetic and comparison")
     {
         constexpr static auto duration{2_ns + 500_ps};
@@ -36,6 +57,11 @@ TEST_SUITE("verilator_utils/utils")
         CHECK_EQ(static_cast<::std::uint64_t>(1_ps / 3.0), 333u);
         CHECK_LT(1_ps, 2_ps);
         CHECK_EQ(1_ns, 1'000_ps);
+        CHECK_EQ(1_us, 1'000_ns);
+        CHECK_EQ(1_ms, 1'000'000_ns);
+        CHECK_EQ(1_us, 1'000_ps * static_cast<::std::uint64_t>(1'000));
+        CHECK_EQ(1_ms, 1'000_us);
+        CHECK_EQ(1_ms, 1'000'000_ps * static_cast<::std::uint64_t>(1'000));
     }
 
     TEST_CASE("verilator data type traits identify supported types")
