@@ -436,6 +436,35 @@ namespace verilator_utils
             if(iter != ctx.end() && *iter != '}') { throw ::std::format_error{message}; }
             return iter;
         }
+
+        /**
+         * @brief 解析带详细说明格式符(#)的格式串
+         *
+         * @param ctx 格式串上下文
+         * @param message 解析失败时的消息
+         * @param with_detail 是否带有详细说明
+         * @return 解析后的迭代器
+         */
+        constexpr ::std::format_parse_context::iterator
+            parse_format_string_with_detail_flag(::std::format_parse_context& ctx, const char* message, bool& with_detail)
+        {
+            auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
+            auto end{ctx.end()};     // NOLINT(readability-qualified-auto)
+
+            while(iter != end)
+            {
+                switch(*iter)
+                {
+                    case '#':
+                        ++iter;
+                        with_detail = true;
+                        break;
+                    case '}': return iter;
+                    default: throw ::std::format_error{message};
+                }
+            }
+            return iter;
+        }
     }  // namespace detail
 
     export namespace data_format

@@ -1480,6 +1480,73 @@ export namespace verilator_utils
         ::std::size_t ticket{};
         ::std::size_t next_ticket{};
     };
+
+    /**
+     * @brief 移位寄存器，在参考模型中对信号进行延迟
+     *
+     * @tparam type 数据类型
+     */
+    template <::verilator_utils::is_format_wrapper_data_type type>
+    struct shift_register
+    {
+
+        /**
+         * @brief 初始化移位寄存器
+         *
+         * @param depth 寄存器链深度
+         * @param packed_format 打包的数据格式
+         */
+        explicit shift_register(::std::size_t depth, ::verilator_utils::packed_format packed_format) :
+            depth{depth}, format{packed_format}
+        { reg.reserve(depth); }
+
+        /**
+         * @brief 初始化移位寄存器
+         *
+         * @param depth 寄存器链深度
+         * @param width 数据宽度
+         * @param format 数据格式
+         */
+        explicit shift_register(::std::size_t depth, ::size_t width, ::verilator_utils::data_format::format format) :
+            shift_register{
+                depth,
+                {width, format}
+        }
+        {
+        }
+
+    private:
+        ::std::size_t depth;
+        ::std::vector<type> reg;
+        ::verilator_utils::packed_format format;
+        using arg_t = ::std::conditional_t<(sizeof(type) > sizeof(::std::size_t)), const type&, type>;
+        friend struct ::std::formatter<shift_register>;
+
+    public:
+        /**
+         * @brief 更新移位寄存器中的值
+         *
+         * @param value 要更新的值
+         * @return 最早进入寄存器链的值，若寄存器链未填满则为空
+         */
+        ::std::optional<::verilator_utils::format_wrapper<type>> update(arg_t value)
+        {
+            ::std::optional<::verilator_utils::format_wrapper<type>> result{};
+            if(reg.size() == depth)
+            {
+                result = ::verilator_utils::format_wrapper<type>{reg.front(), format};
+                reg.erase(reg.begin());
+            }
+            reg.emplace_back(value);
+            return result;
+        }
+
+        /**
+         * @brief 清空寄存器链
+         *
+         */
+        void reset() noexcept { reg.clear(); }
+    };
 }  // namespace verilator_utils
 
 export namespace std
@@ -1498,23 +1565,9 @@ export namespace std
 
         constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
         {
-            auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
-            auto end{ctx.end()};     // NOLINT(readability-qualified-auto)
-
-            while(iter != end)
-            {
-                if(*iter == '#')
-                {
-                    ++iter;
-                    with_detail = true;
-                }
-                else if(*iter == '}') { break; }
-                else
-                {
-                    throw ::std::format_error{"无效的verilator_utils::mailbox格式符"};
-                }
-            }
-            return iter;
+            return ::verilator_utils::detail::parse_format_string_with_detail_flag(ctx,
+                                                                                   "无效的verilator_utils::mailbox格式符",
+                                                                                   with_detail);
         }
 
         template <typename iter_t, typename char_t>
@@ -1527,6 +1580,36 @@ export namespace std
             }
         }
     };
+
+    /**
+     * @brief 邮箱格式化支持
+     *
+     * 支持的格式符：
+     * - #: 输出详细信息
+     * @tparam type 元素类型
+     */
+    template <::verilator_utils::is_format_wrapper_data_type type>
+    struct formatter<::verilator_utils::shift_register<type>>
+    {
+        bool with_detail{};
+
+        constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_with_detail_flag(ctx,
+                                                                                   "无效的verilator_utils::shift_register格式符",
+                                                                                   with_detail);
+        }
+
+        template <typename iter_t, typename char_t>
+        auto format(const ::verilator_utils::shift_register<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx) const
+        {
+            if(with_detail) { return ::std::format_to(ctx.out(), "{{depth: {}, reg: {}}}", value.depth, value.reg); }
+            else
+            {
+                return ::std::format_to(ctx.out(), "{}", value.reg);
+            }
+        }
+    };
 }  // namespace std
 
 export namespace doctest
@@ -1535,5 +1618,12 @@ export namespace doctest
     struct StringMaker<::verilator_utils::mailbox<type>>
     {
         static ::doctest::String convert(const ::verilator_utils::mailbox<type>& value) { return ::std::format("{:#}", value); }
+    };
+
+    template <::verilator_utils::is_format_wrapper_data_type type>
+    struct StringMaker<::verilator_utils::shift_register<type>>
+    {
+        static ::doctest::String convert(const ::verilator_utils::shift_register<type>& value)
+        { return ::std::format("{:#}", value); }
     };
 }  // namespace doctest
