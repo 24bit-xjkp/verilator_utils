@@ -820,6 +820,7 @@ export namespace verilator_utils
     /**
      * @brief 异步任务类型
      *
+     * @note co_await后会释放协程帧以实现积极的内存回收
      */
     struct async_task
     {
@@ -905,6 +906,8 @@ export namespace verilator_utils
                 {
                     // 将孤儿协程托管给调度器
                     subhandle.promise().is_async = false;
+                    subhandle.promise().parent = nullptr;
+                    subhandle.promise().parent_promise = nullptr;
                 }
                 subhandle = nullptr;
             }
@@ -947,6 +950,7 @@ export namespace verilator_utils
              */
             void await_suspend(handle_t handle) const
             {
+                subhandle.promise().is_async = false;
                 subhandle.promise().parent = handle;
                 subhandle.promise().parent_promise = ::std::addressof(handle.promise());
             }
@@ -964,12 +968,22 @@ export namespace verilator_utils
                 subhandle.promise().scheduler->throw_if_finish();
                 subhandle.promise().rethrow_exception();
             }
+
+            async_task_awaiter(const async_task_awaiter&) = delete;
+            async_task_awaiter& operator= (const async_task_awaiter&) = delete;
+            async_task_awaiter& operator= (async_task_awaiter&&) = delete;
+
+            explicit async_task_awaiter(handle_t subhandle) noexcept : subhandle{subhandle} {}
+
+            async_task_awaiter(async_task_awaiter&& other) noexcept : subhandle{::std::exchange(other.subhandle, nullptr)} {}
+
+            ~async_task_awaiter() noexcept { subhandle.destroy(); }
         };
 
-        async_task_awaiter operator co_await() const
+        async_task_awaiter operator co_await()
         {
             REQUIRE(joinable());
-            return async_task_awaiter{subhandle};
+            return async_task_awaiter{::std::exchange(subhandle, nullptr)};
         }
 
     private:
@@ -1166,15 +1180,14 @@ export namespace verilator_utils
         /**
          * @brief 将池中所有任务托管给调度器
          *
-         * @note 会挂起当前任务以便开始执行异步子任务
          * @return 可等待体
          */
-        [[nodiscard]] ::std::suspend_always join_none()
+        [[nodiscard]] ::std::suspend_never join_none()
         {
             using namespace ::std::string_view_literals;
             REQUIRE_MESSAGE(joinable(), "任务集合不能为空"sv);
             pool.clear();
-            return ::std::suspend_always{};
+            return ::std::suspend_never{};
         }
     };
 
@@ -1434,8 +1447,8 @@ export namespace std
 
         constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
         {
-            auto iter{ctx.begin()}; // NOLINT(readability-qualified-auto)
-            auto end{ctx.end()}; // NOLINT(readability-qualified-auto)
+            auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
+            auto end{ctx.end()};     // NOLINT(readability-qualified-auto)
 
             while(iter != end)
             {

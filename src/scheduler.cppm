@@ -100,8 +100,7 @@ export namespace verilator_utils
 
             /// - 无父的同步协程为根协程，生命周期由调度器管理
             /// - 有父的同步协程为同步子协程，生命周期由父协程的task对象管理
-            /// - 无父的异步协程为异步子协程，生命周期由父协程的async_task对象管理
-            /// - 有父的异步协程为等待被join的异步子协程，生命周期由父协程的async_task对象管理
+            /// - 异步协程为异步子协程，生命周期由父协程的async_task对象管理
 
             /**
              * @brief 协程初始挂起
@@ -338,11 +337,10 @@ export namespace verilator_utils
         template <typename promise_type>
         struct subtask_awaiter
         {
-            using handle_t = ::std::coroutine_handle<>;
+            using handle_t = ::std::coroutine_handle<promise_type>;
             using return_type = promise_type::return_type;
             /// 子任务的协程句柄
             handle_t subhandle;
-            promise_type& promise;
 
             /**
              * @brief 检查子任务是否完成
@@ -359,9 +357,9 @@ export namespace verilator_utils
              */
             [[nodiscard]] handle_t await_suspend(auto parent) const noexcept
             {
-                promise.parent = parent;
-                promise.parent_promise = ::std::addressof(parent.promise());
-                promise.scheduler = parent.promise().scheduler;
+                subhandle.promise().parent = parent;
+                subhandle.promise().parent_promise = ::std::addressof(parent.promise());
+                subhandle.promise().scheduler = parent.promise().scheduler;
                 return subhandle;
             }
 
@@ -524,7 +522,7 @@ export namespace verilator_utils
         friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
         {
             REQUIRE(subtask.joinable());
-            return {subtask.handle, subtask.get_promise()};
+            return {subtask.handle};
         }
 
     private:
@@ -654,6 +652,11 @@ export namespace verilator_utils::detail
          */
         coroutine_pair(const ::verilator_utils::detail::promise_base& subtask_promise) noexcept :
             handle{subtask_promise.parent}, promise{subtask_promise.parent_promise}
+        {
+        }
+
+        coroutine_pair(::std::coroutine_handle<> handle, ::verilator_utils::detail::promise_base* promise) noexcept :
+            handle{handle}, promise{promise}
         {
         }
 
@@ -1000,45 +1003,54 @@ export namespace verilator_utils
          */
         ~eval_scheduler() noexcept
         {
-            constexpr static auto do_destroy{
-                [](eval_scheduler& scheduler, const ::verilator_utils::detail::coroutine_pair& pair) static noexcept
+            const auto do_destroy{
+                [this](const ::verilator_utils::detail::coroutine_pair& pair) noexcept
                 {
                     auto [handle, promise]{pair};
-                    if(promise->is_root_coroutine())
+                    // 进行栈回溯
+                    while(true)
                     {
-                        // 根协程直接销毁
-                        handle.destroy();
-                    }
-                    else if(!promise->is_async)
-                    {
-                        // 同步非根协程的父协程不在调度队列中
-                        // 将其父协程放入队列，由调度器进行销毁
-                        try
+                        if(promise->is_async && !handle.done())
                         {
-                            scheduler.ready_queue.emplace_back(*promise);
+                            // 回溯到异步子协程，待其从父协程中分离后再处理
+                            try
+                            {
+                                ready_queue.emplace_back(handle, promise);
+                            }
+                            catch(...)
+                            {
+                                ::std::terminate();
+                            }
                         }
-                        catch(...)
+                        if(promise->parent == nullptr)
                         {
-                            ::std::terminate();
+                            if(!promise->is_async)
+                            {
+                                // 回溯到根协程，销毁根协程以销毁整个调用栈
+                                handle.destroy();
+                            }
+                            break;
                         }
-                        //  销毁子协程本身
-                        handle.destroy();
+                        else
+                        {
+                            // 回溯到上一层
+                            handle = promise->parent;
+                            promise = promise->parent_promise;
+                        }
                     }
-                    // 异步非根协程的父协程在调度队列中
-                    // 在处理其父协程时由父协程进行销毁
-                    // 此处无需进行唤醒或销毁
                 },
             };
+
             while(!wait_queue.empty())
             {
-                do_destroy(*this, wait_queue.top().pair);
+                do_destroy(wait_queue.top().pair);
                 wait_queue.pop();
             }
 
-            for(auto&& [_, pair]: event_queue) { do_destroy(*this, pair); }
+            for(auto&& [_, pair]: event_queue) { do_destroy(pair); }
             event_queue.clear();
 
-            for(auto i{0zu}; i != ready_queue.size(); ++i) { do_destroy(*this, ready_queue[i]); }
+            for(auto i{0zu}; i != ready_queue.size(); ++i) { do_destroy(ready_queue[i]); }
             ready_queue.clear();
         }
 
@@ -1199,8 +1211,8 @@ export namespace verilator_utils
     auto ::verilator_utils::detail::subtask_awaiter<promise_type>::await_resume() -> return_type
     {
         REQUIRE(subhandle.done());
-        promise.scheduler->throw_if_finish();
-        promise.rethrow_exception();
-        return promise.get_result();
+        subhandle.promise().scheduler->throw_if_finish();
+        subhandle.promise().rethrow_exception();
+        return subhandle.promise().get_result();
     }
 }  // namespace verilator_utils
