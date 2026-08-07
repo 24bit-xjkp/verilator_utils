@@ -356,7 +356,7 @@ export namespace verilator_utils
      * @param bit 时钟信号
      * @param edge_to_wait 要等待到边沿数量
      * @return event_awaiter 可等待体
-     * @note 在测试激励中通常应该使用wait_verify
+     * @note 可用于编写参考模型，在测试激励中通常应该使用wait_verify
      */
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_posedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
@@ -377,7 +377,7 @@ export namespace verilator_utils
      * @param bit 时钟信号
      * @param edge_to_wait 要等待到边沿数量
      * @return event_awaiter 可等待体
-     * @note 在测试激励中通常应该使用wait_stimulate
+     * @note 可用于编写参考模型，在测试激励中通常应该使用wait_stimulate
      */
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_negedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
@@ -465,93 +465,6 @@ export namespace verilator_utils
 {
 
     /**
-     * @brief 生成时钟信号
-     *
-     * @param scheduler 调度器引用
-     * @param clk 时钟信号切片
-     * @param period 时钟周期
-     * @param delay 时钟发生延迟
-     * @param duty_ratio 占空比
-     * @return 生成时钟信号的任务
-     */
-    [[nodiscard]] ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData>& clk,
-                                                               ::verilator_utils::femtosecond_t period,
-                                                               ::verilator_utils::femtosecond_t delay = 0_fs,
-                                                               double duty_ratio = 0.5)
-    {
-        clk = 0;
-        if(delay != 0_fs) { co_await ::verilator_utils::wait_time(delay); }
-        auto positive_duration{period * duty_ratio};
-        auto negative_duration{period - positive_duration};
-        while(true)
-        {
-            clk = 0;
-            co_await ::verilator_utils::wait_time(negative_duration);
-            clk = 1;
-            co_await ::verilator_utils::wait_time(positive_duration);
-        }
-    }
-
-    /**
-     * @brief 生成复位信号，持续cycle个下降沿
-     *
-     * @param reset 复位信号引用
-     * @param clk 时钟信号引用
-     * @param cycle 复位信号持续的下降沿数
-     * @param active_high 复位信号的极性，true表示高电平有效，false表示低电平有效
-     * @return 生成复位信号的任务
-     */
-    [[nodiscard]] ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData>& reset,
-                                                               ::verilator_utils::bit_slice<::CData>& clk,
-                                                               ::size_t cycle = 3,
-                                                               bool active_high = true)
-    {
-        reset = static_cast<::std::uint64_t>(active_high);
-        co_await ::verilator_utils::wait_negedge(clk, cycle);
-        reset = static_cast<::std::uint64_t>(!active_high);
-    }
-
-    /**
-     * @brief 生成异步复位信号，持续duration时间
-     *
-     * @param reset 复位信号引用
-     * @param duration 持续时间
-     * @param active_high 复位信号的极性，true表示高电平有效，false表示低电平有效
-     * @return 生成复位信号的任务
-     */
-    [[nodiscard]] ::verilator_utils::task<void> generate_async_reset(::verilator_utils::bit_slice<::CData>& reset,
-                                                                     ::verilator_utils::femtosecond_t duration,
-                                                                     bool active_high = true)
-    {
-        reset = static_cast<::std::uint64_t>(active_high);
-        co_await ::verilator_utils::wait_time(duration);
-        reset = static_cast<::std::uint64_t>(!active_high);
-    }
-
-    /**
-     * @brief 设置最大仿真时间
-     * 由于generate_clock会不断生成时钟激励，因此需要手动通过eval_finish结束仿真，否则仿真会无限执行。
-     * 该函数会在到达最大仿真时间时自动通过eval_finish结束仿真。
-     * @param duration 最大仿真时间
-     * @return 子任务，通常应通过add_task放入调度器中
-     * @code {.cpp}
-     * dut_context<dut_t, void> ctx;
-     * // 添加时钟激励
-     * ctx.add_task(generate_clock(2_ns));
-     * // 设置最大仿真时间为100ns，避免因时钟激励导致仿真无限执行
-     * ctx.add_task(max_eval_time(100_ns));
-     * @endcode
-     */
-    [[nodiscard]] ::verilator_utils::task<void> max_eval_time(::verilator_utils::femtosecond_t duration)
-    {
-        co_await ::verilator_utils::wait_time(duration);
-        auto&& scheduler{co_await get_scheduler()};
-        scheduler.error();
-        scheduler.finish();
-        throw ::verilator_utils::eval_timeout_exception{};
-    }
-
-    /**
      * @brief 等待到验证时机
      *
      * @param clk 时钟信号切片
@@ -600,6 +513,93 @@ export namespace verilator_utils
                              : ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval;
         }
         return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, edge, eval_stage);
+    }
+
+    /**
+     * @brief 生成时钟信号
+     *
+     * @param scheduler 调度器引用
+     * @param clk 时钟信号切片
+     * @param period 时钟周期
+     * @param delay 时钟发生延迟
+     * @param duty_ratio 占空比
+     * @return 生成时钟信号的任务
+     */
+    [[nodiscard]] ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData>& clk,
+                                                               ::verilator_utils::femtosecond_t period,
+                                                               ::verilator_utils::femtosecond_t delay = 0_fs,
+                                                               double duty_ratio = 0.5)
+    {
+        clk = 0;
+        if(delay != 0_fs) { co_await ::verilator_utils::wait_time(delay); }
+        auto positive_duration{period * duty_ratio};
+        auto negative_duration{period - positive_duration};
+        while(true)
+        {
+            clk = 0;
+            co_await ::verilator_utils::wait_time(negative_duration);
+            clk = 1;
+            co_await ::verilator_utils::wait_time(positive_duration);
+        }
+    }
+
+    /**
+     * @brief 生成复位信号，持续cycle个下降沿
+     *
+     * @param reset 复位信号引用
+     * @param clk 时钟信号引用
+     * @param cycle 复位信号持续的下降沿数
+     * @param active_high 复位信号的极性，true表示高电平有效，false表示低电平有效
+     * @return 生成复位信号的任务
+     */
+    [[nodiscard]] ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData>& reset,
+                                                               ::verilator_utils::bit_slice<::CData>& clk,
+                                                               ::size_t cycle = 3,
+                                                               bool active_high = true)
+    {
+        reset = static_cast<::std::uint64_t>(active_high);
+        co_await ::verilator_utils::wait_stimulate(clk, cycle);
+        reset = static_cast<::std::uint64_t>(!active_high);
+    }
+
+    /**
+     * @brief 生成异步复位信号，持续duration时间
+     *
+     * @param reset 复位信号引用
+     * @param duration 持续时间
+     * @param active_high 复位信号的极性，true表示高电平有效，false表示低电平有效
+     * @return 生成复位信号的任务
+     */
+    [[nodiscard]] ::verilator_utils::task<void> generate_async_reset(::verilator_utils::bit_slice<::CData>& reset,
+                                                                     ::verilator_utils::femtosecond_t duration,
+                                                                     bool active_high = true)
+    {
+        reset = static_cast<::std::uint64_t>(active_high);
+        co_await ::verilator_utils::wait_time(duration);
+        reset = static_cast<::std::uint64_t>(!active_high);
+    }
+
+    /**
+     * @brief 设置最大仿真时间
+     * 由于generate_clock会不断生成时钟激励，因此需要手动通过eval_finish结束仿真，否则仿真会无限执行。
+     * 该函数会在到达最大仿真时间时自动通过eval_finish结束仿真。
+     * @param duration 最大仿真时间
+     * @return 子任务，通常应通过add_task放入调度器中
+     * @code {.cpp}
+     * dut_context<dut_t, void> ctx;
+     * // 添加时钟激励
+     * ctx.add_task(generate_clock(2_ns));
+     * // 设置最大仿真时间为100ns，避免因时钟激励导致仿真无限执行
+     * ctx.add_task(max_eval_time(100_ns));
+     * @endcode
+     */
+    [[nodiscard]] ::verilator_utils::task<void> max_eval_time(::verilator_utils::femtosecond_t duration)
+    {
+        co_await ::verilator_utils::wait_time(duration);
+        auto&& scheduler{co_await get_scheduler()};
+        scheduler.error();
+        scheduler.finish();
+        throw ::verilator_utils::eval_timeout_exception{};
     }
 
     /**
@@ -1208,6 +1208,39 @@ export namespace verilator_utils
 
             [[nodiscard]] ::verilator_utils::spawn_pool await_resume() const { return ::verilator_utils::spawn_pool{*scheduler}; }
         };
+
+        /**
+         * @brief 实现同步任务转异步任务的可等待体
+         *
+         */
+        struct to_async_awaiter : ::verilator_utils::detail::no_suspend_awaiter
+        {
+            /// 同步任务
+            ::verilator_utils::task<void> task;
+            /// 调度器指针
+            ::verilator_utils::eval_scheduler* scheduler{};
+
+            template <::verilator_utils::is_coroutine_promise promise_type>
+            void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+            { scheduler = handle.promise().check_scheduler(); }
+
+            [[nodiscard]] ::verilator_utils::async_task await_resume()
+            { return ::verilator_utils::async_task{*scheduler, ::std::move(task)}; }
+        };
+
+        struct add_task_awaiter : ::verilator_utils::detail::no_suspend_awaiter
+        {
+            /// 同步任务
+            ::verilator_utils::task<void> task;
+            /// 调度器指针
+            ::verilator_utils::eval_scheduler* scheduler{};
+
+            template <::verilator_utils::is_coroutine_promise promise_type>
+            void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+            { scheduler = handle.promise().check_scheduler(); }
+
+            void await_resume() noexcept { scheduler->add_task(::std::move(task)); }
+        };
     }  // namespace detail
 
     /**
@@ -1223,6 +1256,24 @@ export namespace verilator_utils
      */
     [[nodiscard]] ::verilator_utils::detail::get_spawn_pool_awaiter get_spawn_pool() noexcept
     { return ::verilator_utils::detail::get_spawn_pool_awaiter{}; }
+
+    /**
+     * @brief 将同步任务转为异步任务
+     *
+     * @param task 同步任务
+     * @return 可等待体
+     */
+    [[nodiscard]] ::verilator_utils::detail::to_async_awaiter to_async(::verilator_utils::task<void> task)
+    { return ::verilator_utils::detail::to_async_awaiter{.task = ::std::move(task)}; }
+
+    /**
+     * @brief 向调度器中添加一个任务
+     *
+     * @param task 同步任务
+     * @return 可等待体
+     */
+    [[nodiscard]] ::verilator_utils::detail::add_task_awaiter add_task(::verilator_utils::task<void> task)
+    { return ::verilator_utils::detail::add_task_awaiter{.task = ::std::move(task)}; }
 }  // namespace verilator_utils
 
 export namespace verilator_utils
