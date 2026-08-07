@@ -49,7 +49,7 @@ TEST_SUITE("verilator_utils/scheduler")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
-        auto child{[](this auto) -> ::verilator_utils::task<void> { co_return; }()};
+        auto child{[] -> ::verilator_utils::task<void> { co_return; }()};
 
         ::verilator_utils::task<void>::handle_t parent_handle;
         const auto parent{[&] -> ::verilator_utils::task<void>
@@ -79,7 +79,7 @@ TEST_SUITE("verilator_utils/scheduler")
         auto scheduler{fixture.make_scheduler()};
         int result{};
 
-        auto child{[](this auto) -> ::verilator_utils::task<int>
+        auto child{[] -> ::verilator_utils::task<int>
                    {
                        co_await ::verilator_utils::wait_time(2_ps);
                        co_return 42;
@@ -99,7 +99,7 @@ TEST_SUITE("verilator_utils/scheduler")
         auto scheduler{fixture.make_scheduler()};
         ::std::unique_ptr<int> result;
 
-        auto child{[](this auto) -> ::verilator_utils::task<::std::unique_ptr<int>> { co_return ::std::make_unique<int>(17); }()};
+        auto child{[] -> ::verilator_utils::task<::std::unique_ptr<int>> { co_return ::std::make_unique<int>(17); }()};
         const auto parent{[&] -> ::verilator_utils::task<void> { result = co_await child; }};
         scheduler.add_task(parent());
 
@@ -172,7 +172,7 @@ TEST_SUITE("verilator_utils/scheduler")
         bool observed_exception{};
         bool consumed_result{};
 
-        auto child{[](this auto) -> ::verilator_utils::task<int>
+        auto child{[] -> ::verilator_utils::task<int>
                    {
                        co_await ::verilator_utils::wait_time(1_ps);
                        throw ::std::runtime_error{"value task failure"};
@@ -200,7 +200,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
     TEST_CASE("task supports move construction assignment detach and destroy")
     {
-        auto task{[](this auto) -> ::verilator_utils::task<void> { co_return; }()};
+        auto task{[] -> ::verilator_utils::task<void> { co_return; }()};
         auto original_handle{task.get_handle()};
 
         ::verilator_utils::task<void> moved{::std::move(task)};
@@ -210,21 +210,21 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(moved);
         CHECK_EQ(moved.get_handle(), original_handle);
 
-        ::verilator_utils::task<void> assigned{[](this auto) -> ::verilator_utils::task<void> { co_return; }()};
+        ::verilator_utils::task<void> assigned{[] -> ::verilator_utils::task<void> { co_return; }()};
         original_handle = assigned.get_handle();
         auto detached_handle{assigned.detach()};
         CHECK_FALSE(assigned);
         CHECK_EQ(detached_handle, original_handle);
         detached_handle.destroy();
 
-        auto destroy_task{[](this auto) -> ::verilator_utils::task<void> { co_return; }()};
+        auto destroy_task{[] -> ::verilator_utils::task<void> { co_return; }()};
         destroy_task.destroy();
         CHECK_FALSE(destroy_task);
     }
 
     TEST_CASE("task records regular exceptions and ignores finish exceptions when rethrowing")
     {
-        auto failing_task{[](this auto) -> ::verilator_utils::task<void>
+        auto failing_task{[] -> ::verilator_utils::task<void>
                           {
                               throw ::std::runtime_error{"regular failure"};
                               co_return;
@@ -234,7 +234,7 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(failing_task.get_promise().with_unhandled_exception());
         CHECK_THROWS_AS(failing_task.rethrow_exception(), ::std::runtime_error);
 
-        auto finish_task{[](this auto) -> ::verilator_utils::task<void>
+        auto finish_task{[] -> ::verilator_utils::task<void>
                          {
                              throw ::verilator_utils::eval_finish_exception{};
                              co_return;
@@ -1038,5 +1038,49 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler.finish();
         scheduler.loop_once();
         CHECK(resumed);
+    }
+
+    TEST_CASE("cleanup unfinished task when scheduler destroyed")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        constexpr static auto just_wait{
+            [] -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ns); },
+        };
+        scheduler.add_task(just_wait());
+        scheduler.add_task(
+            [] -> ::verilator_utils::task<void>
+            {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task(just_wait());
+                pool.add_task(just_wait());
+                co_await pool.join_none();
+                co_await just_wait();
+            }());
+        scheduler.add_task(
+            [] -> ::verilator_utils::task<void>
+            {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task(just_wait());
+                pool.add_task(just_wait());
+                co_await pool.join_all();
+            }());
+        scheduler.add_task(
+            [] -> ::verilator_utils::task<void>
+            {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task(just_wait());
+                pool.add_task(just_wait());
+                co_await pool.join_any();
+            }());
+        scheduler.add_task(
+            [] -> ::verilator_utils::task<void>
+            {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task(just_wait());
+                pool.add_task(just_wait());
+                co_await just_wait();
+            }());
+        scheduler.initial_eval();
     }
 }
