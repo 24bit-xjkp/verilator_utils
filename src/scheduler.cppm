@@ -18,8 +18,9 @@ export namespace verilator_utils
      * @brief 仿真超时异常类
      *
      */
-    struct eval_timeout_exception
+    struct eval_timeout_exception : ::std::runtime_error
     {
+        eval_timeout_exception() noexcept : ::std::runtime_error{"仿真超时退出"} {}
     };
 
     /**
