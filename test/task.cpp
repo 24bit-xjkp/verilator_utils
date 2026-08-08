@@ -7,6 +7,9 @@ namespace
 
     auto to_vector(::std::size_t n) noexcept { return ::std::views::take(n) | ::std::ranges::to<::std::vector<bool>>(); }
 
+    struct signal_state
+    { ::CData value{}; };
+
     struct fake_dut final : ::VerilatedModel
     {
         explicit fake_dut(::VerilatedContext& context) : ::VerilatedModel{context} {}
@@ -466,6 +469,179 @@ TEST_SUITE("verilator_utils/task")
         CHECK(second.done());
         first.get_promise().rethrow_exception();
         second.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("select_clock wakes on the detected edge of a single clock")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state clk{};
+        ::std::vector<::std::vector<bool>> results;
+
+        ::verilator_utils::select_clock clock_selector{};
+        clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk.value}, ::verilator_utils::edge_enum::rising);
+
+        auto selector_task{[&](this auto) -> ::verilator_utils::task<void>
+                           {
+                               for(::std::size_t i{}; i != 3; ++i)
+                               {
+                                   auto triggered{co_await clock_selector};
+                                   results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
+                               }
+                           }()};
+        ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(task.done());
+        CHECK_EQ(results.size(), 0u);
+
+        // 上升沿触发
+        clk.value = 1u;
+        scheduler.loop_once();
+        REQUIRE_EQ(results.size(), 1u);
+        REQUIRE_EQ(results[0].size(), 1u);
+        CHECK_EQ(results[0][0], true);
+
+        // 下降沿不触发上升沿检测
+        clk.value = 0u;
+        scheduler.loop_once();
+        CHECK_FALSE(task.done());
+        CHECK_EQ(results.size(), 1u);
+
+        // 再次上升沿触发
+        clk.value = 1u;
+        scheduler.loop_once();
+        REQUIRE_EQ(results.size(), 2u);
+        REQUIRE_EQ(results[1].size(), 1u);
+        CHECK_EQ(results[1][0], true);
+
+        // 信号保持不变不会触发
+        scheduler.loop_once();
+        CHECK_FALSE(task.done());
+        CHECK_EQ(results.size(), 2u);
+
+        // 第三次上升沿触发，任务结束
+        clk.value = 0u;
+        scheduler.loop_once();
+        CHECK_FALSE(task.done());
+        clk.value = 1u;
+        scheduler.loop_once();
+        CHECK(task.done());
+        REQUIRE_EQ(results.size(), 3u);
+        REQUIRE_EQ(results[2].size(), 1u);
+        CHECK_EQ(results[2][0], true);
+        task.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("select_clock wakes when any tracked clock triggers")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state clk_a{};
+        signal_state clk_b{};
+        ::std::vector<::std::vector<bool>> results;
+
+        ::verilator_utils::select_clock clock_selector{};
+        clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_a.value}, ::verilator_utils::edge_enum::rising);
+        clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_b.value}, ::verilator_utils::edge_enum::falling);
+
+        auto selector_task{[&](this auto) -> ::verilator_utils::task<void>
+                           {
+                               for(::std::size_t i{}; i != 2; ++i)
+                               {
+                                   auto triggered{co_await clock_selector};
+                                   results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
+                               }
+                           }()};
+        ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(task.done());
+        CHECK_EQ(results.size(), 0u);
+
+        // 仅 clk_a 触发上升沿，clk_b 无下降沿
+        clk_a.value = 1u;
+        scheduler.loop_once();
+        REQUIRE_EQ(results.size(), 1u);
+        REQUIRE_EQ(results[0].size(), 2u);
+        CHECK_EQ(results[0][0], true);
+        CHECK_EQ(results[0][1], false);
+
+        // clk_b 先拉高，无下降沿不触发
+        clk_b.value = 1u;
+        scheduler.loop_once();
+        CHECK_FALSE(task.done());
+        CHECK_EQ(results.size(), 1u);
+
+        // clk_b 下降沿触发，clk_a 无上升沿
+        clk_b.value = 0u;
+        scheduler.loop_once();
+        CHECK(task.done());
+        REQUIRE_EQ(results.size(), 2u);
+        REQUIRE_EQ(results[1].size(), 2u);
+        CHECK_EQ(results[1][0], false);
+        CHECK_EQ(results[1][1], true);
+        task.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("select_clock reports all clocks triggered simultaneously")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state clk_a{};
+        signal_state clk_b{};
+        ::std::vector<bool> results;
+
+        ::verilator_utils::select_clock clock_selector{};
+        clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_a.value}, ::verilator_utils::edge_enum::rising);
+        clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_b.value}, ::verilator_utils::edge_enum::rising);
+
+        auto selector_task{[&](this auto) -> ::verilator_utils::task<void>
+                           {
+                               auto triggered{co_await clock_selector};
+                               results = triggered | ::std::ranges::to<::std::vector<bool>>();
+                           }()};
+        ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(task.done());
+        CHECK(results.empty());
+
+        clk_a.value = 1u;
+        clk_b.value = 1u;
+        scheduler.loop_once();
+        CHECK(task.done());
+        REQUIRE_EQ(results.size(), 2u);
+        CHECK_EQ(results[0], true);
+        CHECK_EQ(results[1], true);
+        task.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("select_clock completes immediately when the edge already occurred")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state clk{};
+        ::std::vector<bool> results;
+
+        ::verilator_utils::select_clock clock_selector{};
+        clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk.value}, ::verilator_utils::edge_enum::rising);
+
+        // 检测器创建后、任务运行前时钟已跳变，等待时无需挂起
+        clk.value = 1u;
+
+        auto selector_task{[&](this auto) -> ::verilator_utils::task<void>
+                           {
+                               auto triggered{co_await clock_selector};
+                               results = triggered | ::std::ranges::to<::std::vector<bool>>();
+                           }()};
+        ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
+
+        scheduler.loop_once();
+        CHECK(task.done());
+        REQUIRE_EQ(results.size(), 1u);
+        CHECK_EQ(results[0], true);
+        task.get_promise().rethrow_exception();
     }
 
     // NOLINTEND(bugprone-unchecked-optional-access)
