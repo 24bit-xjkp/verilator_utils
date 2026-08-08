@@ -568,8 +568,7 @@ export namespace verilator_utils
         /**
          * @brief 构造边沿检测器对象
          *
-         * @tparam callback_t 事件回调类型
-         * @param event_callback 事件回调函数
+         * @param bit 要检测的信号
          * @param edge_to_detect 要检测的边沿
          */
         edge_detector(const ::verilator_utils::is_bit_slice auto& bit, ::verilator_utils::edge_enum edge_to_detect) :

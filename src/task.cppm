@@ -813,6 +813,80 @@ export namespace verilator_utils
             value = (value ^ masked_broadcast_out) >> 1zu | out << (width - 1);
         }
     }
+
+    /**
+     * @brief 检测一组时钟是否触发，用于参考模型中
+     *
+     */
+    struct select_clock
+    {
+
+    private:
+        struct clock_trigger
+        {
+            ::verilator_utils::edge_detector edge_detector;
+            bool triggered{};
+
+            /**
+             * @brief 进行边沿检测并缓存结果
+             *
+             * @return 是否检测到指定边沿
+             */
+            bool detect()
+            {
+                triggered = edge_detector();
+                return triggered;
+            }
+        };
+
+        ::std::vector<clock_trigger> clk_list{};
+
+        struct select_clock_awaiter
+        {
+            ::std::vector<clock_trigger>& clk_list;
+            ::verilator_utils::eval_scheduler* scheduler{};
+            /// 事件回调，用于轮询检测时钟边沿
+            ::verilator_utils::default_event_callback event_callback{[this] { return await_ready(); }};
+
+            bool await_ready()
+            {
+                bool triggered{};
+                ::std::ranges::for_each(clk_list, [&triggered](clock_trigger& clk) { triggered |= clk.detect(); });
+                return triggered;
+            }
+
+            template <::verilator_utils::is_coroutine_promise promise_type>
+            void await_suspend(::std::coroutine_handle<promise_type> handle)
+            {
+                scheduler = handle.promise().check_scheduler();
+                scheduler->register_event(event_callback, handle);
+            }
+
+            [[nodiscard]] auto await_resume() const
+            {
+                if(scheduler != nullptr) { scheduler->throw_if_finish(); }
+                return clk_list | ::std::views::transform([](const clock_trigger& clk) { return clk.triggered; });
+            }
+        };
+
+    public:
+        /**
+         * @brief 添加要检测的时钟
+         *
+         * @param clk 时钟信号
+         * @param edge_to_detect 要检测的边沿
+         */
+        void add_clock(const ::verilator_utils::bit_slice<::CData>& clk,
+                       ::verilator_utils::edge_enum edge_to_detect = ::verilator_utils::edge_enum::rising)
+        { clk_list.emplace_back(::verilator_utils::edge_detector{clk, edge_to_detect}); }
+
+        /**
+         * @brief 等待某个边沿触发
+         *
+         * @return 可等待体
+         */
+        [[nodiscard]] select_clock_awaiter operator co_await() { return select_clock_awaiter{clk_list}; }
+    };
 }  // namespace verilator_utils
 
 export namespace verilator_utils
