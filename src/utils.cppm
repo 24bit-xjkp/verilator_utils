@@ -519,7 +519,7 @@ namespace verilator_utils
                     auto left_word{end - 1};
                     iter = ::std::format_to(iter,
                                             "{:#0{}x}",
-                                            *left_word,
+                                            *left_word,  // NOLINT(clang-analyzer-security.ArrayBound)
                                             (left_word_width + digit_width - 1) / digit_width + prefix_size);
                     for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, left_word}))
                     {
@@ -598,6 +598,7 @@ namespace verilator_utils
                     auto begin{data.data()};
                     auto end{data.data() + (width + word_width - 1) / word_width};
                     auto left_word{end - 1};
+                    // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
                     iter = ::std::format_to(iter, "{:#0{}b}", *left_word, left_word_width + prefix_size);
                     for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, left_word}))
                     {
