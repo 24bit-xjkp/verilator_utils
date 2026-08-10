@@ -5,6 +5,7 @@ local verilator_options = {
     {"--x-initial", "unique"},
     "--coverage",
     "-DSIMULATION=1",
+    "-Irtl"
 }
 set_warnings("none")
 add_toolchains("@verilator")
@@ -15,12 +16,13 @@ rtl_verilator_target = {
     ["counter"] = {},
     ["sequence_detector"] = {},
     ["dual_ram"] = {},
+    ["async_fifo"] = {},
 }
 
 for name, opt in pairs(rtl_verilator_target) do
     target(format("unit_test_rtl_%s_verilator", name))
         add_rules("verilator.shared")
-        add_files(table.join(opt["deps"] or {}, {name..".sv"}))
+        add_files(name..".sv")
         set_default(false)
         local top_module = opt["top"] or name
         add_values("verilator.flags", table.join(verilator_options, {"--top", top_module}))
