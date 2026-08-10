@@ -1581,7 +1581,7 @@ export namespace verilator_utils
          * @param width 数据宽度
          * @param format 数据格式
          */
-        explicit shift_register(::std::size_t depth, ::size_t width, ::verilator_utils::data_format::format format) :
+        explicit shift_register(::std::size_t depth, ::size_t width, const ::verilator_utils::data_format::format& format) :
             shift_register{
                 depth,
                 {width, format}
@@ -1590,36 +1590,54 @@ export namespace verilator_utils
         }
 
     private:
+        // 寄存器链深度
         ::std::size_t depth;
-        ::std::vector<type> reg;
+        // 打包储存的格式
         ::verilator_utils::packed_format format;
+        // 寄存器链
+        ::std::vector<type> reg{};
+        // 缓冲最近移出寄存器链的元素，实现enable功能
+        ::std::optional<type> buffer{};
         using arg_t = ::std::conditional_t<(sizeof(type) > sizeof(::std::size_t)), const type&, type>;
         friend struct ::std::formatter<shift_register>;
+        using wrapper_t = ::verilator_utils::format_wrapper<type>;
+        using optional_t = ::std::optional<wrapper_t>;
 
     public:
         /**
          * @brief 更新移位寄存器中的值
          *
          * @param value 要更新的值
+         * @param enable 使能信号，为false时只读取寄存器链，为true时进行更新
          * @return 最早进入寄存器链的值，若寄存器链未填满则为空
          */
-        ::std::optional<::verilator_utils::format_wrapper<type>> update(arg_t value)
+        optional_t update(arg_t value, bool enable = true)
         {
-            ::std::optional<::verilator_utils::format_wrapper<type>> result{};
-            if(reg.size() == depth)
+            if(enable)
             {
-                result = ::verilator_utils::format_wrapper<type>{reg.front(), format};
-                reg.erase(reg.begin());
+                if(depth == 0) { buffer.emplace(value); }
+                else
+                {
+                    if(reg.size() == depth)
+                    {
+                        buffer.emplace(reg.front());
+                        reg.erase(reg.begin());
+                    }
+                    reg.emplace_back(value);
+                }
             }
-            reg.emplace_back(value);
-            return result;
+            return buffer.transform([this](arg_t buffered_value) { return wrapper_t{buffered_value, format}; });
         }
 
         /**
          * @brief 清空寄存器链
          *
          */
-        void reset() noexcept { reg.clear(); }
+        void reset() noexcept
+        {
+            reg.clear();
+            buffer.reset();
+        }
     };
 }  // namespace verilator_utils
 
