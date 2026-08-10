@@ -224,6 +224,108 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(delayed->value(), 0x3u);
     }
 
+    TEST_CASE("shift_register with enable false holds the chain and the output")
+    {
+        ::verilator_utils::shift_register<::std::uint64_t> delay_line{2, 8, ::verilator_utils::data_format::hex};
+
+        CHECK_FALSE(delay_line.update(0x01u).has_value());
+        CHECK_FALSE(delay_line.update(0x02u).has_value());
+
+        // 链未满时，disable 的 update 不产生输出，也不进入寄存器链
+        CHECK_FALSE(delay_line.update(0x03u, false).has_value());
+
+        auto first{delay_line.update(0x04u)};
+        REQUIRE(first.has_value());
+        CHECK_EQ(first->value(), 0x01u);
+
+        // disable 时输出保持上一个移出的值，寄存器链内容不变
+        auto held_first{delay_line.update(0x05u, false)};
+        REQUIRE(held_first.has_value());
+        CHECK_EQ(held_first->value(), 0x01u);
+        CHECK_EQ(held_first->width(), 8u);
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::hex_t>(held_first->format()));
+        CHECK_EQ(held_first->to_string(), "0x01");
+
+        auto held_again{delay_line.update(0x06u, false)};
+        REQUIRE(held_again.has_value());
+        CHECK_EQ(held_again->value(), 0x01u);
+
+        // 重新使能后，寄存器链未被 disable 期间的值污染
+        auto second{delay_line.update(0x07u)};
+        REQUIRE(second.has_value());
+        CHECK_EQ(second->value(), 0x02u);
+    }
+
+    TEST_CASE("shift_register with depth zero outputs and holds the current value")
+    {
+        ::verilator_utils::shift_register<::std::uint64_t> delay_line{0, 8, ::verilator_utils::data_format::hex};
+
+        auto first{delay_line.update(0x11u)};
+        REQUIRE(first.has_value());
+        CHECK_EQ(first->value(), 0x11u);
+
+        // disable 时保持最近一次使能输入的值
+        auto held{delay_line.update(0x22u, false)};
+        REQUIRE(held.has_value());
+        CHECK_EQ(held->value(), 0x11u);
+
+        auto second{delay_line.update(0x33u)};
+        REQUIRE(second.has_value());
+        CHECK_EQ(second->value(), 0x33u);
+
+        delay_line.reset();
+        CHECK_FALSE(delay_line.update(0x44u, false).has_value());
+        auto third{delay_line.update(0x55u)};
+        REQUIRE(third.has_value());
+        CHECK_EQ(third->value(), 0x55u);
+    }
+
+    TEST_CASE("shift_register reset clears the held output")
+    {
+        ::verilator_utils::shift_register<::std::uint64_t> delay_line{2, 8, ::verilator_utils::data_format::hex};
+
+        delay_line.update(0x01u);
+        delay_line.update(0x02u);
+        auto first{delay_line.update(0x03u)};
+        REQUIRE(first.has_value());
+        CHECK_EQ(first->value(), 0x01u);
+
+        delay_line.reset();
+
+        // reset 后 disable 的 update 不再返回之前保持的输出
+        CHECK_FALSE(delay_line.update(0x04u, false).has_value());
+        CHECK_FALSE(delay_line.update(0x05u).has_value());
+        CHECK_FALSE(delay_line.update(0x06u).has_value());
+        auto delayed{delay_line.update(0x07u)};
+        REQUIRE(delayed.has_value());
+        CHECK_EQ(delayed->value(), 0x05u);
+    }
+
+    TEST_CASE("shift_register with enable supports Verilator wide data")
+    {
+        ::verilator_utils::shift_register<::VlWide<2>> delay_line{1, 48, ::verilator_utils::data_format::hex};
+
+        ::VlWide<2> first_value{0x89ab'cdefu, 0x0000'0123u};
+        CHECK_FALSE(delay_line.update(first_value).has_value());
+
+        // disable 的输入不进入寄存器链
+        ::VlWide<2> disabled_value{0xdead'beefu, 0x0000'0deau};
+        CHECK_FALSE(delay_line.update(disabled_value, false).has_value());
+
+        ::VlWide<2> second_value{0x1122'3344u, 0x0000'0001u};
+        auto delayed{delay_line.update(second_value)};
+        REQUIRE(delayed.has_value());
+        CHECK_EQ(delayed->value().at(0), 0x89ab'cdefu);
+        CHECK_EQ(delayed->value().at(1), 0x0000'0123u);
+
+        // disable 时输出保持上一个移出的宽数据
+        auto held{delay_line.update(second_value, false)};
+        REQUIRE(held.has_value());
+        CHECK_EQ(held->value().at(0), 0x89ab'cdefu);
+        CHECK_EQ(held->value().at(1), 0x0000'0123u);
+        CHECK_EQ(held->to_string(), "0x012389abcdef");
+    }
+
     TEST_CASE("shift_register preserves the configured data format")
     {
         ::verilator_utils::shift_register<::std::uint64_t> binary_delay_line{
