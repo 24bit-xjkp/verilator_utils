@@ -72,7 +72,7 @@ export namespace verilator_utils::detail
      * @brief 实现仿真时间获取的可等待体
      *
      */
-    struct get_time_in_time_unit_awaiter
+    struct get_time_in_time_unit_awaiter : ::verilator_utils::detail::no_suspend_awaiter
     {
         ::verilator_utils::eval_scheduler* scheduler;
 
@@ -87,7 +87,7 @@ export namespace verilator_utils::detail
      * @brief 实现仿真时间获取的可等待体
      *
      */
-    struct get_time_in_time_precision_awaiter
+    struct get_time_in_time_precision_awaiter : ::verilator_utils::detail::no_suspend_awaiter
     {
         ::verilator_utils::eval_scheduler* scheduler;
 
