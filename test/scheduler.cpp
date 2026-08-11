@@ -39,6 +39,31 @@ namespace
 
     struct signal_state
     { ::CData value{}; };
+
+    /**
+     * @brief 返回bool值的可等待体，用于测试await_suspend的bool分支
+     *
+     */
+    struct bool_suspend_awaiter
+    {
+        bool do_suspend;
+
+        static bool await_ready() noexcept { return false; }
+
+        bool await_suspend(auto /* handle */) noexcept { return do_suspend; }
+
+        static void await_resume() noexcept {}
+    };
+
+    /**
+     * @brief 判断挂起点位置是否为空（等价于未记录挂起点）
+     *
+     */
+    [[nodiscard]] bool is_default_suspend_location(const ::std::source_location& location) noexcept
+    {
+        return location.line() == 0u && location.column() == 0u &&
+               (location.file_name() == nullptr || location.file_name()[0] == '\0');
+    }
 }  // namespace
 
 TEST_SUITE("verilator_utils/scheduler")
@@ -1082,5 +1107,210 @@ TEST_SUITE("verilator_utils/scheduler")
                 co_await just_wait();
             }());
         scheduler.initial_eval();
+    }
+
+    TEST_CASE("suspending on an event records suspended status and source location")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state signal{};
+        ::std::uint32_t recorded_line{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void>
+            {
+                [[maybe_unused]] auto handle{
+                    co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                recorded_line = ::std::source_location::current().line();
+                co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
+            },
+        };
+        auto child{child_lambda()};
+        const auto parent{[&] -> ::verilator_utils::task<void> { co_await child; }};
+        scheduler.add_task(parent());
+        auto& promise{child.get_promise()};
+
+        CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::initial_suspend);
+        CHECK(is_default_suspend_location(promise.suspend_location));
+
+        scheduler.loop_once();
+        CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::suspended);
+        REQUIRE_NE(promise.suspend_location.line(), 0u);
+        CHECK_EQ(promise.suspend_location.line(), recorded_line + 1);
+        REQUIRE_NE(promise.suspend_location.file_name(), nullptr);
+        CHECK(::std::string_view{promise.suspend_location.file_name()}.ends_with("scheduler.cpp"));
+
+        signal.value = 1;
+        scheduler.loop_once();
+        CHECK(child.done());
+        CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::finial_suspend);
+        CHECK(is_default_suspend_location(promise.suspend_location));
+    }
+
+    TEST_CASE("resuming a wait clears the suspend location and restores running status")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::optional<::std::source_location> observed_location;
+        ::verilator_utils::task<void>::status_enum observed_status{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void>
+            {
+                auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                co_await ::verilator_utils::wait_time(1_ps);
+                observed_status = handle.promise().status;
+                observed_location = handle.promise().suspend_location;
+            },
+        };
+        auto child{child_lambda()};
+        const auto parent{[&] -> ::verilator_utils::task<void> { co_await child; }};
+        scheduler.add_task(parent());
+
+        scheduler.loop_until_finish();
+        REQUIRE(observed_location.has_value());
+        CHECK_EQ(observed_status, ::verilator_utils::task<void>::status_enum::running);
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        CHECK(is_default_suspend_location(*observed_location));
+        CHECK(child.done());
+    }
+
+    TEST_CASE("non-suspending awaiters keep status running and suspend location empty")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void>
+            {
+                auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                auto& promise{handle.promise()};
+                CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::running);
+                CHECK(is_default_suspend_location(promise.suspend_location));
+
+                co_await ::std::suspend_never{};
+                CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::running);
+                CHECK(is_default_suspend_location(promise.suspend_location));
+
+                co_await ::verilator_utils::wait_event([] { return true; });
+                CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::running);
+                CHECK(is_default_suspend_location(promise.suspend_location));
+            },
+        };
+        auto child{child_lambda()};
+        const auto parent{[&] -> ::verilator_utils::task<void> { co_await child; }};
+        scheduler.add_task(parent());
+
+        scheduler.loop_until_finish();
+        CHECK(child.done());
+    }
+
+    TEST_CASE("awaiting a child task records the parent suspend point")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state signal{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void>
+            {
+                [[maybe_unused]] auto handle{
+                    co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
+            },
+        };
+        auto child{child_lambda()};
+        ::std::uint32_t recorded_line{};
+        const auto parent{
+            [&] -> ::verilator_utils::task<void>
+            {
+                recorded_line = ::std::source_location::current().line();
+                co_await child;
+            },
+        };
+        auto parent_task{parent()};
+        auto& promise{parent_task.get_promise()};
+        scheduler.add_task(::std::move(parent_task));
+
+        scheduler.loop_once();
+        CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::suspended);
+        REQUIRE_NE(promise.suspend_location.line(), 0u);
+        CHECK_EQ(promise.suspend_location.line(), recorded_line + 1);
+
+        signal.value = 1;
+        scheduler.loop_once();
+        CHECK(child.done());
+    }
+
+    TEST_CASE("awaiting an async child records the parent suspend point")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state signal{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void>
+            {
+                [[maybe_unused]] auto handle{
+                    co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
+            },
+        };
+        ::std::uint32_t recorded_line{};
+        const auto parent{
+            [&] -> ::verilator_utils::task<void>
+            {
+                auto async_child{co_await ::verilator_utils::to_async(child_lambda())};
+                recorded_line = ::std::source_location::current().line();
+                co_await async_child;
+            },
+        };
+        auto parent_task{parent()};
+        auto& promise{parent_task.get_promise()};
+        scheduler.add_task(::std::move(parent_task));
+
+        scheduler.loop_once();
+        CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::suspended);
+        REQUIRE_NE(promise.suspend_location.line(), 0u);
+        CHECK_EQ(promise.suspend_location.line(), recorded_line + 1);
+
+        signal.value = 1;
+        scheduler.loop_once();
+    }
+
+    TEST_CASE("bool-suspending awaiters inject the location only when they suspend")
+    {
+        ::std::optional<::verilator_utils::task<void>::status_enum> status_after_false_resume;
+        ::std::optional<::std::source_location> location_after_false_resume;
+        bool resumed_after_true{};
+        ::std::uint32_t recorded_line{};
+
+        const auto task_lambda{
+            [&] -> ::verilator_utils::task<void>
+            {
+                auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                auto& promise{handle.promise()};
+                co_await bool_suspend_awaiter{false};
+                status_after_false_resume = promise.status;
+                location_after_false_resume = promise.suspend_location;
+                recorded_line = ::std::source_location::current().line();
+                co_await bool_suspend_awaiter{true};
+                resumed_after_true = true;
+            },
+        };
+        auto task{task_lambda()};
+        auto& promise{task.get_promise()};
+
+        task.resume();
+        CHECK_FALSE(resumed_after_true);
+        REQUIRE(status_after_false_resume.has_value());
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        CHECK_EQ(*status_after_false_resume, ::verilator_utils::task<void>::status_enum::running);
+        REQUIRE(location_after_false_resume.has_value());
+        // NOLINTNEXTLINE(bugprone-unchecked-optional-access)
+        CHECK(is_default_suspend_location(*location_after_false_resume));
+        CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::suspended);
+        REQUIRE_NE(promise.suspend_location.line(), 0u);
+        CHECK_EQ(promise.suspend_location.line(), recorded_line + 1);
     }
 }
