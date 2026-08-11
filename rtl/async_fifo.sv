@@ -49,10 +49,10 @@ module async_fifo #(
     logic                  o_valid_d;
 
 
-    dual_ram #(
+    async_dual_ram #(
         .data_width(data_width),
         .addr_width(addr_width)
-    ) u_dual_ram (
+    ) u_async_dual_ram (
         .read_clk    (o_clk),
         .read_enable (read_enable),
         .read_addr   (read_addr),

@@ -1,7 +1,7 @@
 #include <verilator_fwd.hpp>
 #include "doctest_macros.hpp"
 import verilator_utils.full;
-#include <unit_test_rtl_dual_ram_verilator.h>
+#include <unit_test_rtl_async_dual_ram_verilator.h>
 #include <verilator_bwd.hpp>
 
 TEST_SUITE("dual_ram")
@@ -9,7 +9,7 @@ TEST_SUITE("dual_ram")
     using namespace verilator_utils;
     namespace views = std::views;
     namespace ranges = std::ranges;
-    using dut_t = unit_test_rtl_dual_ram_verilator;
+    using dut_t = unit_test_rtl_async_dual_ram_verilator;
     using dut_context_t = dut_context<dut_t, VerilatedFstC>;
 
     struct port_t

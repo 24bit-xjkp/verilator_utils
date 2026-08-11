@@ -1,7 +1,4 @@
-`ifndef RTL_DUAL_RAM
-`define RTL_DUAL_RAM
-
-module dual_ram #(
+module async_dual_ram #(
     parameter int data_width = 8,
     parameter int addr_width = 3
 ) (
@@ -28,4 +25,3 @@ module dual_ram #(
         end
     end
 endmodule
-`endif

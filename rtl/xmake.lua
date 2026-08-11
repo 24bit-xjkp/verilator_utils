@@ -15,7 +15,7 @@ rtl_verilator_target = {
     ["lfsr_m7"] = {top = "lfsr_m7_wrapper"},
     ["counter"] = {},
     ["sequence_detector"] = {},
-    ["dual_ram"] = {},
+    ["async_dual_ram"] = {},
     ["async_fifo"] = {},
 }
 
