@@ -68,8 +68,10 @@ export namespace verilator_utils
             creating,
             /// 初始化执行完毕
             initial_suspend,
-            /// 协程正在执行，和是否被挂起无关
+            /// 协程正在执行
             running,
+            /// 协程已挂起，等待调度执行
+            suspended,
             /// 协程执行完毕
             finial_suspend,
         };
@@ -90,6 +92,8 @@ export namespace verilator_utils
             promise_base* parent_promise{};
             /// 调度器指针，用于实现隐式的调度器传递
             ::verilator_utils::eval_scheduler* scheduler{};
+            /// 协程挂起点的源代码位置
+            ::std::source_location suspend_location{};
             /// 任务是否是通过抛出仿真结束异常结束的
             bool is_eval_finish_exception{};
             /// 协程状态
@@ -201,21 +205,85 @@ export namespace verilator_utils
             }
 
             /**
+             * @brief 向需要挂起的可等待体中注入挂起点的源代码位置信息
+             *
+             * @tparam awaiter_t 可等待体
+             */
+            template <typename awaiter_t>
+            struct suspend_location_inject_awaiter
+            {
+                awaiter_t awaiter;
+                promise_base& promise;
+
+                bool await_ready(this auto&& self) noexcept(noexcept(self.awaiter.await_ready()))
+                { return self.awaiter.await_ready(); }
+
+                template <::verilator_utils::is_coroutine_promise promise_type>
+                auto await_suspend(this auto&& self,
+                                   ::std::coroutine_handle<promise_type> handle,
+                                   ::std::source_location location =
+                                       ::std::source_location::current()) noexcept(noexcept(self.awaiter.await_suspend(handle)))
+                {
+                    if constexpr(::std::same_as<decltype(self.awaiter.await_suspend(handle)), bool>)
+                    {
+                        auto need_suspend{self.awaiter.await_suspend(handle)};
+                        if(need_suspend)
+                        {
+                            self.promise.suspend_location = location;
+                            self.promise.status = ::verilator_utils::detail::status_enum::suspended;
+                        }
+                        return need_suspend;
+                    }
+                    else
+                    {
+                        self.promise.suspend_location = location;
+                        self.promise.status = ::verilator_utils::detail::status_enum::suspended;
+                        return self.awaiter.await_suspend(handle);
+                    }
+                }
+
+                decltype(auto) await_resume(this auto&& self) noexcept(noexcept(self.awaiter.await_resume()))
+                {
+                    self.promise.suspend_location = ::std::source_location{};
+                    self.promise.status = ::verilator_utils::detail::status_enum::running;
+                    return self.awaiter.await_resume();
+                }
+            };
+
+            /**
              * @brief 转发可等待体
              *
              * @tparam type 可等待体类型
              * @param awaiter 可等待体对象
-             * @return auto&& 转发的可等待体对象
+             * @return 转发的可等待体对象
              */
             template <::verilator_utils::is_coroutine_promise promise_type, typename type>
-            auto&& await_transform(this promise_type& self, type&& awaiter)
+            decltype(auto) await_transform(this promise_type& self, type&& awaiter)
             {
                 if constexpr(::std::derived_from<type, ::verilator_utils::detail::no_suspend_awaiter>)
                 {
                     // 通过set_handle向可等待体传递协程柄
                     awaiter.set_handle(::std::coroutine_handle<promise_type>::from_promise(self));
+                    return ::std::forward<type>(awaiter);
                 }
-                return ::std::forward<type>(awaiter);
+                else if constexpr(::std::same_as<::std::remove_cvref_t<decltype(awaiter)>, ::std::suspend_never>)
+                {
+                    return ::std::suspend_never{};
+                }
+                else if constexpr(requires() {
+                                      { ::std::forward<type>(awaiter).await_ready() } -> ::std::same_as<bool>;
+                                  })
+                {
+                    return suspend_location_inject_awaiter{::std::forward<type>(awaiter), self};
+                }
+                else if constexpr(requires() { awaiter.operator co_await(); })
+                {
+                    return suspend_location_inject_awaiter{::std::forward<type>(awaiter).operator co_await(), self};
+                }
+                else
+                {
+                    return suspend_location_inject_awaiter{operator co_await(::std::forward<type>(awaiter)), self};
+                }
             }
         };
 
