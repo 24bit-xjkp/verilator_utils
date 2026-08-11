@@ -1238,63 +1238,58 @@ namespace verilator_utils
          */
         constexpr void check_format(const ::verilator_utils::data_format::format& format, ::std::size_t width)
         {
-            format.visit(
-                [width]<typename format_t>(const format_t& format) -> void
+            format.visit([width]<typename format_t>(const format_t& format) -> void {
+                using namespace ::std::string_view_literals;
+                if constexpr(::std::same_as<format_t, ::std::monostate>)
                 {
-                    using namespace ::std::string_view_literals;
-                    if constexpr(::std::same_as<format_t, ::std::monostate>)
+                    if consteval { throw ::std::invalid_argument{"必须设置数据类型"}; }
+                    else
                     {
-                        if consteval { throw ::std::invalid_argument{"必须设置数据类型"}; }
-                        else
-                        {
-                            FAIL("必须设置数据类型"sv);
-                        }
+                        FAIL("必须设置数据类型"sv);
                     }
-                    else if constexpr(requires() {
-                                          format.min_width();
-                                          format.max_width();
-                                      })
+                }
+                else if constexpr(requires() {
+                                      format.min_width();
+                                      format.max_width();
+                                  })
+                {
+                    if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
                     {
-                        if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
-                        {
-                            if consteval
-                            {
-                                if(format.enum_string.empty()) { throw ::std::invalid_argument{"枚举列表不能为空"}; }
-                            }
-                            else
-                            {
-                                REQUIRE_FALSE(format.enum_string.empty());
-                            }
-                        }
-
-                        auto min_width{format.min_width()};
-                        auto max_width{format.max_width()};
-
                         if consteval
                         {
-                            if(width < min_width || width > max_width)
-                            {
-                                throw ::std::invalid_argument{"数据宽度超出格式允许范围"};
-                            }
+                            if(format.enum_string.empty()) { throw ::std::invalid_argument{"枚举列表不能为空"}; }
                         }
                         else
                         {
-                            REQUIRE_GE(width, min_width);
-                            REQUIRE_LE(width, max_width);
+                            REQUIRE_FALSE(format.enum_string.empty());
                         }
+                    }
+
+                    auto min_width{format.min_width()};
+                    auto max_width{format.max_width()};
+
+                    if consteval
+                    {
+                        if(width < min_width || width > max_width) { throw ::std::invalid_argument{"数据宽度超出格式允许范围"}; }
                     }
                     else
                     {
-                        if consteval
-                        {
-                            if(width != format.width()) { throw ::std::invalid_argument{"数据宽度与格式宽度不同"}; }
-                        }
-                        else
-                        {
-                            REQUIRE_EQ(width, format.width());
-                        }
+                        REQUIRE_GE(width, min_width);
+                        REQUIRE_LE(width, max_width);
                     }
-                });
+                }
+                else
+                {
+                    if consteval
+                    {
+                        if(width != format.width()) { throw ::std::invalid_argument{"数据宽度与格式宽度不同"}; }
+                    }
+                    else
+                    {
+                        REQUIRE_EQ(width, format.width());
+                    }
+                }
+            });
         }
     }  // namespace data_format
 

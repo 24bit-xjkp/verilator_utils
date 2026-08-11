@@ -1072,8 +1072,7 @@ export namespace verilator_utils
         ~eval_scheduler() noexcept
         {
             const auto do_destroy{
-                [this](const ::verilator_utils::detail::coroutine_pair& pair) noexcept
-                {
+                [this](const ::verilator_utils::detail::coroutine_pair& pair) noexcept {
                     auto [handle, promise]{pair};
                     // 进行栈回溯
                     while(true)

@@ -111,23 +111,21 @@ export namespace verilator_utils
             if constexpr(is_vl_wide) { return underlying_value; }
             else
             {
-                return data_format.visit(
-                    [this]<typename format_t>(const format_t& format) noexcept -> ::std::uint64_t
+                return data_format.visit([this]<typename format_t>(const format_t& format) noexcept -> ::std::uint64_t {
+                    if constexpr(::std::same_as<format_t, ::std::monostate>)
                     {
-                        if constexpr(::std::same_as<format_t, ::std::monostate>)
-                        {
-                            ::std::unreachable();
-                            return 0;
-                        }
-                        else if constexpr(requires() { format.to_verilator(underlying_value, width()); })
-                        {
-                            return format.to_verilator(underlying_value, width());
-                        }
-                        else
-                        {
-                            return format.to_verilator(underlying_value);
-                        }
-                    });
+                        ::std::unreachable();
+                        return 0;
+                    }
+                    else if constexpr(requires() { format.to_verilator(underlying_value, width()); })
+                    {
+                        return format.to_verilator(underlying_value, width());
+                    }
+                    else
+                    {
+                        return format.to_verilator(underlying_value);
+                    }
+                });
             }
         }
 
@@ -141,23 +139,21 @@ export namespace verilator_utils
         template <typename iter_t>
         iter_t format_to(iter_t iter) const
         {
-            return data_format.visit(
-                [this, iter]<typename format_t>(const format_t& format) -> iter_t
+            return data_format.visit([this, iter]<typename format_t>(const format_t& format) -> iter_t {
+                if constexpr(requires() { format.format_to(iter, underlying_value, width()); })
                 {
-                    if constexpr(requires() { format.format_to(iter, underlying_value, width()); })
-                    {
-                        return format.format_to(iter, underlying_value, width());
-                    }
-                    else if constexpr(requires() { format.format_to(iter, underlying_value); })
-                    {
-                        return format.format_to(iter, underlying_value);
-                    }
-                    else
-                    {
-                        ::std::unreachable();
-                        return iter;
-                    }
-                });
+                    return format.format_to(iter, underlying_value, width());
+                }
+                else if constexpr(requires() { format.format_to(iter, underlying_value); })
+                {
+                    return format.format_to(iter, underlying_value);
+                }
+                else
+                {
+                    ::std::unreachable();
+                    return iter;
+                }
+            });
         }
 
         /**
@@ -318,17 +314,16 @@ export namespace verilator_utils
         {
             using namespace ::std::string_view_literals;
 
-            auto do_check{[this](::std::size_t value_width) constexpr
-                          {
-                              if consteval
-                              {
-                                  if(value_width > width()) { throw ::std::invalid_argument{"数据宽度过大"}; }
-                              }
-                              else
-                              {
-                                  REQUIRE_GE(width(), value_width);
-                              }
-                          }};
+            auto do_check{[this](::std::size_t value_width) constexpr {
+                if consteval
+                {
+                    if(value_width > width()) { throw ::std::invalid_argument{"数据宽度过大"}; }
+                }
+                else
+                {
+                    REQUIRE_GE(width(), value_width);
+                }
+            }};
             if constexpr(is_vl_wide)
             {
                 auto value_width{::verilator_utils::detail::vlwide_width(underlying_value)};
@@ -363,32 +358,28 @@ export namespace verilator_utils
 
                 if(is_fixed_point)
                 {
-                    auto convert_to_verilator{data_format.visit(
-                        [this](const auto& format) noexcept -> ::std::uint64_t
+                    auto convert_to_verilator{data_format.visit([this](const auto& format) noexcept -> ::std::uint64_t {
+                        if constexpr(requires() { format.to_verilator(underlying_value); })
                         {
-                            if constexpr(requires() { format.to_verilator(underlying_value); })
-                            {
-                                return format.to_verilator(underlying_value);
-                            }
-                            else
-                            {
-                                ::std::unreachable();
-                                return 0;
-                            }
-                        })};
-                    auto convert_back{data_format.visit(
-                        [convert_to_verilator](const auto& format) noexcept -> double
+                            return format.to_verilator(underlying_value);
+                        }
+                        else
                         {
-                            if constexpr(requires() { format.to_underlying(convert_to_verilator); })
-                            {
-                                return format.to_underlying(convert_to_verilator);
-                            }
-                            else
-                            {
-                                ::std::unreachable();
-                                return 0.0;
-                            }
-                        })};
+                            ::std::unreachable();
+                            return 0;
+                        }
+                    })};
+                    auto convert_back{data_format.visit([convert_to_verilator](const auto& format) noexcept -> double {
+                        if constexpr(requires() { format.to_underlying(convert_to_verilator); })
+                        {
+                            return format.to_underlying(convert_to_verilator);
+                        }
+                        else
+                        {
+                            ::std::unreachable();
+                            return 0.0;
+                        }
+                    })};
                     if consteval
                     {
                         if(convert_back != underlying_value)
@@ -533,27 +524,25 @@ export namespace verilator_utils
         template <typename iter_t>
         iter_t format_to(iter_t iter) const
         {
-            return data_format.visit(
-                [this, iter]<typename format_t>(const format_t& format) -> iter_t
+            return data_format.visit([this, iter]<typename format_t>(const format_t& format) -> iter_t {
+                auto aligned_value{static_cast<::std::uint64_t>(*this)};
+                if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::hex_t> ||
+                             ::std::same_as<format_t, ::verilator_utils::data_format::bin_t>)
                 {
-                    auto aligned_value{static_cast<::std::uint64_t>(*this)};
-                    if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::hex_t> ||
-                                 ::std::same_as<format_t, ::verilator_utils::data_format::bin_t>)
-                    {
-                        return format.format_to(iter, aligned_value, width());
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::dec_unsigned_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::data_format::boolean_t>)
-                    {
-                        return format.format_to(iter, aligned_value);
-                    }
-                    else
-                    {
-                        ::std::unreachable();
-                        return iter;
-                    }
-                });
+                    return format.format_to(iter, aligned_value, width());
+                }
+                else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::dec_unsigned_t> ||
+                                  ::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t> ||
+                                  ::std::same_as<format_t, ::verilator_utils::data_format::boolean_t>)
+                {
+                    return format.format_to(iter, aligned_value);
+                }
+                else
+                {
+                    ::std::unreachable();
+                    return iter;
+                }
+            });
         }
 
         /**
@@ -891,8 +880,9 @@ export namespace verilator_utils
             REQUIRE_MESSAGE(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
             REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
                                   "布尔型不支持三路比较，只支持相等比较"sv);
-            return self.to_underlying().visit([value](auto underlying_value) noexcept -> ::std::partial_ordering
-                                              { return three_way_compare_underlying(underlying_value, value); });
+            return self.to_underlying().visit([value](auto underlying_value) noexcept -> ::std::partial_ordering {
+                return three_way_compare_underlying(underlying_value, value);
+            });
         }
 
         /**
@@ -925,11 +915,11 @@ export namespace verilator_utils
             REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(other.data_format),
                                   "布尔型不支持三路比较，只支持相等比较"sv);
             return self.to_underlying().visit(
-                [other_to_underlying = other.to_underlying()](auto self_underlying_value) noexcept -> ::std::partial_ordering
-                {
+                [other_to_underlying = other.to_underlying()](auto self_underlying_value) noexcept -> ::std::partial_ordering {
                     return other_to_underlying.visit(
-                        [self_underlying_value](auto other_underlying_value) noexcept -> ::std::partial_ordering
-                        { return three_way_compare_underlying(self_underlying_value, other_underlying_value); });
+                        [self_underlying_value](auto other_underlying_value) noexcept -> ::std::partial_ordering {
+                            return three_way_compare_underlying(self_underlying_value, other_underlying_value);
+                        });
                 });
         }
 
@@ -1062,8 +1052,7 @@ export namespace verilator_utils
             }
 
             return data_format.visit(
-                [aligned_value, width = width()]<typename format_t>(const format_t& format) noexcept -> underlying_type
-                {
+                [aligned_value, width = width()]<typename format_t>(const format_t& format) noexcept -> underlying_type {
                     if constexpr(::std::same_as<format_t, ::std::monostate>)
                     {
                         ::std::unreachable();
@@ -1091,19 +1080,17 @@ export namespace verilator_utils
          */
         [[nodiscard]] bool is_valid() const noexcept
         {
-            return data_format.visit(
-                [this]<typename format_t>(const format_t& format) noexcept -> bool
+            return data_format.visit([this]<typename format_t>(const format_t& format) noexcept -> bool {
+                if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
                 {
-                    if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
-                    {
-                        auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
-                        return underlying_data < format.enum_string.size();
-                    }
-                    else
-                    {
-                        return true;
-                    }
-                });
+                    auto underlying_data{::std::get<::std::uint64_t>(to_underlying())};
+                    return underlying_data < format.enum_string.size();
+                }
+                else
+                {
+                    return true;
+                }
+            });
         }
 
         /**
@@ -1116,26 +1103,24 @@ export namespace verilator_utils
         template <typename iter_t>
         iter_t format_to(iter_t iter) const
         {
-            return data_format.visit(
-                [this, iter]<typename format_t>(const format_t& format) -> iter_t
+            return data_format.visit([this, iter]<typename format_t>(const format_t& format) -> iter_t {
+                if constexpr(::std::same_as<format_t, ::std::monostate>)
                 {
-                    if constexpr(::std::same_as<format_t, ::std::monostate>)
-                    {
-                        ::std::unreachable();
-                        return iter;
-                    }
-                    else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::hex_t> ||
-                                      ::std::same_as<format_t, ::verilator_utils::data_format::bin_t>)
-                    {
-                        auto aligned_value{static_cast<cast_type>(*this)};
-                        return format.format_to(iter, aligned_value, width());
-                    }
-                    else
-                    {
-                        return to_underlying().visit([iter, &format](auto underlying_data) -> iter_t
-                                                     { return format.format_to(iter, underlying_data); });
-                    }
-                });
+                    ::std::unreachable();
+                    return iter;
+                }
+                else if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::hex_t> ||
+                                  ::std::same_as<format_t, ::verilator_utils::data_format::bin_t>)
+                {
+                    auto aligned_value{static_cast<cast_type>(*this)};
+                    return format.format_to(iter, aligned_value, width());
+                }
+                else
+                {
+                    return to_underlying().visit(
+                        [iter, &format](auto underlying_data) -> iter_t { return format.format_to(iter, underlying_data); });
+                }
+            });
         }
 
         /**
@@ -1440,8 +1425,7 @@ export namespace verilator_utils
         }
         else
         {
-            return [&]<::std::size_t... indexes>(::std::index_sequence<indexes...>)
-            {
+            return [&]<::std::size_t... indexes>(::std::index_sequence<indexes...>) {
                 return ::std::array{::verilator_utils::make_unpacked_array(data[indexes], width)...};
             }(::std::make_index_sequence<traits::n>{});
         }

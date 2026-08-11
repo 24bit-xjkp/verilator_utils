@@ -364,8 +364,7 @@ export namespace verilator_utils
         REQUIRE_NE(edge_to_wait, 0);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event(
-            [edge_detector = edge_detector_t{bit, edge_detector_t::rising}, edge_to_wait] mutable
-            {
+            [edge_detector = edge_detector_t{bit, edge_detector_t::rising}, edge_to_wait] mutable {
                 edge_to_wait -= edge_detector();
                 return edge_to_wait == 0;
             });
@@ -385,8 +384,7 @@ export namespace verilator_utils
         REQUIRE_NE(edge_to_wait, 0);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event(
-            [edge_detector = edge_detector_t{bit, edge_detector_t::falling}, edge_to_wait] mutable
-            {
+            [edge_detector = edge_detector_t{bit, edge_detector_t::falling}, edge_to_wait] mutable {
                 edge_to_wait -= edge_detector();
                 return edge_to_wait == 0;
             });
@@ -405,9 +403,7 @@ export namespace verilator_utils
     {
         REQUIRE_NE(edge_to_wait, 0);
         using edge_detector_t = ::verilator_utils::edge_detector;
-        return ::verilator_utils::wait_event(
-            [edge_detector = edge_detector_t{bit, edge_detector_t::both}, edge_to_wait] mutable
-            {
+        return ::verilator_utils::wait_event([edge_detector = edge_detector_t{bit, edge_detector_t::both}, edge_to_wait] mutable {
                 edge_to_wait -= edge_detector();
                 return edge_to_wait == 0;
             });
@@ -1176,8 +1172,7 @@ export namespace verilator_utils
                     if(ptr == nullptr) { ::std::unreachable(); }
                 }
                 constexpr static auto deleter{
-                    [](join_any_awaiter* self)
-                    {
+                    [](join_any_awaiter* self) {
                         // 若待析构的元素不为最后一个元素，则将最后的元素移动到当前位置，然后析构最后的空元素
                         // 否则直接析构元素
                         if(self->ptr != ::std::addressof(self->pool.back()))

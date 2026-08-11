@@ -407,13 +407,12 @@ TEST_SUITE("verilator_utils/task")
         int* peeked{};
         int received{};
 
-        auto consumer_task{[&](this auto) -> ::verilator_utils::task<void>
-                           {
-                               int& reference{co_await mailbox.peek()};
-                               peeked = ::std::addressof(reference);
-                               reference = 18;
-                               received = co_await mailbox.get();
-                           }()};
+        auto consumer_task{[&](this auto) -> ::verilator_utils::task<void> {
+            int& reference{co_await mailbox.peek()};
+            peeked = ::std::addressof(reference);
+            reference = 18;
+            received = co_await mailbox.get();
+        }()};
         ::verilator_utils::async_task consumer{scheduler, ::std::move(consumer_task)};
 
         scheduler.loop_once();
@@ -443,12 +442,11 @@ TEST_SUITE("verilator_utils/task")
         static_assert(::std::same_as<decltype(const_mailbox.try_peek()), ::std::optional<const int&>>);
         CHECK_FALSE(const_mailbox.try_peek().has_value());
 
-        auto consumer_task{[&](this auto) -> ::verilator_utils::task<void>
-                           {
-                               const int& reference{co_await const_mailbox.peek()};
-                               peeked = ::std::addressof(reference);
-                               observed = reference;
-                           }()};
+        auto consumer_task{[&](this auto) -> ::verilator_utils::task<void> {
+            const int& reference{co_await const_mailbox.peek()};
+            peeked = ::std::addressof(reference);
+            observed = reference;
+        }()};
         ::verilator_utils::async_task consumer{scheduler, ::std::move(consumer_task)};
 
         scheduler.loop_once();
@@ -473,11 +471,10 @@ TEST_SUITE("verilator_utils/task")
         bool producer_completed{};
 
         CHECK(mailbox.try_put(1));
-        auto producer_task{[&](this auto) -> ::verilator_utils::task<void>
-                           {
-                               co_await mailbox.put(2);
-                               producer_completed = true;
-                           }()};
+        auto producer_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await mailbox.put(2);
+            producer_completed = true;
+        }()};
         ::verilator_utils::async_task producer{scheduler, ::std::move(producer_task)};
 
         scheduler.loop_once();
@@ -519,11 +516,10 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::semaphore semaphore{1};
         bool acquired{};
 
-        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void>
-                         {
-                             co_await semaphore.get(2);
-                             acquired = true;
-                         }()};
+        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await semaphore.get(2);
+            acquired = true;
+        }()};
         ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
 
         scheduler.loop_once();
@@ -545,11 +541,10 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::semaphore semaphore{};
         ::std::vector<int> acquisition_order;
 
-        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void>
-                         {
-                             co_await semaphore.get();
-                             acquisition_order.push_back(id);
-                         }};
+        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+            co_await semaphore.get();
+            acquisition_order.push_back(id);
+        }};
         auto first_task{make_waiter(1)};
         auto second_task{make_waiter(2)};
         ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
@@ -583,14 +578,13 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::select_clock clock_selector{};
         clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk.value}, ::verilator_utils::edge_enum::rising);
 
-        auto selector_task{[&](this auto) -> ::verilator_utils::task<void>
-                           {
-                               for(::std::size_t i{}; i != 3; ++i)
-                               {
-                                   auto triggered{co_await clock_selector};
-                                   results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
-                               }
-                           }()};
+        auto selector_task{[&](this auto) -> ::verilator_utils::task<void> {
+            for(::std::size_t i{}; i != 3; ++i)
+            {
+                auto triggered{co_await clock_selector};
+                results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
+            }
+        }()};
         ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
 
         scheduler.loop_once();
@@ -647,14 +641,13 @@ TEST_SUITE("verilator_utils/task")
         clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_a.value}, ::verilator_utils::edge_enum::rising);
         clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_b.value}, ::verilator_utils::edge_enum::falling);
 
-        auto selector_task{[&](this auto) -> ::verilator_utils::task<void>
-                           {
-                               for(::std::size_t i{}; i != 2; ++i)
-                               {
-                                   auto triggered{co_await clock_selector};
-                                   results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
-                               }
-                           }()};
+        auto selector_task{[&](this auto) -> ::verilator_utils::task<void> {
+            for(::std::size_t i{}; i != 2; ++i)
+            {
+                auto triggered{co_await clock_selector};
+                results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
+            }
+        }()};
         ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
 
         scheduler.loop_once();
@@ -698,11 +691,10 @@ TEST_SUITE("verilator_utils/task")
         clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_a.value}, ::verilator_utils::edge_enum::rising);
         clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_b.value}, ::verilator_utils::edge_enum::rising);
 
-        auto selector_task{[&](this auto) -> ::verilator_utils::task<void>
-                           {
-                               auto triggered{co_await clock_selector};
-                               results = triggered | ::std::ranges::to<::std::vector<bool>>();
-                           }()};
+        auto selector_task{[&](this auto) -> ::verilator_utils::task<void> {
+            auto triggered{co_await clock_selector};
+            results = triggered | ::std::ranges::to<::std::vector<bool>>();
+        }()};
         ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
 
         scheduler.loop_once();
@@ -732,11 +724,10 @@ TEST_SUITE("verilator_utils/task")
         // 检测器创建后、任务运行前时钟已跳变，等待时无需挂起
         clk.value = 1u;
 
-        auto selector_task{[&](this auto) -> ::verilator_utils::task<void>
-                           {
-                               auto triggered{co_await clock_selector};
-                               results = triggered | ::std::ranges::to<::std::vector<bool>>();
-                           }()};
+        auto selector_task{[&](this auto) -> ::verilator_utils::task<void> {
+            auto triggered{co_await clock_selector};
+            results = triggered | ::std::ranges::to<::std::vector<bool>>();
+        }()};
         ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
 
         scheduler.loop_once();

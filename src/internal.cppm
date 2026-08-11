@@ -15,8 +15,7 @@ namespace verilator_utils
         template <typename type, typename... types>
         consteval bool find_once_in_types() noexcept
         {
-            return []<::std::size_t... indexes>(::std::index_sequence<indexes...> /* unused */) static consteval noexcept
-            {
+            return []<::std::size_t... indexes>(::std::index_sequence<indexes...> /* unused */) static consteval noexcept {
                 return ((::std::same_as<type, types...[indexes]> ? 1 : 0) + ...);
             }(::std::make_index_sequence<sizeof...(types)>{}) == 1;
         }
@@ -38,8 +37,7 @@ namespace verilator_utils
         struct variant_index_impl<type, ::std::variant<types...>> :
             ::std::integral_constant<::std::size_t,
                                      []<::std::size_t... indexes>(
-                                         ::std::index_sequence<indexes...> /* unused */) static consteval noexcept
-                                     {
+                                         ::std::index_sequence<indexes...> /* unused */) static consteval noexcept {
                                          return ((::std::same_as<type, types...[indexes]> ? indexes : 0) + ...);
                                      }(::std::make_index_sequence<sizeof...(types)>{})>
         {
