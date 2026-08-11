@@ -38,8 +38,7 @@ TEST_SUITE("lfsr_m7")
     TEST_CASE("lfsr_m7")
     {
         constexpr static auto initial_value_table{
-            []
-            {
+            [] {
                 std::array<std::uint64_t, 7> result{};
                 for(auto&& [ref, shift]: views::zip(result, views::iota(0zu))) { ref = 1zu << shift; }
                 return result;
@@ -59,8 +58,7 @@ TEST_SUITE("lfsr_m7")
         ctx.set_base_name(std::format("lfsr_m7_{}", lfsr_feedback));
 
         const auto do_verify{
-            [&] -> task<void>
-            {
+            [&] -> task<void> {
                 constexpr static auto period{(1zu << port.lfsr_width) - 1zu};
                 auto&& ref{port.lfsr_feedback == std::to_underlying(lfsr_feedback_t::fibonacci) ? fibonacci_lfsr_generator
                                                                                                 : galois_lfsr_generator};
@@ -78,23 +76,19 @@ TEST_SUITE("lfsr_m7")
                     // 验证模型的周期性
                     for(std::uint64_t unwrapped_result: ref(port.lfsr_width, 0, initial_value.value()) | views::take(period * 2))
                     {
-                        format_wrapper result{unwrapped_result, port.result.dump_format()};
-                        co_await wait_verify(port.clk);
-                        auto eval_time{co_await get_time_in_string()};
-                        CAPTURE(eval_time);
-                        CHECK_EQ(result, port.result);
+                        co_await verify_at(port.clk, [&] {
+                            format_wrapper result{unwrapped_result, port.result.dump_format()};
+                            CHECK_EQ(result, port.result);
+                        });
                     }
 
                     // 验证失能后模型输出不变
                     auto current_result{port.result.dump()};
                     co_await wait_stimulate(port.clk);
                     port.enable = false;
-                    for(auto i{0zu}; i != 3; ++i)
+                    for(auto _: views::iota(0zu, 4zu))
                     {
-                        co_await wait_verify(port.clk);
-                        auto eval_time{co_await get_time_in_string()};
-                        CAPTURE(eval_time);
-                        CHECK_EQ(current_result, port.result);
+                        co_await verify_at(port.clk, [&] { CHECK_EQ(current_result, port.result); });
                     }
                 }
 

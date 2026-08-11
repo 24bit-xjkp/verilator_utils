@@ -65,8 +65,7 @@ TEST_SUITE("dual_ram")
         ctx.add_task(generate_clock(port.read_clk, read_clk_period, read_clk_delay));
 
         const auto do_write{
-            [&] -> task<void>
-            {
+            [&] -> task<void> {
                 constexpr static auto enable_iters{(epochs - 1) * ram_depth};
                 // 测试写入使能情况
                 for(auto&& [addr, data]: operation_list | views::take(enable_iters))
@@ -93,8 +92,7 @@ TEST_SUITE("dual_ram")
         };
 
         const auto do_read{
-            [&] -> task<void>
-            {
+            [&] -> task<void> {
                 co_await wait_event([&] { return queue.num() != 0; });
                 while(queue.num() != 0)
                 {
@@ -102,19 +100,16 @@ TEST_SUITE("dual_ram")
                     auto&& addr{co_await queue.get()};
                     port.read_enable = true;
                     port.read_addr = addr;
-
-                    co_await wait_verify(port.read_clk);
-                    auto eval_time{co_await get_time_in_string()};
-                    CAPTURE(eval_time);
-                    CAPTURE(addr);
-                    CHECK_EQ(port.read_data, ram[addr]);
+                    co_await verify_at(port.read_clk, [&] {
+                        CAPTURE(addr);
+                        CHECK_EQ(port.read_data, ram[addr]);
+                    });
                 }
             },
         };
 
         const auto do_verify{
-            [&] -> task<void>
-            {
+            [&] -> task<void> {
                 auto tasks{co_await get_spawn_pool()};
                 tasks.add_task(do_write());
                 tasks.add_task(do_read());
@@ -126,21 +121,14 @@ TEST_SUITE("dual_ram")
                     co_await wait_stimulate(port.read_clk);
                     port.read_enable = true;
                     port.read_addr = addr;
-
-                    co_await wait_verify(port.read_clk);
-                    auto eval_time{co_await get_time_in_string()};
-                    CAPTURE(eval_time);
-                    CHECK_EQ(port.read_data, data);
+                    co_await verify_at(port.read_clk, [&] { CHECK_EQ(port.read_data, data); });
                 }
 
                 auto previous_data{port.read_data.dump()};
                 co_await wait_stimulate(port.read_clk);
                 port.read_enable = false;
                 port.read_addr = (port.read_addr + 1) % ram_depth;
-                co_await wait_verify(port.read_clk);
-                auto eval_time{co_await get_time_in_string()};
-                CAPTURE(eval_time);
-                CHECK_EQ(port.read_data, previous_data);
+                co_await verify_at(port.read_clk, [&] { CHECK_EQ(port.read_data, previous_data); });
 
                 co_await wait_stimulate(port.read_clk);
                 co_await eval_finish();

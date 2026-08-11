@@ -38,20 +38,19 @@ TEST_SUITE("edge_detector")
         ctx.add_task(generate_clock(port.clk, period));
 
         const auto verify{
-            [&](bool rising, bool falling) -> task<void>
-            {
-                co_await wait_verify(port.clk, delay);
-
-                auto eval_time{co_await get_time_in_string()};
-                CAPTURE(eval_time);
-                CHECK_EQ(port.rising, rising);
-                CHECK_EQ(port.falling, falling);
-                CHECK_EQ(port.both, rising || falling);
+            [&](bool rising, bool falling) -> task<void> {
+                return verify_at(
+                    port.clk,
+                    [=, &port] {
+                        CHECK_EQ(port.rising, rising);
+                        CHECK_EQ(port.falling, falling);
+                        CHECK_EQ(port.both, rising || falling);
+                    },
+                    delay);
             },
         };
         const auto stimulate{
-            [&] -> task<void>
-            {
+            [&] -> task<void> {
                 port.signal = 0;
                 co_await generate_reset(port.rst, port.clk);
                 auto verify_tasks{co_await get_spawn_pool()};

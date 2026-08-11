@@ -33,44 +33,40 @@ TEST_SUITE("counter")
 
         ctx.add_task(generate_clock(port.clk, 2_ns));
         const auto do_verify{
-            [&] -> task<void>
-            {
+            [&] -> task<void> {
                 constexpr static auto period{16zu};
                 port.enable = false;
                 co_await generate_reset(port.rst, port.clk);
                 port.enable = true;
-                for(auto&& [count, overflow]: views::iota(1zu) |
-                                                  views::transform(
-                                                      [&](std::uint64_t value)
-                                                      {
-                                                          constexpr static auto mask{(1zu << 4zu) - 1zu};
-                                                          auto count{value & mask};
-                                                          auto overflow{value >> 4zu != 0 && count == 0};
-                                                          return std::pair{
-                                                              format_wrapper{count,    port.count.dump_format()   },
-                                                              format_wrapper{overflow, port.overflow.dump_format()}
-                                                          };
-                                                      }) |
-                                                  views::take(period * 3))
+                const auto expected{views::iota(1zu) | views::transform([&](std::uint64_t value) {
+                                        constexpr static auto mask{(1zu << 4zu) - 1zu};
+                                        auto count{value & mask};
+                                        auto overflow{value >> 4zu != 0 && count == 0};
+                                        return std::pair{
+                                            format_wrapper{count,    port.count.dump_format()   },
+                                            format_wrapper{overflow, port.overflow.dump_format()},
+                                        };
+                                    }) |
+                                    views::take(period * 3)};
+
+                for(auto&& [count, overflow]: expected)
                 {
-                    co_await wait_verify(port.clk);
-                    auto eval_time{co_await get_time_in_string()};
-                    CAPTURE(eval_time);
-                    CHECK_EQ(port.count, count);
-                    CHECK_EQ(port.overflow, overflow);
+                    co_await verify_at(port.clk, [&] {
+                        CHECK_EQ(port.count, count);
+                        CHECK_EQ(port.overflow, overflow);
+                    });
                 }
 
                 auto previous_count{port.count.dump()};
                 auto previous_overflow{port.overflow.dump<bool>()};
-                for(auto i{0zu}; i != period; ++i)
+                for(auto _: views::iota(0zu, period))
                 {
                     co_await wait_stimulate(port.clk);
                     port.enable = false;
-                    co_await wait_verify(port.clk);
-                    auto eval_time{co_await get_time_in_string()};
-                    CAPTURE(eval_time);
-                    CHECK_EQ(port.count, previous_count);
-                    CHECK_EQ(port.overflow, previous_overflow);
+                    co_await verify_at(port.clk, [&] {
+                        CHECK_EQ(port.count, previous_count);
+                        CHECK_EQ(port.overflow, previous_overflow);
+                    });
                 }
 
                 co_await wait_stimulate(port.clk);

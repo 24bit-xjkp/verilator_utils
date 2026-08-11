@@ -113,38 +113,22 @@ TEST_SUITE("async_fifo")
     {
         port.i_valid = 0;
         co_await wait_reset_finish(port.rst);
+        const auto do_verify{[&] { CHECK_EQ(port.i_ready, ref.i_ready()); }};
         for(auto i{0zu}; i != iters;)
         {
             co_await wait_stimulate(port.i_clk);
-            {
-                auto eval_time{co_await get_time_in_string()};
-                CAPTURE(eval_time);
-                CHECK_EQ(port.i_ready, ref.i_ready());
-            }
             if(ref.i_ready())
             {
                 port.i_data = i++;
                 port.i_valid = 1;
             }
-
-            co_await wait_verify(port.i_clk);
-            {
-                auto eval_time{co_await get_time_in_string()};
-                CAPTURE(eval_time);
-                CHECK_EQ(port.i_ready, ref.i_ready());
-            }
+            co_await verify_at(port.i_clk, do_verify);
 
             if(i == iters / 3)
             {
                 co_await wait_stimulate(port.i_clk);
                 port.i_valid = 0;
-                while(port.o_valid == 1)
-                {
-                    co_await wait_verify(port.i_clk);
-                    auto eval_time{co_await get_time_in_string()};
-                    CAPTURE(eval_time);
-                    CHECK_EQ(port.i_ready, ref.i_ready());
-                }
+                while(port.o_valid == 1) { co_await verify_at(port.i_clk, do_verify); }
             }
         }
 
@@ -161,18 +145,14 @@ TEST_SUITE("async_fifo")
         {
             co_await wait_stimulate(port.o_clk);
             port.o_ready = 1;
-
-            co_await wait_verify(port.o_clk);
-            {
-                auto eval_time{co_await get_time_in_string()};
-                CAPTURE(eval_time);
+            co_await verify_at(port.o_clk, [&] {
                 CHECK_EQ(port.o_valid, ref.o_valid());
                 if(ref.o_valid())
                 {
                     CHECK_EQ(port.o_data, ref.o_data());
                     ++i;
                 }
-            }
+            });
 
             if(i == iters / 3 * 2)
             {
@@ -180,11 +160,10 @@ TEST_SUITE("async_fifo")
                 port.o_ready = 0;
                 while(port.i_ready == 1)
                 {
-                    co_await wait_verify(port.i_clk);
-                    auto eval_time{co_await get_time_in_string()};
-                    CAPTURE(eval_time);
-                    CHECK_EQ(port.o_valid, ref.o_valid());
-                    if(ref.o_valid()) { CHECK_EQ(port.o_data, ref.o_data()); }
+                    co_await verify_at(port.i_clk, [&] {
+                        CHECK_EQ(port.o_valid, ref.o_valid());
+                        if(ref.o_valid()) { CHECK_EQ(port.o_data, ref.o_data()); }
+                    });
                 }
             }
         }

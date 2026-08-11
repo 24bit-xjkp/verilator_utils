@@ -43,8 +43,7 @@ TEST_SUITE("sequence_detector")
 
         ctx.add_task(generate_clock(port.clk, 2_ns));
         const auto do_verify{
-            [&] -> task<void>
-            {
+            [&] -> task<void> {
                 constexpr static auto period{(1zu << 8zu) - 1zu};
                 port.enable = 0;
                 reference_module ref{};
@@ -53,11 +52,10 @@ TEST_SUITE("sequence_detector")
                     co_await wait_stimulate(port.clk);
                     port.enable = 1;
                     port.bit_stream = input_bit;
-                    co_await wait_verify(port.clk);
-                    auto ground_truth{ref(input_bit)};
-                    auto eval_time{co_await get_time_in_string()};
-                    CAPTURE(eval_time);
-                    CHECK_EQ(port.result, ground_truth);
+                    co_await verify_at(port.clk, [&] {
+                        auto ground_truth{ref(input_bit)};
+                        CHECK_EQ(port.result, ground_truth);
+                    });
                 }
 
                 for(auto i{0zu}; i != 8zu; ++i)
@@ -65,10 +63,7 @@ TEST_SUITE("sequence_detector")
                     co_await wait_stimulate(port.clk);
                     port.enable = 0;
                     port.bit_stream = ref.sequence_to_detect >> (7zu - i) & 1zu;
-                    co_await wait_verify(port.clk);
-                    auto eval_time{co_await get_time_in_string()};
-                    CAPTURE(eval_time);
-                    CHECK_EQ(port.result, false);
+                    co_await verify_at(port.clk, [&] { CHECK_EQ(port.result, false); });
                 }
 
                 co_await wait_stimulate(port.clk);
