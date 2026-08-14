@@ -1486,7 +1486,7 @@ export namespace verilator_utils
         generator& operator= (generator&& other) noexcept
         {
             if(handle) { handle.destroy(); }
-            handle = ::std::exchange(other, nullptr);
+            handle = ::std::exchange(other.handle, nullptr);
         }
 
         /**

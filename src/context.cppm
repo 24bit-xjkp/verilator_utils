@@ -106,7 +106,7 @@ export namespace verilator_utils
 
         ~dut_context() noexcept
         {
-            dut->final();
+            if(dut) { dut->final(); }
             if(coverage && scheduler->get_eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
             {
                 context->coverageFilename(::std::format("{}.dat", file_base_name));
