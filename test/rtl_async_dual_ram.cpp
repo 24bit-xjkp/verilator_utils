@@ -45,9 +45,7 @@ TEST_SUITE("dual_ram")
         constexpr static auto epochs{8zu};
         std::array<pair_t, ram_depth * epochs> operation_list{};
 
-        auto seed{static_cast<std::uint32_t>(ctx.get_context().randSeed())};
-        CAPTURE(seed);
-        std::mt19937 engine{seed};
+        std::mt19937 engine{ctx.get_seed()};
         for(auto&& [i, pair]: views::enumerate(operation_list))
         {
             auto&& [addr, data]{pair};
@@ -136,5 +134,19 @@ TEST_SUITE("dual_ram")
         };
         ctx.add_task(do_verify());
         ctx.loop_until_finish();
+    }
+
+    TEST_CASE("context random seed management")
+    {
+        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+
+        CHECK_EQ(ctx.get_seed(), static_cast<std::size_t>(ctx.get_context().randSeed()));
+
+        const auto seed{ctx.get_seed()};
+        CHECK_EQ(ctx.get_seed(), seed);
+
+        ctx.get_context().randSeed(42);
+        CHECK_EQ(ctx.get_seed(), 42zu);
+        CHECK_EQ(ctx.get_seed(), static_cast<std::size_t>(ctx.get_context().randSeed()));
     }
 }
