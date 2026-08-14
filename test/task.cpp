@@ -568,6 +568,258 @@ TEST_SUITE("verilator_utils/task")
         second.get_promise().rethrow_exception();
     }
 
+    TEST_CASE("mailbox put rechecks capacity when a peer producer fills the freed slot")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::mailbox<int> mailbox{2};
+        ::std::size_t completed_count{};
+        ::std::size_t max_observed_size{};
+        bool capacity_violation{};
+
+        // 填满邮箱，使所有生产者都阻塞
+        REQUIRE(mailbox.try_put(97));
+        REQUIRE(mailbox.try_put(98));
+
+        auto make_producer{[&](this auto, int value) -> ::verilator_utils::task<void> {
+            co_await mailbox.put(value);
+            ++completed_count;
+            max_observed_size = ::std::max(max_observed_size, mailbox.num());
+            capacity_violation = capacity_violation || mailbox.num() > 2;
+        }};
+        auto first_task{make_producer(10)};
+        auto second_task{make_producer(20)};
+        auto third_task{make_producer(30)};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
+
+        scheduler.loop_once();
+        CHECK_EQ(completed_count, 0u);
+        CHECK_EQ(mailbox.num(), 2u);
+
+        // 消费一个元素释放一个空位：多个阻塞的生产者同时被唤醒，
+        // 但每轮只有一个能放入，其余必须重新检查容量而不是超限放入
+        auto first_item{mailbox.try_get()};
+        REQUIRE(first_item.has_value());
+        CHECK_EQ(*first_item, 97);
+        scheduler.loop_once();
+        CHECK_EQ(completed_count, 1u);
+        CHECK_EQ(mailbox.num(), 2u);
+
+        // 再次释放空位：又一个生产者放入，其余继续等待
+        auto second_item{mailbox.try_get()};
+        REQUIRE(second_item.has_value());
+        CHECK_EQ(*second_item, 98);
+        scheduler.loop_once();
+        CHECK_EQ(completed_count, 2u);
+        CHECK_EQ(mailbox.num(), 2u);
+
+        // 最后一个生产者最终放入
+        auto third_item{mailbox.try_get()};
+        REQUIRE(third_item.has_value());
+        scheduler.loop_once();
+        CHECK_EQ(completed_count, 3u);
+        CHECK_EQ(mailbox.num(), 2u);
+
+        // 所有元素均按FIFO顺序取出，容量从未被突破
+        ::std::vector<int> drained{*first_item, *second_item, *third_item};
+        while(auto item{mailbox.try_get()}) { drained.push_back(*item); }
+        ::std::ranges::sort(drained);
+        CHECK_EQ(drained, (::std::vector<int>{10, 20, 30, 97, 98}));
+        CHECK_FALSE(capacity_violation);
+        CHECK_LE(max_observed_size, 2u);
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+        third.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("mailbox get rechecks emptiness when a peer consumer takes the only item")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::mailbox<int> mailbox{};
+        int first_received{};
+        int second_received{};
+
+        auto make_consumer{[&](this auto, int& received) -> ::verilator_utils::task<void> { received = co_await mailbox.get(); }};
+        auto first_task{make_consumer(first_received)};
+        auto second_task{make_consumer(second_received)};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+
+        // 只放入一个元素：两个消费者同时被唤醒，但只有第一个能取出，
+        // 第二个必须重新检查空态而不是对空邮箱取值
+        REQUIRE(mailbox.try_put(5));
+        scheduler.loop_once();
+        CHECK(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_EQ(first_received, 5);
+        CHECK_EQ(mailbox.num(), 0u);
+
+        // 第二个消费者重新等待后获得新元素
+        REQUIRE(mailbox.try_put(6));
+        scheduler.loop_once();
+        CHECK(second.done());
+        CHECK_EQ(second_received, 6);
+        CHECK_EQ(mailbox.num(), 0u);
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("mailbox peek rechecks emptiness when a consumer removes the only item")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::mailbox<int> mailbox{};
+        int received{};
+        int peeked{};
+
+        auto getter_task{[&](this auto) -> ::verilator_utils::task<void> { received = co_await mailbox.get(); }()};
+        auto peeker_task{[&](this auto) -> ::verilator_utils::task<void> { peeked = co_await mailbox.peek(); }()};
+        ::verilator_utils::async_task getter{scheduler, ::std::move(getter_task)};
+        ::verilator_utils::async_task peeker{scheduler, ::std::move(peeker_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(getter.done());
+        CHECK_FALSE(peeker.done());
+
+        // 只放入一个元素：getter取出后邮箱变空，peeker必须重新等待
+        REQUIRE(mailbox.try_put(7));
+        scheduler.loop_once();
+        CHECK(getter.done());
+        CHECK_FALSE(peeker.done());
+        CHECK_EQ(received, 7);
+        CHECK_EQ(mailbox.num(), 0u);
+
+        // peeker重新等待后观察到新元素，且不删除它
+        REQUIRE(mailbox.try_put(8));
+        scheduler.loop_once();
+        CHECK(peeker.done());
+        CHECK_EQ(peeked, 8);
+        CHECK_EQ(mailbox.num(), 1u);
+
+        auto item{mailbox.try_get()};
+        REQUIRE(item.has_value());
+        CHECK_EQ(*item, 8);
+        CHECK_EQ(mailbox.num(), 0u);
+        getter.get_promise().rethrow_exception();
+        peeker.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("semaphore get rechecks availability when a peer consumes the permits first")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        ::std::vector<int> acquisition_order;
+        bool signal{};
+        bool drained{};
+
+        // 排水者先注册事件，会在同一轮唤醒中先于其他等待者恢复，
+        // 在信号量等待者恢复执行前消耗掉许可
+        auto drainer_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await ::verilator_utils::wait_event([&signal] { return signal; });
+            drained = semaphore.try_get();
+        }()};
+        ::verilator_utils::async_task drainer{scheduler, ::std::move(drainer_task)};
+
+        auto first_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await semaphore.get();
+            acquisition_order.push_back(1);
+        }()};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+
+        auto second_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await semaphore.get();
+            acquisition_order.push_back(2);
+        }()};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(drainer.done());
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+
+        // 排水者与第一个等待者同时被唤醒：排水者先消耗掉许可，
+        // 第一个等待者必须重新等待，而不是透支计数器
+        signal = true;
+        semaphore.put();
+        scheduler.loop_once();
+        CHECK(drained);
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+        CHECK(acquisition_order.empty());
+        CHECK_FALSE(semaphore.try_get());
+
+        // 补充许可后第一个等待者按票号顺序获得
+        semaphore.put();
+        scheduler.loop_once();
+        CHECK(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_EQ(acquisition_order, ::std::vector<int>{1});
+
+        // 第二个等待者随后获得
+        semaphore.put();
+        scheduler.loop_once();
+        CHECK(second.done());
+        CHECK_EQ(acquisition_order, (::std::vector<int>{1, 2}));
+        CHECK_FALSE(semaphore.try_get());
+        drainer.get_promise().rethrow_exception();
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("concurrent mailbox producers and consumers converge without exceeding capacity")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::mailbox<int> mailbox{3};
+        constexpr static ::std::size_t producer_count{4};
+        constexpr static ::std::size_t consumer_count{4};
+        constexpr static ::std::size_t items_per_task{5};
+        ::std::vector<int> received;
+        ::std::size_t max_observed_size{};
+        bool capacity_violation{};
+
+        auto producer{[&](this auto, int id) -> ::verilator_utils::task<void> {
+            for(::std::size_t i{}; i != items_per_task; ++i)
+            {
+                co_await mailbox.put((id * 100 + static_cast<int>(i)));
+                max_observed_size = ::std::max(max_observed_size, mailbox.num());
+                capacity_violation = capacity_violation || mailbox.num() > 3;
+            }
+        }};
+        auto consumer{[&](this auto) -> ::verilator_utils::task<void> {
+            for(::std::size_t i{}; i != items_per_task; ++i) { received.push_back(co_await mailbox.get()); }
+        }};
+
+        ::std::vector<::verilator_utils::async_task> tasks;
+        tasks.reserve(producer_count + consumer_count);
+        for(::std::size_t i{}; i != producer_count; ++i) { tasks.emplace_back(scheduler, producer(static_cast<int>(i))); }
+        for(::std::size_t i{}; i != consumer_count; ++i) { tasks.emplace_back(scheduler, consumer()); }
+
+        scheduler.loop_until_finish();
+
+        for(auto& task: tasks) { task.get_promise().rethrow_exception(); }
+        CHECK_FALSE(capacity_violation);
+        CHECK_LE(max_observed_size, 3u);
+        CHECK_EQ(mailbox.num(), 0u);
+
+        ::std::vector<int> expected;
+        expected.reserve(producer_count * items_per_task);
+        for(::std::size_t id{}; id != producer_count; ++id)
+        {
+            for(::std::size_t i{}; i != items_per_task; ++i) { expected.push_back(static_cast<int>(id * 100 + i)); }
+        }
+        ::std::ranges::sort(received);
+        CHECK_EQ(received, expected);
+    }
+
     TEST_CASE("select_clock wakes on the detected edge of a single clock")
     {
         scheduler_fixture fixture{};

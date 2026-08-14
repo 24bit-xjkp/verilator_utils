@@ -1419,7 +1419,7 @@ export namespace verilator_utils
         [[nodiscard]] ::verilator_utils::task<void> put(args_t&&... args)
             requires (::std::constructible_from<value_type, args_t...>)
         {
-            if(max_count != 0 && queue.size() == max_count)
+            while(max_count != 0 && queue.size() == max_count)
             {
                 co_await ::verilator_utils::wait_event([this] { return queue.size() < max_count; });
             }
@@ -1455,7 +1455,7 @@ export namespace verilator_utils
          */
         [[nodiscard]] ::verilator_utils::task<value_type> get()
         {
-            if(queue.empty())
+            while(queue.empty())
             {
                 co_await ::verilator_utils::wait_event([this] { return !queue.empty(); });
             }
@@ -1488,7 +1488,7 @@ export namespace verilator_utils
          */
         auto peek(this auto&& self) noexcept -> ::verilator_utils::task<decltype(self.queue.front())>
         {
-            if(self.queue.empty())
+            while(self.queue.empty())
             {
                 co_await ::verilator_utils::wait_event([&self] { return !self.queue.empty(); });
             }
@@ -1546,7 +1546,8 @@ export namespace verilator_utils
             }
 
             auto my_ticket{next_ticket++};
-            co_await ::verilator_utils::wait_event([this, my_ticket, update] { return my_ticket == ticket && count >= update; });
+            const auto check{[this, my_ticket, update] { return my_ticket == ticket && count >= update; }};
+            while(!check()) { co_await ::verilator_utils::wait_event(check); }
             count -= update;
             ++ticket;
         }
