@@ -115,29 +115,6 @@ export namespace verilator_utils
         }
 
         /**
-         * @brief DUT上下文对象中子组件的数量
-         *
-         * @return 子组件数量
-         */
-        constexpr static ::std::size_t components() noexcept { return ::std::same_as<tracer_t, void> ? 3 : 4; }
-
-        /**
-         * @brief 获取DUT上下文对象的子组件
-         *
-         * @tparam index 子组件索引，0为上下文对象，1为DUT对象，2为跟踪器对象
-         * @return 子组件的引用
-         */
-        template <::std::size_t index>
-            requires (index < components())
-        auto&& get() noexcept
-        {
-            if constexpr(index == 0) { return *context; }
-            else if constexpr(index == 1) { return *dut; }
-            else if constexpr(index == 2) { return *scheduler; }
-            else if constexpr(index == 3) { return *tracer; }
-        }
-
-        /**
          * @brief 执行一次调度器循环，如果启用波形记录器，则记录波形
          *
          */
@@ -271,36 +248,3 @@ export namespace verilator_utils
         void add_task(::verilator_utils::task<void> task) noexcept { scheduler->add_task(::std::move(task)); }
     };
 }  // namespace verilator_utils
-
-export namespace std
-{
-    template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
-    struct tuple_size<::verilator_utils::dut_context<dut_t, tracer_t>> :
-        ::std::integral_constant<::std::size_t, ::verilator_utils::dut_context<dut_t, tracer_t>::components()>
-    {
-    };
-
-    template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
-    struct tuple_element<0, ::verilator_utils::dut_context<dut_t, tracer_t>>
-    {
-        using type = ::VerilatedContext&;
-    };
-
-    template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
-    struct tuple_element<1, ::verilator_utils::dut_context<dut_t, tracer_t>>
-    {
-        using type = dut_t&;
-    };
-
-    template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
-    struct tuple_element<2, ::verilator_utils::dut_context<dut_t, tracer_t>>
-    {
-        using type = ::verilator_utils::eval_scheduler&;
-    };
-
-    template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
-    struct tuple_element<3, ::verilator_utils::dut_context<dut_t, tracer_t>>
-    {
-        using type = tracer_t&;
-    };
-}  // namespace std
