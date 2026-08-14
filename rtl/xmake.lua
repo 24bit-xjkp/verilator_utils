@@ -17,6 +17,7 @@ rtl_verilator_target = {
     ["sequence_detector"] = {},
     ["async_dual_ram"] = {},
     ["async_fifo"] = {},
+    ["sync_dual_ram"] = {top = "sync_dual_ram_wrapper"},
 }
 
 for name, opt in pairs(rtl_verilator_target) do
