@@ -1322,14 +1322,6 @@ namespace verilator_utils
     }  // namespace detail
 }  // namespace verilator_utils
 
-export namespace verilator_utils::detail
-{
-    /// 传递给verilator模型的argc
-    int argc{};
-    /// 传递给verilator模型的argv
-    const char** argv{};
-}  // namespace verilator_utils::detail
-
 export namespace verilator_utils
 {
     /**

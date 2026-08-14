@@ -3,6 +3,8 @@ module;
 export module verilator_utils:context;
 import :task;
 
+extern "C++" int main(int, const char**);
+
 export namespace verilator_utils
 {
     /**
@@ -14,6 +16,34 @@ export namespace verilator_utils
     template <typename type>
     concept is_verilator_tracer = ::std::same_as<::VerilatedVcdC, type> || ::std::same_as<::VerilatedFstC, type> ||
                                   ::std::same_as<::VerilatedSaifC, type> || ::std::same_as<void, type>;
+
+    template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
+    struct dut_context;
+
+    extern "C++" namespace detail
+    {
+        /**
+         * @brief DUT上下文使用的默认命令行参数
+         *
+         */
+        struct dut_context_default_args
+        {
+        private:
+            template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
+            friend struct ::verilator_utils::dut_context;
+            friend int ::main(int, const char**);
+
+            static int argc;
+            static const char** argv;
+        };
+
+        constinit int ::verilator_utils::detail::dut_context_default_args::argc{};
+        constinit const char** ::verilator_utils::detail::dut_context_default_args::argv{};
+    }  // namespace detail
+}  // namespace verilator_utils
+
+export namespace verilator_utils
+{
 
     /**
      * @brief DUT上下文类型
@@ -73,8 +103,8 @@ export namespace verilator_utils
                              ::verilator_utils::verilator_time_unit time_precision = ::verilator_utils::verilator_time_unit::ps,
                              ::std::string_view base_name = ::std::string_view{},
                              int trace_level = 0,
-                             int argc = ::verilator_utils::detail::argc,
-                             const char** argv = ::verilator_utils::detail::argv) : coverage{coverage}
+                             int argc = ::verilator_utils::detail::dut_context_default_args::argc,
+                             const char** argv = ::verilator_utils::detail::dut_context_default_args::argv) : coverage{coverage}
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
@@ -247,4 +277,5 @@ export namespace verilator_utils
          */
         void add_task(::verilator_utils::task<void> task) noexcept { scheduler->add_task(::std::move(task)); }
     };
+
 }  // namespace verilator_utils
