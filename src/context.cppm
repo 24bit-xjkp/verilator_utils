@@ -34,6 +34,27 @@ export namespace verilator_utils
         bool coverage{};
         ::std::string file_base_name{};
 
+        /**
+         * @brief 在doctest断言失败时记录随机种子
+         *
+         */
+        struct log_random_seed
+        {
+            const ::VerilatedContext* context;
+
+            void operator() (::std::ostream* stream) const
+            {
+                constexpr auto location{::std::source_location::current()};
+                ::doctest::detail::MessageBuilder msg_builder{location.file_name(),
+                                                              location.line(),
+                                                              ::doctest::assertType::is_warn};
+                msg_builder.m_stream = stream;
+                msg_builder* ::std::format("random_seed := {}", static_cast<::std::size_t>(context->randSeed()));
+            }
+        };
+
+        ::std::optional<::doctest::detail::ContextScope<log_random_seed>> random_seed_logger{};
+
     public:
         /**
          * @brief 构造一个DUT上下文对象
@@ -199,6 +220,20 @@ export namespace verilator_utils
         auto&& get_tracer(this auto&& self) noexcept
             requires (!::std::same_as<void, tracer_t>)
         { return *self.tracer; }
+
+        /**
+         * @brief 获取VerilatorContext的随机种子
+         *
+         * @return 随机种子
+         */
+        ::std::size_t get_seed() noexcept
+        {
+            if(!random_seed_logger.has_value())
+            {
+                random_seed_logger.emplace(::doctest::detail::MakeContextScope(log_random_seed{context.get()}));
+            }
+            return static_cast<::std::size_t>(context->randSeed());
+        }
 
         /**
          * @brief 判断当前上下文中覆盖率记录是否启用
