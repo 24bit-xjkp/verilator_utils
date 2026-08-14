@@ -422,10 +422,22 @@ export namespace verilator_utils
          * @param format 数据格式，只影响格式化输出，支持十六进制、二进制、十进制无符号、枚举和布尔型
          */
         explicit bit_slice(value_type& data,
-                           ::std::size_t index = 0,
+                           ::std::size_t index,
                            ::verilator_utils::data_format::format format = ::verilator_utils::data_format::dec_unsigned) :
             data{data}, index{index}, data_format{::std::move(format)}
         { check_format(); }
+
+        /**
+         * @brief 从数据引用的最低位构造一个位切片对象
+         *
+         * @param data 数据引用
+         * @param format 数据格式，只影响格式化输出，支持十六进制、二进制、十进制无符号、枚举和布尔型
+         */
+        explicit bit_slice(value_type& data,
+                           ::verilator_utils::data_format::format format = ::verilator_utils::data_format::dec_unsigned) :
+            bit_slice{data, 0, format}
+        {
+        }
 
         /**
          * @brief 赋值运算符

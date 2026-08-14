@@ -30,7 +30,7 @@ TEST_SUITE("lfsr_m7")
 
         inline explicit port_t(dut_t& dut) :
             clk{dut.clk}, rst{dut.rst}, enable{dut.enable}, initial_value{dut.initial_value, lfsr_width, dec_unsigned},
-            lfsr_feedback{dut.lfsr_feedback, 0, fsm_enum({"fibonacci"s, "galois"s})}, result{dut.result}
+            lfsr_feedback{dut.lfsr_feedback, fsm_enum({"fibonacci"s, "galois"s})}, result{dut.result}
         {
         }
     };

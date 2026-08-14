@@ -27,8 +27,8 @@ TEST_SUITE("dual_ram")
         constexpr inline static auto addr_width{3zu};
 
         inline explicit port_t(dut_t& dut) :
-            read_clk{dut.read_clk}, read_enable{dut.read_enable, 0, boolean}, read_addr{dut.read_addr, addr_width},
-            read_data{dut.read_data, data_width}, write_clk{dut.write_clk}, write_enable{dut.write_enable, 0, boolean},
+            read_clk{dut.read_clk}, read_enable{dut.read_enable, boolean}, read_addr{dut.read_addr, addr_width},
+            read_data{dut.read_data, data_width}, write_clk{dut.write_clk}, write_enable{dut.write_enable, boolean},
             write_addr{dut.write_addr, addr_width}, write_data{dut.write_data, data_width}
         {
         }

@@ -19,7 +19,7 @@ TEST_SUITE("sequence_detector")
         bit_slice<CData> result;
 
         inline explicit port_t(dut_t& dut) :
-            clk{dut.clk}, enable{dut.enable}, bit_stream{dut.bit_stream}, result{dut.result, 0, boolean}
+            clk{dut.clk}, enable{dut.enable}, bit_stream{dut.bit_stream}, result{dut.result, boolean}
         {
         }
     };

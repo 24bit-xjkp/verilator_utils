@@ -20,8 +20,8 @@ TEST_SUITE("counter")
         bit_slice<CData> overflow;
 
         inline explicit port_t(dut_t& dut) :
-            clk{dut.clk}, rst{dut.rst}, enable{dut.enable, 0, boolean}, count{dut.count, 4, dec_unsigned},
-            overflow{dut.overflow, 0, boolean}
+            clk{dut.clk}, rst{dut.rst}, enable{dut.enable, boolean}, count{dut.count, 4, dec_unsigned},
+            overflow{dut.overflow, boolean}
         {
         }
     };

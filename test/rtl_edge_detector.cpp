@@ -20,8 +20,8 @@ TEST_SUITE("edge_detector")
         bit_slice<::CData> both;
 
         inline explicit port_t(dut_t& dut) :
-            clk{dut.clk}, rst{dut.rst}, signal{dut.signal}, rising{dut.rising, 0, boolean}, falling{dut.falling, 0, boolean},
-            both{dut.both, 0, boolean}
+            clk{dut.clk}, rst{dut.rst}, signal{dut.signal}, rising{dut.rising, boolean}, falling{dut.falling, boolean},
+            both{dut.both, boolean}
         {
         }
     };

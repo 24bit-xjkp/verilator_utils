@@ -25,8 +25,8 @@ TEST_SUITE("async_fifo")
         constexpr static auto depth{8zu};
 
         explicit port_t(dut_t& dut) :
-            rst{dut.rst, 0}, i_clk{dut.i_clk}, i_valid{dut.i_valid, 0, boolean}, i_ready{dut.i_ready, 0, boolean},
-            i_data{dut.i_data, width}, o_clk{dut.o_clk}, o_valid{dut.o_valid, 0, boolean}, o_ready{dut.o_ready, 0, boolean},
+            rst{dut.rst}, i_clk{dut.i_clk}, i_valid{dut.i_valid, boolean}, i_ready{dut.i_ready, boolean},
+            i_data{dut.i_data, width}, o_clk{dut.o_clk}, o_valid{dut.o_valid, boolean}, o_ready{dut.o_ready, boolean},
             o_data{dut.o_data, width}
         {
         }
