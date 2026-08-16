@@ -179,4 +179,34 @@ TEST_SUITE("verilator_utils/assert")
             error.print_trace();
         }
     }
+
+    TEST_CASE("assertion_error message colorization follows color configuration")
+    {
+        // 强制不使用彩色输出
+        ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = true});
+        try
+        {
+            VU_CHECK(false, "颜色配置测试");
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK(::std::string_view{error.what()}.find("\033[") == ::std::string_view::npos);
+            CHECK(::std::string_view{error.what()}.find("颜色配置测试") != ::std::string_view::npos);
+        }
+
+        // 强制使用彩色输出
+        ::verilator_utils::set_assertion_color_config({.force_colors = true, .no_colors = false});
+        try
+        {
+            VU_CHECK(false, "颜色配置测试");
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK(::std::string_view{error.what()}.find("\033[") != ::std::string_view::npos);
+            CHECK(::std::string_view{error.what()}.find("颜色配置测试") != ::std::string_view::npos);
+        }
+
+        // 恢复默认配置
+        ::verilator_utils::set_assertion_color_config({});
+    }
 }

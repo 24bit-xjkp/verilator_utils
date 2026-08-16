@@ -24,13 +24,76 @@ export namespace verilator_utils::trace
     using ::cpptrace::stacktrace_frame;
 }  // namespace verilator_utils::trace
 
+namespace verilator_utils::detail
+{
+    /**
+     * @brief 断言消息的颜色配置
+     *
+     * 与doctest框架的--force-colors和--no-colors命令行选项相对应，
+     * 由main函数解析doctest命令行参数后通过set_assertion_color_config配置
+     */
+    export struct assertion_color_config_t
+    {
+        /// 强制使用彩色输出
+        bool force_colors{};
+        /// 强制不使用彩色输出
+        bool no_colors{};
+    };
+
+    constinit ::verilator_utils::detail::assertion_color_config_t assertion_color_config{};
+
+    /**
+     * @brief 判断断言消息是否使用彩色输出
+     *
+     * 优先遵循no_colors和force_colors配置；
+     * 未配置时根据标准错误输出是否为控制台自适应决定
+     * @return 是否使用彩色输出
+     */
+    [[nodiscard]] inline bool should_colorize_assertion_message() noexcept
+    {
+        const auto& config{::verilator_utils::detail::assertion_color_config};
+        if(config.no_colors) { return false; }
+        if(config.force_colors) { return true; }
+        return ::cpptrace::isatty(::cpptrace::stderr_fileno);
+    }
+
+    /// ANSI颜色转义序列
+    namespace assertion_color
+    {
+        using namespace ::std::string_view_literals;
+        constexpr inline auto reset{"\033[0m"sv};
+        constexpr inline auto cyan{"\033[36m"sv};
+        constexpr inline auto yellow{"\033[33m"sv};
+        constexpr inline auto red{"\033[31m"sv};
+    }  // namespace assertion_color
+}  // namespace verilator_utils::detail
+
 export namespace verilator_utils
 {
+    /**
+     * @brief 获取断言彩色输出设置
+     *
+     * @return 彩色输出设置
+     */
+    ::verilator_utils::detail::assertion_color_config_t get_assertion_color_config() noexcept
+    { return ::verilator_utils::detail::assertion_color_config; }
+
+    /**
+     * @brief 设置断言彩色输出设置
+     *
+     * @param config 彩色输出设置
+     */
+    void set_assertion_color_config(::verilator_utils::detail::assertion_color_config_t config) noexcept
+    { ::verilator_utils::detail::assertion_color_config = config; }
+
     namespace detail
     {
         /**
          * @brief 组合断言失败消息和源代码位置为异常描述字符串
          *
+         * 根据全局颜色配置和标准错误输出是否为控制台自适应用色：
+         * 控制台默认使用彩色输出，非控制台默认不使用彩色输出，
+         * 也可通过set_assertion_color_config强制启用或禁用
          * @param message 断言失败消息
          * @param location 源代码位置
          * @param trace 栈回溯信息
@@ -40,13 +103,30 @@ export namespace verilator_utils
                                                        const ::std::source_location& location,
                                                        const ::verilator_utils::trace::stacktrace& trace)
         {
+            const auto use_colors{::verilator_utils::detail::should_colorize_assertion_message()};
+            if(use_colors)
+            {
+                return ::std::format("At {}{}:{}:{}{}: {}{}{}: {}{}{}\n{}",
+                                     assertion_color::cyan,
+                                     location.file_name(),
+                                     location.line(),
+                                     location.column(),
+                                     assertion_color::reset,
+                                     assertion_color::yellow,
+                                     location.function_name(),
+                                     assertion_color::reset,
+                                     assertion_color::red,
+                                     message,
+                                     assertion_color::reset,
+                                     trace.to_string(true));
+            }
             return ::std::format("At {}:{}:{}: {}: {}\n{}",
                                  location.file_name(),
                                  location.line(),
                                  location.column(),
                                  location.function_name(),
                                  message,
-                                 trace.to_string());
+                                 trace.to_string(false));
         }
 
         /**
