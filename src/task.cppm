@@ -1,4 +1,5 @@
 module;
+#include <assert_macros.hpp>
 #include <doctest_macros.hpp>
 export module verilator_utils:task;
 import :scheduler;
@@ -216,7 +217,7 @@ export namespace verilator_utils::detail
         explicit eval_stage_awaiter(scheduler_t::eval_stage_enum eval_stage) : eval_stage{eval_stage}
         {
             using namespace std::string_view_literals;
-            REQUIRE_MESSAGE(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv);
+            VU_CHECK(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv);
         }
 
         /**
@@ -361,7 +362,7 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_posedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        REQUIRE_NE(edge_to_wait, 0);
+        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}", edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event(
             [edge_detector = edge_detector_t{bit, edge_detector_t::rising}, edge_to_wait] mutable {
@@ -381,7 +382,7 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_negedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        REQUIRE_NE(edge_to_wait, 0);
+        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}", edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event(
             [edge_detector = edge_detector_t{bit, edge_detector_t::falling}, edge_to_wait] mutable {
@@ -401,7 +402,7 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_alledge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        REQUIRE_NE(edge_to_wait, 0);
+        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}", edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event([edge_detector = edge_detector_t{bit, edge_detector_t::both}, edge_to_wait] mutable {
             edge_to_wait -= edge_detector();
@@ -478,7 +479,7 @@ export namespace verilator_utils
                     ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
                         ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval)
     {
-        REQUIRE_NE(edge, ::verilator_utils::edge_enum::both);
+        VU_CHECK(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿");
         return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, edge, eval_stage);
     }
 
@@ -500,7 +501,7 @@ export namespace verilator_utils
                        ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
                            ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
     {
-        REQUIRE_NE(edge, ::verilator_utils::edge_enum::both);
+        VU_CHECK(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿");
 
         if(eval_stage == ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
         {
@@ -779,17 +780,16 @@ export namespace verilator_utils
         void check_lfsr_generator_args(::std::size_t width, ::std::uint64_t& feedback_mask, ::std::uint64_t initial_value)
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_GE(width, 3);
-            REQUIRE_LE(width, 64);
-            REQUIRE_MESSAGE(initial_value != 0, "初始值为0时LFSR输出恒为0"sv);
+            VU_CHECK(width >= 3 && width <= 64, "LFSR宽度{}超出范围[3, 64]", width);
+            VU_CHECK(initial_value != 0, "初始值为0时LFSR输出恒为0"sv);
             if(width != 64)
             {
-                REQUIRE_MESSAGE((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度"sv);
-                REQUIRE_MESSAGE((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度"sv);
+                VU_CHECK((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度{}", width);
+                VU_CHECK((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度{}", width);
             }
 
             if(feedback_mask == 0) { feedback_mask = ::verilator_utils::detail::lfsr_feedback_mask_table[width - 3]; }
-            REQUIRE_MESSAGE((feedback_mask & 1zu) != 0, "反馈表达式必须包含常数项"sv);
+            VU_CHECK((feedback_mask & 1zu) != 0, "反馈表达式必须包含常数项"sv);
         }
     }  // namespace detail
 
@@ -934,11 +934,11 @@ export namespace verilator_utils
             subhandle{task.get_handle()}
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_MESSAGE(static_cast<bool>(task), "该任务对象未绑定协程"sv);
+            VU_CHECK(static_cast<bool>(task), "该任务对象未绑定协程"sv);
             auto&& promise{task.get_promise()};
-            REQUIRE_MESSAGE(promise.parent == nullptr, "该任务已经绑定到父任务，不能转化为异步任务"sv);
-            REQUIRE_MESSAGE(promise.status == ::verilator_utils::task<void>::status_enum::initial_suspend,
-                            "该任务已开始执行，不能转化为异步任务"sv);
+            VU_CHECK(promise.parent == nullptr, "该任务已经绑定到父任务，不能转化为异步任务"sv);
+            VU_CHECK(promise.status == ::verilator_utils::task<void>::status_enum::initial_suspend,
+                     "该任务已开始执行，不能转化为异步任务"sv);
             promise.is_async = true;
             promise.scheduler = &scheduler;
             scheduler.add_task(::std::move(task));
@@ -1078,7 +1078,7 @@ export namespace verilator_utils
 
         async_task_awaiter operator co_await()
         {
-            REQUIRE(joinable());
+            VU_CHECK(joinable(), "异步任务未绑定协程，不能等待");
             return async_task_awaiter{::std::exchange(subhandle, nullptr)};
         }
 
@@ -1256,7 +1256,7 @@ export namespace verilator_utils
         [[nodiscard]] ::verilator_utils::task<void> join_all()
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_MESSAGE(joinable(), "任务集合不能为空"sv);
+            VU_CHECK(joinable(), "任务集合不能为空"sv);
             return do_join_all();
         }
 
@@ -1268,7 +1268,7 @@ export namespace verilator_utils
         [[nodiscard]] join_any_awaiter join_any()
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_MESSAGE(joinable(), "任务集合不能为空"sv);
+            VU_CHECK(joinable(), "任务集合不能为空"sv);
             return join_any_awaiter{pool};
         }
 
@@ -1280,7 +1280,7 @@ export namespace verilator_utils
         [[nodiscard]] ::std::suspend_never join_none()
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_MESSAGE(joinable(), "任务集合不能为空"sv);
+            VU_CHECK(joinable(), "任务集合不能为空"sv);
             pool.clear();
             return ::std::suspend_never{};
         }

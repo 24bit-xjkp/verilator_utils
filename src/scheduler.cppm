@@ -1,5 +1,5 @@
 module;
-#include <doctest_macros.hpp>
+#include <assert_macros.hpp>
 export module verilator_utils:scheduler;
 import :wrapper;
 
@@ -150,7 +150,7 @@ export namespace verilator_utils
             [[nodiscard]] ::verilator_utils::eval_scheduler* check_scheduler() const
             {
                 using namespace ::std::string_view_literals;
-                REQUIRE_MESSAGE(scheduler != nullptr, "任务必须绑定调度器"sv);
+                VU_CHECK(scheduler != nullptr, "任务必须绑定调度器"sv);
                 return scheduler;
             }
 
@@ -495,7 +495,7 @@ export namespace verilator_utils
              */
             [[nodiscard]] return_type get_result()
             {
-                REQUIRE(is_coroutine_returned());
+                VU_CHECK(is_coroutine_returned(), "协程尚未执行完成，不能获取结果");
                 return get_return_value();
             }
         };
@@ -590,7 +590,7 @@ export namespace verilator_utils
          */
         friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
         {
-            REQUIRE(subtask.joinable());
+            VU_CHECK(subtask.joinable(), "子任务未绑定协程，不能等待");
             return {subtask.handle};
         }
 
@@ -765,7 +765,7 @@ export namespace verilator_utils::detail
 
         [[nodiscard]] bool is_ready() const
         {
-            REQUIRE_NE(event_callback, nullptr);
+            VU_CHECK(event_callback != nullptr, "事件回调不能为空");
             return (*event_callback)();
         }
     };
@@ -1176,8 +1176,8 @@ export namespace verilator_utils
         void initial_eval()
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_MESSAGE(eval_stage <= eval_stage_enum::after_initial_eval, "已进入仿真循环阶段，不能执行初始化"sv);
-            REQUIRE_MESSAGE(eval_stage == eval_stage_enum::not_begin, "已执行过initial_eval，不应再次执行"sv);
+            VU_CHECK(eval_stage <= eval_stage_enum::after_initial_eval, "已进入仿真循环阶段，不能执行初始化"sv);
+            VU_CHECK(eval_stage == eval_stage_enum::not_begin, "已执行过initial_eval，不应再次执行"sv);
             while(ready_queue_eval()) {}
             eval_stage = eval_stage_enum::after_initial_eval;
         }
@@ -1201,9 +1201,9 @@ export namespace verilator_utils
         void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_MESSAGE(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
+            VU_CHECK(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
             auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
-            REQUIRE_MESSAGE(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
+            VU_CHECK(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
             wait_queue.emplace(time_to_wait_in_time_precision + dut->contextp()->time(), pair);
         }
 
@@ -1277,7 +1277,7 @@ export namespace verilator_utils
     template <typename promise_type>
     auto ::verilator_utils::detail::subtask_awaiter<promise_type>::await_resume() -> return_type
     {
-        REQUIRE(subhandle.done());
+        VU_CHECK(subhandle.done(), "子任务尚未完成，不能获取结果");
         subhandle.promise().scheduler->throw_if_finish();
         subhandle.promise().rethrow_exception();
         return subhandle.promise().get_result();

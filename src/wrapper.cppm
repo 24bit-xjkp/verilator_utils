@@ -1,7 +1,8 @@
 module;
-#include <doctest_macros.hpp>
+#include <assert_macros.hpp>
 export module verilator_utils:wrapper;
 import :utils;
+import doctest;
 
 export namespace verilator_utils
 {
@@ -196,29 +197,14 @@ export namespace verilator_utils
             using namespace ::std::string_view_literals;
 
             auto is_monostate{::std::holds_alternative<::std::monostate>(data_format)};
-            if consteval
-            {
-                if(::std::holds_alternative<::std::monostate>(data_format)) { throw ::std::invalid_argument{"必须设定数据格式"}; }
-            }
-            else
-            {
-                REQUIRE_FALSE_MESSAGE(is_monostate, "必须设定数据格式"sv);
-            }
+            VU_CHECK(!is_monostate, "必须设定数据格式"sv);
 
             if constexpr(::VlIsVlWide<type>::value)
             {
                 constexpr static auto bin_index{::verilator_utils::variant_type_index<::verilator_utils::data_format::bin_t,
                                                                                       ::verilator_utils::data_format::format>};
                 auto is_hex_or_bin{data_format.index() <= bin_index};
-
-                if consteval
-                {
-                    if(!is_hex_or_bin) { throw ::std::invalid_argument{"VlWide只支持十六进制和二进制格式"}; }
-                }
-                else
-                {
-                    REQUIRE_MESSAGE(is_hex_or_bin, "VlWide只支持十六进制和二进制格式"sv);
-                }
+                VU_CHECK(is_hex_or_bin, "VlWide只支持十六进制和二进制格式"sv);
             }
             else if constexpr(::std::same_as<type, ::std::uint64_t>)
             {
@@ -230,42 +216,17 @@ export namespace verilator_utils
                                                           ::verilator_utils::data_format::format>};
                 auto is_signed_or_floating_point_or_fixed_point{data_format.index() >= dec_signed_index &&
                                                                 data_format.index() <= sign_mag_fixed_point_index};
-                if consteval
-                {
-                    if(is_signed_or_floating_point_or_fixed_point)
-                    {
-                        throw ::std::invalid_argument{"std::uint64_t不支持有符号十进制、浮点数和定点数格式"};
-                    }
-                }
-                else
-                {
-                    REQUIRE_FALSE_MESSAGE(is_signed_or_floating_point_or_fixed_point,
-                                          "std::uint64_t不支持有符号十进制、浮点数和定点数格式"sv);
-                }
+                VU_CHECK(!is_signed_or_floating_point_or_fixed_point, "std::uint64_t不支持有符号十进制、浮点数和定点数格式"sv);
             }
             else if constexpr(::std::same_as<type, ::std::int64_t>)
             {
                 auto is_dec_signed{::std::holds_alternative<::verilator_utils::data_format::dec_signed_t>(data_format)};
-                if consteval
-                {
-                    if(!is_dec_signed) { throw ::std::invalid_argument{"std::int64_t只支持有符号十进制格式"}; }
-                }
-                else
-                {
-                    REQUIRE_MESSAGE(is_dec_signed, "std::int64_t只支持有符号十进制格式"sv);
-                }
+                VU_CHECK(is_dec_signed, "std::int64_t只支持有符号十进制格式"sv);
             }
             else if constexpr(::std::same_as<type, float>)
             {
                 auto is_dec_signed{::std::holds_alternative<::verilator_utils::data_format::real_float_t>(data_format)};
-                if consteval
-                {
-                    if(!is_dec_signed) { throw ::std::invalid_argument{"float只支持单精度浮点数格式"}; }
-                }
-                else
-                {
-                    REQUIRE_MESSAGE(is_dec_signed, "float只支持单精度浮点数格式"sv);
-                }
+                VU_CHECK(is_dec_signed, "float只支持单精度浮点数格式"sv);
             }
             else if constexpr(::std::same_as<type, double>)
             {
@@ -277,26 +238,12 @@ export namespace verilator_utils
                                                           ::verilator_utils::data_format::format>};
                 auto is_double_or_fixed_point{data_format.index() >= real_double_index &&
                                               data_format.index() <= sign_mag_fixed_point_index};
-                if consteval
-                {
-                    if(!is_double_or_fixed_point) { throw ::std::invalid_argument{"double只支持双精度浮点数和定点数格式"}; }
-                }
-                else
-                {
-                    REQUIRE_MESSAGE(is_double_or_fixed_point, "double只支持双精度浮点数和定点数格式"sv);
-                }
+                VU_CHECK(is_double_or_fixed_point, "double只支持双精度浮点数和定点数格式"sv);
             }
             else if constexpr(::std::same_as<type, bool>)
             {
                 auto is_boolean{::std::holds_alternative<::verilator_utils::data_format::boolean_t>(data_format)};
-                if consteval
-                {
-                    if(!is_boolean) { throw ::std::invalid_argument{"bool只支持布尔型格式"}; }
-                }
-                else
-                {
-                    REQUIRE_MESSAGE(is_boolean, "bool只支持布尔型格式"sv);
-                }
+                VU_CHECK(is_boolean, "bool只支持布尔型格式"sv);
             }
             else
             {
@@ -315,14 +262,7 @@ export namespace verilator_utils
             using namespace ::std::string_view_literals;
 
             auto do_check{[this](::std::size_t value_width) constexpr {
-                if consteval
-                {
-                    if(value_width > width()) { throw ::std::invalid_argument{"数据宽度过大"}; }
-                }
-                else
-                {
-                    REQUIRE_GE(width(), value_width);
-                }
+                VU_CHECK(value_width <= width(), "数据宽度{}过大，不能超过{}", value_width, width());
             }};
             if constexpr(is_vl_wide)
             {
@@ -380,17 +320,7 @@ export namespace verilator_utils
                             return 0.0;
                         }
                     })};
-                    if consteval
-                    {
-                        if(convert_back != underlying_value)
-                        {
-                            throw ::std::invalid_argument{"当前数据包装器不能无修改的保存给定数据"};
-                        }
-                    }
-                    else
-                    {
-                        REQUIRE_MESSAGE(convert_back == underlying_value, "当前数据包装器不能无修改的保存给定数据"sv);
-                    }
+                    VU_CHECK(convert_back == underlying_value, "当前数据包装器不能无修改的保存给定数据"sv);
                 }
                 else
                 {
@@ -447,7 +377,7 @@ export namespace verilator_utils
          */
         bit_slice& operator= (::std::uint64_t value)
         {
-            REQUIRE_MESSAGE(value <= 1, "位包装器只能赋值0或1");
+            VU_CHECK(value <= 1, "位包装器只能赋值0或1");
             if constexpr(is_vl_wide)
             {
                 auto word_index{index / word_width};
@@ -494,7 +424,7 @@ export namespace verilator_utils
             requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
         bit_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
-            REQUIRE_EQ(value.width(), 1);
+            VU_CHECK(value.width() == 1, "位包装器只能赋值宽度为1的值，实际宽度为{}", value.width());
             return *this = value.to_verilator();
         }
 
@@ -508,7 +438,7 @@ export namespace verilator_utils
             requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
         friend bool operator== (const bit_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
-            REQUIRE_EQ(value.width(), 1);
+            VU_CHECK(value.width() == 1, "位包装器只能赋值宽度为1的值，实际宽度为{}", value.width());
             return static_cast<::std::uint64_t>(self) == value.to_verilator();
         }
 
@@ -613,12 +543,12 @@ export namespace verilator_utils
         void check_format() const
         {
             using namespace ::std::string_view_literals;
-            REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::std::monostate>(data_format), "必须设定数据格式"sv);
+            VU_CHECK(!::std::holds_alternative<::std::monostate>(data_format), "必须设定数据格式"sv);
             auto is_hex_bin_unsigned{data_format.index() >= hex_index && data_format.index() <= dec_unsigned_index};
             auto is_enum{::std::holds_alternative<::verilator_utils::data_format::fsm_enum_t>(data_format)};
             auto is_boolean{::std::holds_alternative<::verilator_utils::data_format::boolean_t>(data_format)};
-            REQUIRE_MESSAGE((is_hex_bin_unsigned || is_enum || is_boolean),
-                            "位切片只支持十六进制、二进制、十进制无符号、枚举和布尔型格式"sv);
+            VU_CHECK((is_hex_bin_unsigned || is_enum || is_boolean),
+                     "位切片只支持十六进制、二进制、十进制无符号、枚举和布尔型格式"sv);
         }
     };
 
@@ -656,7 +586,7 @@ export namespace verilator_utils
                               ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}, data_format{::std::move(format)}
         {
-            REQUIRE_GE(left_bound, right_bound);
+            VU_CHECK(left_bound >= right_bound, "切片上界{}不能小于下界{}", left_bound, right_bound);
             ::verilator_utils::data_format::check_format(data_format, width());
         }
 
@@ -672,7 +602,7 @@ export namespace verilator_utils
                               ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             data{data}, left_bound{width - 1}, right_bound{0}, data_format{::std::move(format)}
         {
-            REQUIRE_NE(width, 0);
+            VU_CHECK(width != 0, "切片宽度不能为0，实际为{}", width);
             ::verilator_utils::data_format::check_format(data_format, width);
         }
 
@@ -702,9 +632,9 @@ export namespace verilator_utils
          * @param index 索引值
          * @return bit_slice 对应位的包装对象
          */
-        bit_slice<type> operator[] (::std::size_t index) const noexcept
+        bit_slice<type> operator[] (::std::size_t index) const
         {
-            REQUIRE_LE(index, width() - 1);
+            VU_CHECK(index <= width() - 1, "位索引{}超出切片宽度{}", index, width());
             return bit_slice<type>{data, index + right_bound};
         }
 
@@ -717,20 +647,20 @@ export namespace verilator_utils
          * @param format 数据格式，为std::monostate表示使用当前对象的数据格式
          * @return 向量切片的包装对象
          */
-        vector_slice operator[] (
-            ::std::size_t left_bound_index,
-            ::std::size_t right_bound_index,
-            const ::verilator_utils::data_format::format& format = ::verilator_utils::data_format::format{}) const noexcept
+        vector_slice
+            operator[] (::std::size_t left_bound_index,
+                        ::std::size_t right_bound_index,
+                        const ::verilator_utils::data_format::format& format = ::verilator_utils::data_format::format{}) const
         {
-            REQUIRE_GE(left_bound_index, right_bound_index);
-            REQUIRE_LE(right_bound_index, left_bound);
-            REQUIRE_LE(left_bound_index, width() - 1);
+            VU_CHECK(left_bound_index >= right_bound_index, "切片上界{}不能小于下界{}", left_bound_index, right_bound_index);
+            VU_CHECK(right_bound_index <= left_bound, "切片下界{}超出切片上界{}", right_bound_index, left_bound);
+            VU_CHECK(left_bound_index <= width() - 1, "切片上界{}超出切片宽度{}", left_bound_index, width());
             if(!::verilator_utils::detail::is_variable_width_format(data_format) &&
                left_bound_index - right_bound_index + 1 != width())
             {
                 using namespace ::std::string_view_literals;
-                REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::std::monostate>(format),
-                                      "当前对象的数据格式是固定宽度的，必须传入新的格式才能创建不同宽度的切片"sv);
+                VU_CHECK(!::std::holds_alternative<::std::monostate>(format),
+                         "当前对象的数据格式是固定宽度的，必须传入新的格式才能创建不同宽度的切片"sv);
             }
             return vector_slice{
                 data,
@@ -782,9 +712,9 @@ export namespace verilator_utils
          */
         vector_slice& operator= (::std::uint64_t value)
         {
-            REQUIRE_GE(64, width());
+            VU_CHECK(width() <= 64, "向量宽度{}不能超过64位", width());
             auto width_is_enough{width() == 64 || (value >> width()) == 0};
-            REQUIRE_MESSAGE(width_is_enough, "值宽度超出向量宽度");
+            VU_CHECK(width_is_enough, "值宽度超出向量宽度");
             if constexpr(is_vl_wide)
             {
                 value_type temp{};
@@ -808,7 +738,7 @@ export namespace verilator_utils
          */
         vector_slice& operator= (const vector_slice& other)
         {
-            REQUIRE_EQ(width(), other.width());
+            VU_CHECK(width() == other.width(), "切片宽度{}与赋值源宽度{}不同", width(), other.width());
             auto aligned_value{static_cast<cast_type>(other)};
             if constexpr(is_vl_wide) { assign_aligned_value(aligned_value); }
             else
@@ -829,7 +759,7 @@ export namespace verilator_utils
             requires (is_vl_wide || !::VlIsVlWide<underlying_type>::value)
         vector_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
-            REQUIRE_EQ(width(), value.width());
+            VU_CHECK(width() == value.width(), "切片宽度{}与赋值源宽度{}不同", width(), value.width());
             return *this = value.to_verilator();
         }
 
@@ -841,9 +771,9 @@ export namespace verilator_utils
          */
         friend bool operator== (const vector_slice& self, ::std::uint64_t value)
         {
-            REQUIRE_GE(64, self.width());
+            VU_CHECK(self.width() <= 64, "向量宽度{}不能超过64位", self.width());
             auto width_is_enough{self.width() == 64 || (value >> self.width()) == 0};
-            REQUIRE_MESSAGE(width_is_enough, "值宽度超出向量宽度");
+            VU_CHECK(width_is_enough, "值宽度超出向量宽度");
             auto temp{static_cast<cast_type>(self)};
             if constexpr(is_vl_wide) { return wide_to_uint64(temp) == value; }
             else
@@ -863,7 +793,7 @@ export namespace verilator_utils
         {
             auto temp{static_cast<cast_type>(self)};
             auto value_width{::verilator_utils::detail::vlwide_width(value)};
-            REQUIRE_GE(self.width(), value_width);
+            VU_CHECK(self.width() >= value_width, "切片宽度{}小于值宽度{}", self.width(), value_width);
             return temp == value;
         }
 
@@ -889,9 +819,9 @@ export namespace verilator_utils
         {
             using namespace ::std::string_view_literals;
             constexpr static auto bin_index{2zu};
-            REQUIRE_MESSAGE(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
-            REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
-                                  "布尔型不支持三路比较，只支持相等比较"sv);
+            VU_CHECK(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+            VU_CHECK(!::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
+                     "布尔型不支持三路比较，只支持相等比较"sv);
             return self.to_underlying().visit([value](auto underlying_value) noexcept -> ::std::partial_ordering {
                 return three_way_compare_underlying(underlying_value, value);
             });
@@ -920,12 +850,12 @@ export namespace verilator_utils
         {
             using namespace ::std::string_view_literals;
             constexpr static auto bin_index{2zu};
-            REQUIRE_MESSAGE(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
-            REQUIRE_MESSAGE(other.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
-            REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
-                                  "布尔型不支持三路比较，只支持相等比较"sv);
-            REQUIRE_FALSE_MESSAGE(::std::holds_alternative<::verilator_utils::data_format::boolean_t>(other.data_format),
-                                  "布尔型不支持三路比较，只支持相等比较"sv);
+            VU_CHECK(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+            VU_CHECK(other.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+            VU_CHECK(!::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
+                     "布尔型不支持三路比较，只支持相等比较"sv);
+            VU_CHECK(!::std::holds_alternative<::verilator_utils::data_format::boolean_t>(other.data_format),
+                     "布尔型不支持三路比较，只支持相等比较"sv);
             return self.to_underlying().visit(
                 [other_to_underlying = other.to_underlying()](auto self_underlying_value) noexcept -> ::std::partial_ordering {
                     return other_to_underlying.visit(
@@ -945,7 +875,7 @@ export namespace verilator_utils
         template <::verilator_utils::is_verilator_data_type other_type>
         vector_slice& operator= (const ::verilator_utils::vector_slice<other_type>& other)
         {
-            REQUIRE_EQ(width(), other.width());
+            VU_CHECK(width() == other.width(), "切片宽度{}与赋值源宽度{}不同", width(), other.width());
             auto aligned_value{static_cast<::verilator_utils::vector_slice<other_type>::cast_type>(other)};
             if constexpr(is_vl_wide)
             {
@@ -993,7 +923,7 @@ export namespace verilator_utils
         template <::verilator_utils::is_verilator_data_type other_type>
         friend bool operator== (const vector_slice& self, const ::verilator_utils::vector_slice<other_type>& other)
         {
-            REQUIRE_EQ(self.width(), other.width());
+            VU_CHECK(self.width() == other.width(), "切片宽度{}与赋值源宽度{}不同", self.width(), other.width());
             auto aligned_other{static_cast<::verilator_utils::vector_slice<other_type>::cast_type>(other)};
             if constexpr(is_vl_wide)
             {
@@ -1055,7 +985,7 @@ export namespace verilator_utils
          */
         [[nodiscard]] underlying_type to_underlying() const
         {
-            REQUIRE_GE(64, width());
+            VU_CHECK(width() <= 64, "向量宽度{}不能超过64位", width());
             ::std::uint64_t aligned_value{};
             if constexpr(is_vl_wide) { aligned_value = wide_to_uint64(static_cast<cast_type>(*this)); }
             else
@@ -1182,7 +1112,7 @@ export namespace verilator_utils
                 using namespace ::std::string_view_literals;
                 auto underlying_value{to_underlying()};
                 auto* ptr{::std::get_if<underlying_type>(&underlying_value)};
-                REQUIRE_MESSAGE(ptr != nullptr, "dump_当前切片对象绑定的格式与设定的underlying_type不兼容"sv);
+                VU_CHECK(ptr != nullptr, "当前切片对象绑定的格式与设定的underlying_type不兼容"sv);
                 return ::verilator_utils::format_wrapper{*ptr, width(), format()};
             }
         }
@@ -1371,7 +1301,7 @@ export namespace verilator_utils
 
         unpacked_array& operator= (const unpacked_array& other)
         {
-            REQUIRE_EQ(width(), other.width());
+            VU_CHECK(width() == other.width(), "数组宽度{}与赋值源宽度{}不同", width(), other.width());
             ::std::ranges::copy(other.data, data.begin());
             return *this;
         }
@@ -1382,7 +1312,7 @@ export namespace verilator_utils
 
         bool operator== (const unpacked_array& other) const
         {
-            REQUIRE_EQ(width(), other.width());
+            VU_CHECK(width() == other.width(), "数组宽度{}与比较对象宽度{}不同", width(), other.width());
             return data == other.data;
         }
 

@@ -1,6 +1,6 @@
 export module verilator_utils;
+export import :assert;
 export import :context;
-export import :internal;
 export import :scheduler;
 export import :task;
 export import :utils;

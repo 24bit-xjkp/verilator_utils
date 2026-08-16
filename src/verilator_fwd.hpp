@@ -1,3 +1,4 @@
+// NOLINTBEGIN(modernize-deprecated-headers)
 #pragma once
 #include <string.h>
 #include <cassert>
@@ -21,3 +22,4 @@
     #pragma clang diagnostic ignored "-Wunused-parameter"
     #pragma clang diagnostic ignored "-Wsign-compare"
 #endif
+// NOLINTEND(modernize-deprecated-headers)

@@ -4,7 +4,7 @@ set_warnings("allextra")
 includes("script/*.lua")
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 set_allowedmodes("debug", "release", "releasedbg")
-add_requires("verilator")
+add_requires("verilator", "cpptrace")
 add_packages("verilator")
 local config = {
     debug = is_mode("debug"),

@@ -2,11 +2,11 @@ module;
 #if _WIN32
     #include <wincon.h>
 #endif
-#include <doctest_macros.hpp>
+#include <assert_macros.hpp>
 export module verilator_utils:utils;
 import :verilator;
 import :internal;
-import doctest;
+import :assert;
 
 export namespace verilator_utils
 {
@@ -502,7 +502,7 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
-                REQUIRE_NE(width, 0);
+                VU_CHECK(width != 0, "数据宽度不能为0，实际为{}", width);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 /// 每个十六进制位的位宽
@@ -585,7 +585,7 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
-                REQUIRE_NE(width, 0);
+                VU_CHECK(width != 0, "数据宽度不能为0，实际为{}", width);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 // 0b前缀长度
@@ -1222,7 +1222,7 @@ namespace verilator_utils
              */
             constexpr ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
             {
-                REQUIRE_FALSE(enum_string.empty());
+                VU_CHECK(!enum_string.empty(), "枚举列表不能为空");
                 return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
             }
 
@@ -1240,14 +1240,7 @@ namespace verilator_utils
         {
             format.visit([width]<typename format_t>(const format_t& format) -> void {
                 using namespace ::std::string_view_literals;
-                if constexpr(::std::same_as<format_t, ::std::monostate>)
-                {
-                    if consteval { throw ::std::invalid_argument{"必须设置数据类型"}; }
-                    else
-                    {
-                        FAIL("必须设置数据类型"sv);
-                    }
-                }
+                if constexpr(::std::same_as<format_t, ::std::monostate>) { VU_CHECK(false, "必须设置数据类型"sv); }
                 else if constexpr(requires() {
                                       format.min_width();
                                       format.max_width();
@@ -1255,39 +1248,21 @@ namespace verilator_utils
                 {
                     if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
                     {
-                        if consteval
-                        {
-                            if(format.enum_string.empty()) { throw ::std::invalid_argument{"枚举列表不能为空"}; }
-                        }
-                        else
-                        {
-                            REQUIRE_FALSE(format.enum_string.empty());
-                        }
+                        VU_CHECK(!format.enum_string.empty(), "枚举列表不能为空"sv);
                     }
 
                     auto min_width{format.min_width()};
                     auto max_width{format.max_width()};
 
-                    if consteval
-                    {
-                        if(width < min_width || width > max_width) { throw ::std::invalid_argument{"数据宽度超出格式允许范围"}; }
-                    }
-                    else
-                    {
-                        REQUIRE_GE(width, min_width);
-                        REQUIRE_LE(width, max_width);
-                    }
+                    VU_CHECK(width >= min_width && width <= max_width,
+                             "数据宽度{}超出格式允许范围[{}, {}]",
+                             width,
+                             min_width,
+                             max_width);
                 }
                 else
                 {
-                    if consteval
-                    {
-                        if(width != format.width()) { throw ::std::invalid_argument{"数据宽度与格式宽度不同"}; }
-                    }
-                    else
-                    {
-                        REQUIRE_EQ(width, format.width());
-                    }
+                    VU_CHECK(width == format.width(), "数据宽度{}与格式宽度{}不同", width, format.width());
                 }
             });
         }

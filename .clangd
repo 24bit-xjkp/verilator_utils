@@ -1,7 +1,7 @@
 ﻿Diagnostics:
   UnusedIncludes: None
   ClangTidy:
-    FastCheckFilter: Loose
+    FastCheckFilter: Strict
 Hover:
   ShowAKA: Yes
 Documentation:

@@ -1,4 +1,5 @@
 module;
+#include <assert_macros.hpp>
 #include <doctest_macros.hpp>
 export module verilator_utils:context;
 import :task;
@@ -193,7 +194,8 @@ export namespace verilator_utils
          */
         void set_base_name(::std::string_view base_name)
         {
-            REQUIRE_EQ(scheduler->get_eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin);
+            VU_CHECK(scheduler->get_eval_stage() == ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin,
+                     "必须在initial_eval之前设置文件基本名称");
             file_base_name = base_name;
         }
 
