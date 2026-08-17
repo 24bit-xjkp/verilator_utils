@@ -14,7 +14,6 @@ target("verilator_utils")
     add_includedirs(".", {public = true})
     add_headerfiles("*.hpp")
     set_group("verilator_utils")
-    set_policy("build.merge_archive", true)
 target_end()
 
 target("verilator_utils_main")

@@ -4,7 +4,7 @@ set_warnings("allextra")
 includes("script/*.lua")
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 set_allowedmodes("debug", "release", "releasedbg")
-add_requires("verilator", "cpptrace")
+add_requires("verilator")
 add_packages("verilator")
 local config = {
     debug = is_mode("debug"),
@@ -17,6 +17,7 @@ local config = {
     }
 }
 add_requires("doctest_module", config)
+add_requires("cpptrace", { configs = { shared = is_kind("shared"), lto = get_config("use_lto") } })
 set_exceptions("cxx")
 set_policy("build.c++.modules.hide_dependencies", true)
 set_defaultmode("release")
