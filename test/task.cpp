@@ -41,6 +41,23 @@ namespace
         [[nodiscard]] ::verilator_utils::eval_scheduler make_scheduler() noexcept
         { return ::verilator_utils::eval_scheduler{dut}; }
     };
+
+    /**
+     * @brief 在调度器中运行一个协程任务直至完成
+     *
+     * 用于将 mailbox 等协程化的非阻塞操作（try_put/try_get等）包装为一次性的同步调用
+     *
+     * @param scheduler 调度器
+     * @param task_factory 创建协程任务的工厂函数，返回 ::verilator_utils::task<void>
+     */
+    template <typename task_factory_t>
+    void run_with_scheduler(::verilator_utils::eval_scheduler& scheduler, task_factory_t&& task_factory)
+    {
+        auto task{::std::forward<task_factory_t>(task_factory)()};
+        ::verilator_utils::async_task driver{scheduler, ::std::move(task)};
+        scheduler.loop_once();
+        driver.get_promise().rethrow_exception();
+    }
 }  // namespace
 
 TEST_SUITE("verilator_utils/task")
@@ -105,52 +122,76 @@ TEST_SUITE("verilator_utils/task")
 
     TEST_CASE("mailbox nonblocking operations preserve FIFO order and capacity")
     {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
         ::verilator_utils::mailbox<int> mailbox{2};
 
+        bool put1{};
+        bool put2{};
+        bool put3{};
+        ::std::optional<int> empty_get{};
+        bool empty_peek{};
+        ::std::optional<int> first{};
+        ::std::optional<int> second{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> {
+            empty_get = co_await mailbox.try_get();
+            empty_peek = !mailbox.try_peek().has_value();
+            put1 = co_await mailbox.try_put(10);
+            put2 = co_await mailbox.try_put(20);
+            put3 = co_await mailbox.try_put(30);
+            if(auto peeked{mailbox.try_peek()}) { *peeked = 11; }
+            first = co_await mailbox.try_get();
+            second = co_await mailbox.try_get();
+        });
+
+        CHECK(put1);
+        CHECK(put2);
+        CHECK_FALSE(put3);
+        CHECK_FALSE(empty_get.has_value());
+        CHECK(empty_peek);
         CHECK_EQ(mailbox.num(), 0u);
-        CHECK_FALSE(mailbox.try_get().has_value());
-        CHECK_FALSE(mailbox.try_peek().has_value());
-        CHECK(mailbox.try_put(10));
-        CHECK(mailbox.try_put(20));
-        CHECK_FALSE(mailbox.try_put(30));
-        CHECK_EQ(mailbox.num(), 2u);
-
-        auto first_peek{mailbox.try_peek()};
-        REQUIRE(first_peek.has_value());
-        CHECK_EQ(*first_peek, 10);
-        *first_peek = 11;
-        CHECK_EQ(mailbox.num(), 2u);
-
-        auto first{mailbox.try_get()};
         REQUIRE(first.has_value());
-        CHECK_EQ(*first, 11);
-        auto second{mailbox.try_get()};
         REQUIRE(second.has_value());
+        CHECK_EQ(*first, 11);
         CHECK_EQ(*second, 20);
-        CHECK_EQ(mailbox.num(), 0u);
     }
 
     TEST_CASE("unbounded mailbox accepts move-only values")
     {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
         ::verilator_utils::mailbox<::std::unique_ptr<int>> mailbox{};
 
-        CHECK(mailbox.try_put(::std::make_unique<int>(42)));
-        auto value{mailbox.try_get()};
+        bool put_succeeded{};
+        ::std::optional<::std::unique_ptr<int>> value{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> {
+            put_succeeded = co_await mailbox.try_put(::std::make_unique<int>(42));
+            value = co_await mailbox.try_get();
+        });
 
+        CHECK(put_succeeded);
+        CHECK_EQ(mailbox.num(), 0u);
         REQUIRE(value.has_value());
         REQUIRE(*value);
         CHECK_EQ(**value, 42);
-        CHECK_EQ(mailbox.num(), 0u);
     }
 
     TEST_CASE("mailbox formatter renders values and detailed state")
     {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
         using mailbox_t = ::verilator_utils::mailbox<int>;
         static_assert(::std::formattable<mailbox_t, char>);
 
         mailbox_t bounded_mailbox{3};
-        CHECK(bounded_mailbox.try_put(10));
-        CHECK(bounded_mailbox.try_put(20));
+        bool put1{};
+        bool put2{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> {
+            put1 = co_await bounded_mailbox.try_put(10);
+            put2 = co_await bounded_mailbox.try_put(20);
+        });
+        CHECK(put1);
+        CHECK(put2);
 
         CHECK_EQ(::std::format("{}", bounded_mailbox), "[10, 20]");
         CHECK_EQ(::std::format("{:#}", bounded_mailbox), "{max_count: 3, value: [10, 20]}");
@@ -419,8 +460,10 @@ TEST_SUITE("verilator_utils/task")
         CHECK_FALSE(consumer.done());
         CHECK_EQ(mailbox.num(), 0u);
 
-        CHECK(mailbox.try_put(17));
-        scheduler.loop_once();
+        bool put_succeeded{};
+        run_with_scheduler(scheduler,
+                           [&](this auto) -> ::verilator_utils::task<void> { put_succeeded = co_await mailbox.try_put(17); });
+        CHECK(put_succeeded);
 
         CHECK(consumer.done());
         CHECK(peeked);
@@ -436,31 +479,34 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::mailbox<int> mailbox{};
         const auto& const_mailbox{mailbox};
         const int* peeked{};
-        int observed{};
 
-        static_assert(::std::same_as<decltype(const_mailbox.peek()), ::verilator_utils::task<const int&>>);
+        // 新实现中阻塞式peek需要修改事件等待队列，仅支持非const邮箱；
+        // const邮箱通过非阻塞的try_peek提供只读引用访问
         static_assert(::std::same_as<decltype(const_mailbox.try_peek()), ::std::optional<const int&>>);
         CHECK_FALSE(const_mailbox.try_peek().has_value());
+        CHECK_EQ(const_mailbox.num(), 0u);
 
-        auto consumer_task{[&](this auto) -> ::verilator_utils::task<void> {
-            const int& reference{co_await const_mailbox.peek()};
+        bool put_succeeded{};
+        run_with_scheduler(scheduler,
+                           [&](this auto) -> ::verilator_utils::task<void> { put_succeeded = co_await mailbox.try_put(29); });
+        CHECK(put_succeeded);
+
+        // 通过非const阻塞式peek获取队首元素的地址，用于验证const引用的身份
+        auto peeker_task{[&](this auto) -> ::verilator_utils::task<void> {
+            int& reference{co_await mailbox.peek()};
             peeked = ::std::addressof(reference);
-            observed = reference;
         }()};
-        ::verilator_utils::async_task consumer{scheduler, ::std::move(consumer_task)};
-
+        ::verilator_utils::async_task peeker{scheduler, ::std::move(peeker_task)};
         scheduler.loop_once();
-        CHECK_FALSE(consumer.done());
-        CHECK(mailbox.try_put(29));
-        scheduler.loop_once();
+        CHECK(peeker.done());
 
+        // const mailbox的try_peek返回指向同一元素的const引用，且不删除元素
         auto nonblocking_peek{const_mailbox.try_peek()};
         REQUIRE(nonblocking_peek.has_value());
-        CHECK(consumer.done());
-        CHECK_EQ(observed, 29);
+        CHECK_EQ(*nonblocking_peek, 29);
         CHECK_EQ(peeked, ::std::addressof(*nonblocking_peek));
         CHECK_EQ(const_mailbox.num(), 1u);
-        consumer.get_promise().rethrow_exception();
+        peeker.get_promise().rethrow_exception();
     }
 
     TEST_CASE("bounded mailbox put waits for available capacity")
@@ -470,7 +516,11 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::mailbox<int> mailbox{1};
         bool producer_completed{};
 
-        CHECK(mailbox.try_put(1));
+        bool initial_put{};
+        run_with_scheduler(scheduler,
+                           [&](this auto) -> ::verilator_utils::task<void> { initial_put = co_await mailbox.try_put(1); });
+        CHECK(initial_put);
+
         auto producer_task{[&](this auto) -> ::verilator_utils::task<void> {
             co_await mailbox.put(2);
             producer_completed = true;
@@ -482,17 +532,19 @@ TEST_SUITE("verilator_utils/task")
         CHECK_FALSE(producer_completed);
         CHECK_EQ(mailbox.num(), 1u);
 
-        auto first{mailbox.try_get()};
+        ::std::optional<int> first{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { first = co_await mailbox.try_get(); });
         REQUIRE(first.has_value());
         CHECK_EQ(*first, 1);
-        scheduler.loop_once();
-
         CHECK(producer.done());
         CHECK(producer_completed);
         CHECK_EQ(mailbox.num(), 1u);
-        auto second{mailbox.try_get()};
+
+        ::std::optional<int> second{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { second = co_await mailbox.try_get(); });
         REQUIRE(second.has_value());
         CHECK_EQ(*second, 2);
+        CHECK_EQ(mailbox.num(), 0u);
         producer.get_promise().rethrow_exception();
     }
 
@@ -578,8 +630,14 @@ TEST_SUITE("verilator_utils/task")
         bool capacity_violation{};
 
         // 填满邮箱，使所有生产者都阻塞
-        REQUIRE(mailbox.try_put(97));
-        REQUIRE(mailbox.try_put(98));
+        bool initial_put1{};
+        bool initial_put2{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> {
+            initial_put1 = co_await mailbox.try_put(97);
+            initial_put2 = co_await mailbox.try_put(98);
+        });
+        REQUIRE(initial_put1);
+        REQUIRE(initial_put2);
 
         auto make_producer{[&](this auto, int value) -> ::verilator_utils::task<void> {
             co_await mailbox.put(value);
@@ -598,33 +656,37 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(completed_count, 0u);
         CHECK_EQ(mailbox.num(), 2u);
 
-        // 消费一个元素释放一个空位：多个阻塞的生产者同时被唤醒，
-        // 但每轮只有一个能放入，其余必须重新检查容量而不是超限放入
-        auto first_item{mailbox.try_get()};
+        // 消费一个元素释放一个空位：阻塞的生产者被唤醒并放入，其余继续等待
+        ::std::optional<int> first_item{};
+        run_with_scheduler(scheduler,
+                           [&](this auto) -> ::verilator_utils::task<void> { first_item = co_await mailbox.try_get(); });
         REQUIRE(first_item.has_value());
         CHECK_EQ(*first_item, 97);
-        scheduler.loop_once();
         CHECK_EQ(completed_count, 1u);
         CHECK_EQ(mailbox.num(), 2u);
 
         // 再次释放空位：又一个生产者放入，其余继续等待
-        auto second_item{mailbox.try_get()};
+        ::std::optional<int> second_item{};
+        run_with_scheduler(scheduler,
+                           [&](this auto) -> ::verilator_utils::task<void> { second_item = co_await mailbox.try_get(); });
         REQUIRE(second_item.has_value());
         CHECK_EQ(*second_item, 98);
-        scheduler.loop_once();
         CHECK_EQ(completed_count, 2u);
         CHECK_EQ(mailbox.num(), 2u);
 
         // 最后一个生产者最终放入
-        auto third_item{mailbox.try_get()};
+        ::std::optional<int> third_item{};
+        run_with_scheduler(scheduler,
+                           [&](this auto) -> ::verilator_utils::task<void> { third_item = co_await mailbox.try_get(); });
         REQUIRE(third_item.has_value());
-        scheduler.loop_once();
         CHECK_EQ(completed_count, 3u);
         CHECK_EQ(mailbox.num(), 2u);
 
         // 所有元素均按FIFO顺序取出，容量从未被突破
         ::std::vector<int> drained{*first_item, *second_item, *third_item};
-        while(auto item{mailbox.try_get()}) { drained.push_back(*item); }
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> {
+            while(auto item{co_await mailbox.try_get()}) { drained.push_back(*item); }
+        });
         ::std::ranges::sort(drained);
         CHECK_EQ(drained, (::std::vector<int>{10, 20, 30, 97, 98}));
         CHECK_FALSE(capacity_violation);
@@ -652,18 +714,20 @@ TEST_SUITE("verilator_utils/task")
         CHECK_FALSE(first.done());
         CHECK_FALSE(second.done());
 
-        // 只放入一个元素：两个消费者同时被唤醒，但只有第一个能取出，
-        // 第二个必须重新检查空态而不是对空邮箱取值
-        REQUIRE(mailbox.try_put(5));
-        scheduler.loop_once();
+        // 只放入一个元素：仅一个消费者被唤醒并取出，
+        // 另一个消费者必须重新检查空态而不是对空邮箱取值
+        bool put1{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { put1 = co_await mailbox.try_put(5); });
+        REQUIRE(put1);
         CHECK(first.done());
         CHECK_FALSE(second.done());
         CHECK_EQ(first_received, 5);
         CHECK_EQ(mailbox.num(), 0u);
 
         // 第二个消费者重新等待后获得新元素
-        REQUIRE(mailbox.try_put(6));
-        scheduler.loop_once();
+        bool put2{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { put2 = co_await mailbox.try_put(6); });
+        REQUIRE(put2);
         CHECK(second.done());
         CHECK_EQ(second_received, 6);
         CHECK_EQ(mailbox.num(), 0u);
@@ -689,21 +753,24 @@ TEST_SUITE("verilator_utils/task")
         CHECK_FALSE(peeker.done());
 
         // 只放入一个元素：getter取出后邮箱变空，peeker必须重新等待
-        REQUIRE(mailbox.try_put(7));
-        scheduler.loop_once();
+        bool put1{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { put1 = co_await mailbox.try_put(7); });
+        REQUIRE(put1);
         CHECK(getter.done());
         CHECK_FALSE(peeker.done());
         CHECK_EQ(received, 7);
         CHECK_EQ(mailbox.num(), 0u);
 
         // peeker重新等待后观察到新元素，且不删除它
-        REQUIRE(mailbox.try_put(8));
-        scheduler.loop_once();
+        bool put2{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { put2 = co_await mailbox.try_put(8); });
+        REQUIRE(put2);
         CHECK(peeker.done());
         CHECK_EQ(peeked, 8);
         CHECK_EQ(mailbox.num(), 1u);
 
-        auto item{mailbox.try_get()};
+        ::std::optional<int> item{};
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { item = co_await mailbox.try_get(); });
         REQUIRE(item.has_value());
         CHECK_EQ(*item, 8);
         CHECK_EQ(mailbox.num(), 0u);

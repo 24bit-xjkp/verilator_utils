@@ -1380,7 +1380,9 @@ export namespace verilator_utils
     struct event
     {
     private:
+        /// 等待队列类型，考虑测试激励中协程的数量不会很多，使用vector而不是deqeue
         using wait_queue_t = ::std::vector<::verilator_utils::detail::coroutine_pair>;
+        /// 等待队列
         wait_queue_t wait_queue{};
 
         /**
@@ -1493,6 +1495,10 @@ export namespace verilator_utils
         constexpr static auto do_pop{[](::std::vector<type>* queue) static noexcept { queue->erase(queue->begin()); }};
         using do_pop_t = ::std::unique_ptr<::std::vector<type>, decltype(do_pop)>;
         friend struct ::std::formatter<mailbox>;
+        ::std::size_t max_count{};
+        ::std::vector<type> queue{};
+        ::verilator_utils::event write_event{};
+        ::verilator_utils::event read_event{};
 
     public:
         /**
@@ -1523,11 +1529,9 @@ export namespace verilator_utils
         [[nodiscard]] ::verilator_utils::task<void> put(args_t&&... args)
             requires (::std::constructible_from<value_type, args_t...>)
         {
-            while(max_count != 0 && queue.size() == max_count)
-            {
-                co_await ::verilator_utils::wait_event([this] { return queue.size() < max_count; });
-            }
+            while(max_count != 0 && queue.size() == max_count) { co_await write_event; }
             queue.emplace_back(::std::forward<args_t>(args)...);
+            co_await read_event.notify_one();
         }
 
         /**
@@ -1535,20 +1539,21 @@ export namespace verilator_utils
          *
          * @tparam args_t 参数类型列表
          * @param args 参数列表
-         * @return 是否成功放入元素
+         * @return 子任务，配合co_await使用
          */
         template <typename... args_t>
-        bool try_put(args_t&&... args) noexcept
+        [[nodiscard]] ::verilator_utils::task<bool> try_put(args_t&&... args)
             requires (::std::constructible_from<value_type, args_t...>)
         {
             if(max_count == 0 || queue.size() < max_count)
             {
                 queue.emplace_back(::std::forward<args_t>(args)...);
-                return true;
+                co_await read_event.notify_one();
+                co_return true;
             }
             else
             {
-                return false;
+                co_return false;
             }
         }
 
@@ -1559,10 +1564,8 @@ export namespace verilator_utils
          */
         [[nodiscard]] ::verilator_utils::task<value_type> get()
         {
-            while(queue.empty())
-            {
-                co_await ::verilator_utils::wait_event([this] { return !queue.empty(); });
-            }
+            while(queue.empty()) { co_await read_event; }
+            co_await write_event.notify_one();
             do_pop_t _{::std::addressof(queue)};
             co_return ::std::move(queue.front());
         }
@@ -1570,18 +1573,19 @@ export namespace verilator_utils
         /**
          * @brief 尝试从邮箱获取首个元素，然后删除该元素，不会阻塞
          *
-         * @return std::optional 成功获取时包含元素，否则为空
+         * @return 子任务，返回值成功获取时包含元素，否则为空
          */
-        ::std::optional<value_type> try_get() noexcept(::std::is_nothrow_move_constructible_v<value_type>)
+        [[nodiscard]] ::verilator_utils::task<::std::optional<value_type>> try_get()
         {
             if(!queue.empty())
             {
+                co_await write_event.notify_one();
                 do_pop_t _{::std::addressof(queue)};
-                return ::std::optional<value_type>{::std::move(queue.front())};
+                co_return ::std::optional<value_type>{::std::move(queue.front())};
             }
             else
             {
-                return ::std::nullopt;
+                co_return ::std::nullopt;
             }
         }
 
@@ -1590,13 +1594,11 @@ export namespace verilator_utils
          *
          * @return 子任务，配合co_await使用
          */
-        auto peek(this auto&& self) noexcept -> ::verilator_utils::task<decltype(self.queue.front())>
+        [[nodiscard]] ::verilator_utils::task<reference> peek()
         {
-            while(self.queue.empty())
-            {
-                co_await ::verilator_utils::wait_event([&self] { return !self.queue.empty(); });
-            }
-            co_return self.queue.front();
+            while(queue.empty()) { co_await read_event; }
+            co_await read_event.notify_one();
+            co_return queue.front();
         }
 
         /**
@@ -1609,10 +1611,6 @@ export namespace verilator_utils
             using optional_t = ::std::optional<decltype(self.queue.front())>;
             return self.queue.empty() ? ::std::nullopt : optional_t{self.queue.front()};
         }
-
-    private:
-        ::std::size_t max_count{};
-        ::std::vector<type> queue{};
     };
 
     /**
