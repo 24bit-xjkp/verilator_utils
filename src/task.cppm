@@ -1374,6 +1374,110 @@ export namespace verilator_utils
 export namespace verilator_utils
 {
     /**
+     * @brief 边沿触发的事件，用于协程间同步，类似SystemVerilog event
+     *
+     */
+    struct event
+    {
+    private:
+        using wait_queue_t = ::std::vector<::verilator_utils::detail::coroutine_pair>;
+        wait_queue_t wait_queue{};
+
+        /**
+         * @brief 实现唤醒所有等待协程的可等待体
+         *
+         */
+        struct notify_all_awaiter : ::verilator_utils::detail::no_suspend_awaiter
+        {
+            wait_queue_t& queue;
+            ::verilator_utils::eval_scheduler* scheduler{};
+
+            template <::verilator_utils::is_coroutine_promise promise_type>
+            void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+            { scheduler = handle.promise().check_scheduler(); }
+
+            void await_resume()
+            {
+                if(!queue.empty())
+                {
+                    for(auto&& pair: queue) { scheduler->register_ready(pair); }
+                    queue.clear();
+                }
+            }
+        };
+
+        /**
+         * @brief 实现唤醒一个等待协程的可等待体
+         *
+         */
+        struct notify_one_awaiter : ::verilator_utils::detail::no_suspend_awaiter
+        {
+            wait_queue_t& queue;
+            ::verilator_utils::eval_scheduler* scheduler{};
+
+            template <::verilator_utils::is_coroutine_promise promise_type>
+            void set_handle_impl(::std::coroutine_handle<promise_type> handle)
+            { scheduler = handle.promise().check_scheduler(); }
+
+            void await_resume()
+            {
+                if(!queue.empty())
+                {
+                    scheduler->register_ready(queue.front());
+                    queue.erase(queue.begin());
+                }
+            }
+        };
+
+        /**
+         * @brief 实现挂起功能的可等待体
+         *
+         */
+        struct suspend_awaiter
+        {
+            wait_queue_t& queue;
+
+            static bool await_ready() noexcept { return false; }
+
+            template <::verilator_utils::is_coroutine_promise promise_type>
+            void await_suspend(::std::coroutine_handle<promise_type> handle)
+            { queue.emplace_back(handle); }
+
+            static void await_resume() noexcept {}
+        };
+
+    public:
+        /**
+         * @brief 唤醒所有等待此事件的协程
+         *
+         * @return 可等待体
+         */
+        [[nodiscard]] notify_all_awaiter notify_all() noexcept
+        {
+            return notify_all_awaiter{.queue{wait_queue}};
+        }
+
+        /**
+         * @brief 唤醒一个等待此事件的协程
+         *
+         * 可避免惊群效应
+         * @return 可等待体
+         */
+        [[nodiscard]] notify_one_awaiter notify_one() noexcept
+        {
+            return notify_one_awaiter{.queue{wait_queue}};
+        }
+
+        /**
+         * @brief 等待直到事件被触发
+         *
+         * @param self 事件对象
+         * @return 可等待体
+         */
+        [[nodiscard]] friend suspend_awaiter operator co_await(event& self) noexcept { return suspend_awaiter{self.wait_queue}; }
+    };
+
+    /**
      * @brief 邮箱，类似SystemVerilog mailbox
      *
      * @tparam type 元素类型
