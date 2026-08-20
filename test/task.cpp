@@ -989,5 +989,283 @@ TEST_SUITE("verilator_utils/task")
         task.get_promise().rethrow_exception();
     }
 
+    TEST_CASE("event suspends waiters until notify_all wakes every waiter in order")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::event event{};
+        ::std::vector<int> wake_order;
+
+        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+            co_await event;
+            wake_order.push_back(id);
+        }};
+        auto first_task{make_waiter(1)};
+        auto second_task{make_waiter(2)};
+        auto third_task{make_waiter(3)};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_FALSE(third.done());
+        CHECK(wake_order.empty());
+
+        auto notifier_task{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_all(); }()};
+        ::verilator_utils::async_task notifier{scheduler, ::std::move(notifier_task)};
+
+        scheduler.loop_once();
+        CHECK(notifier.done());
+        CHECK(first.done());
+        CHECK(second.done());
+        CHECK(third.done());
+        CHECK_EQ(wake_order, (::std::vector<int>{1, 2, 3}));
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+        third.get_promise().rethrow_exception();
+        notifier.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("event notify_one wakes the oldest waiter and preserves FIFO order")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::event event{};
+        ::std::vector<int> wake_order;
+
+        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+            co_await event;
+            wake_order.push_back(id);
+        }};
+        auto first_task{make_waiter(1)};
+        auto second_task{make_waiter(2)};
+        auto third_task{make_waiter(3)};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_FALSE(third.done());
+
+        auto make_notifier{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_one(); }};
+
+        auto first_notifier_task{make_notifier()};
+        ::verilator_utils::async_task first_notifier{scheduler, ::std::move(first_notifier_task)};
+        scheduler.loop_once();
+        CHECK(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_FALSE(third.done());
+        CHECK_EQ(wake_order, ::std::vector<int>{1});
+
+        auto second_notifier_task{make_notifier()};
+        ::verilator_utils::async_task second_notifier{scheduler, ::std::move(second_notifier_task)};
+        scheduler.loop_once();
+        CHECK(second.done());
+        CHECK_FALSE(third.done());
+        CHECK_EQ(wake_order, (::std::vector<int>{1, 2}));
+
+        auto third_notifier_task{make_notifier()};
+        ::verilator_utils::async_task third_notifier{scheduler, ::std::move(third_notifier_task)};
+        scheduler.loop_once();
+        CHECK(third.done());
+        CHECK_EQ(wake_order, (::std::vector<int>{1, 2, 3}));
+
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+        third.get_promise().rethrow_exception();
+        first_notifier.get_promise().rethrow_exception();
+        second_notifier.get_promise().rethrow_exception();
+        third_notifier.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("event is edge-triggered and does not latch missed notifications")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::event event{};
+
+        // 在没有任何等待者时通知：通知被丢弃，随后到达的等待者仍会挂起
+        auto early_notifier_task{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_all(); }()};
+        ::verilator_utils::async_task early_notifier{scheduler, ::std::move(early_notifier_task)};
+        scheduler.loop_once();
+        CHECK(early_notifier.done());
+
+        bool woke{};
+        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await event;
+            woke = true;
+        }()};
+        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+        CHECK_FALSE(woke);
+
+        // 再次通知后等待者才被唤醒
+        auto notifier_task{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_all(); }()};
+        ::verilator_utils::async_task notifier{scheduler, ::std::move(notifier_task)};
+        scheduler.loop_once();
+        CHECK(waiter.done());
+        CHECK(woke);
+
+        early_notifier.get_promise().rethrow_exception();
+        waiter.get_promise().rethrow_exception();
+        notifier.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("event notify_one on an empty queue is a safe no-op")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::event event{};
+
+        // 在没有任何等待者时通知单个协程：不崩溃、不做任何事，随后到达的等待者仍会挂起
+        auto early_notifier_task{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_one(); }()};
+        ::verilator_utils::async_task early_notifier{scheduler, ::std::move(early_notifier_task)};
+        scheduler.loop_once();
+        CHECK(early_notifier.done());
+
+        bool woke{};
+        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await event;
+            woke = true;
+        }()};
+        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+        CHECK_FALSE(woke);
+
+        // 再次通知后等待者才被唤醒
+        auto notifier_task{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_one(); }()};
+        ::verilator_utils::async_task notifier{scheduler, ::std::move(notifier_task)};
+        scheduler.loop_once();
+        CHECK(waiter.done());
+        CHECK(woke);
+
+        early_notifier.get_promise().rethrow_exception();
+        waiter.get_promise().rethrow_exception();
+        notifier.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("event notify_all on an empty queue is a safe no-op")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::event event{};
+
+        // 在没有任何等待者时通知所有协程：不崩溃、不做任何事，随后到达的等待者仍会挂起
+        auto early_notifier_task{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_all(); }()};
+        ::verilator_utils::async_task early_notifier{scheduler, ::std::move(early_notifier_task)};
+        scheduler.loop_once();
+        CHECK(early_notifier.done());
+
+        bool woke{};
+        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await event;
+            woke = true;
+        }()};
+        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+        CHECK_FALSE(woke);
+
+        // 再次通知后等待者才被唤醒
+        auto notifier_task{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_all(); }()};
+        ::verilator_utils::async_task notifier{scheduler, ::std::move(notifier_task)};
+        scheduler.loop_once();
+        CHECK(waiter.done());
+        CHECK(woke);
+
+        early_notifier.get_promise().rethrow_exception();
+        waiter.get_promise().rethrow_exception();
+        notifier.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("event can be awaited again after each notification")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::event event{};
+        ::std::size_t wake_count{};
+
+        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> {
+            for(::std::size_t i{}; i != 3; ++i)
+            {
+                co_await event;
+                ++wake_count;
+            }
+        }()};
+        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+        CHECK_EQ(wake_count, 0u);
+
+        for(::std::size_t i{1}; i != 4; ++i)
+        {
+            auto notifier_task{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_all(); }()};
+            ::verilator_utils::async_task notifier{scheduler, ::std::move(notifier_task)};
+            scheduler.loop_once();
+            CHECK(notifier.done());
+            CHECK_EQ(wake_count, i);
+        }
+        CHECK(waiter.done());
+
+        waiter.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("event handshake between producer and consumer converges")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        constexpr static ::std::size_t item_count{5};
+        ::verilator_utils::event data_ready{};
+        ::verilator_utils::event data_consumed{};
+        ::std::vector<int> received;
+
+        // 消费者先等待数据，生产者发送数据后等待消费者确认
+        auto consumer{[&](this auto) -> ::verilator_utils::task<void> {
+            for(::std::size_t i{}; i != item_count; ++i)
+            {
+                co_await data_ready;
+                received.push_back(static_cast<int>(i));
+                co_await data_consumed.notify_all();
+            }
+        }};
+        auto producer{[&](this auto) -> ::verilator_utils::task<void> {
+            for(::std::size_t i{}; i != item_count; ++i)
+            {
+                co_await data_ready.notify_all();
+                co_await data_consumed;
+            }
+        }};
+
+        auto consumer_task{consumer()};
+        ::verilator_utils::async_task consumer_async{scheduler, ::std::move(consumer_task)};
+
+        // 消费者先就绪等待数据
+        scheduler.loop_once();
+        CHECK_FALSE(consumer_async.done());
+        CHECK(received.empty());
+
+        auto producer_task{producer()};
+        ::verilator_utils::async_task producer_async{scheduler, ::std::move(producer_task)};
+        scheduler.loop_until_finish();
+
+        CHECK(consumer_async.done());
+        CHECK(producer_async.done());
+        ::std::vector<int> expected;
+        expected.reserve(item_count);
+        for(::std::size_t i{}; i != item_count; ++i) { expected.push_back(static_cast<int>(i)); }
+        CHECK_EQ(received, expected);
+
+        consumer_async.get_promise().rethrow_exception();
+        producer_async.get_promise().rethrow_exception();
+    }
+
     // NOLINTEND(bugprone-unchecked-optional-access)
 }
