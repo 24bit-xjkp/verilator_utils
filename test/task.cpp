@@ -550,13 +550,15 @@ TEST_SUITE("verilator_utils/task")
 
     TEST_CASE("semaphore nonblocking operations update the available count")
     {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
         ::verilator_utils::semaphore semaphore{3};
 
         CHECK(semaphore.try_get(2));
         CHECK_FALSE(semaphore.try_get(2));
         CHECK(semaphore.try_get());
         CHECK_FALSE(semaphore.try_get());
-        semaphore.put(4);
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.put(4); });
         CHECK(semaphore.try_get(4));
         CHECK_FALSE(semaphore.try_get());
     }
@@ -577,8 +579,7 @@ TEST_SUITE("verilator_utils/task")
         scheduler.loop_once();
         CHECK_FALSE(waiter.done());
         CHECK_FALSE(acquired);
-        semaphore.put();
-        scheduler.loop_once();
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.put(); });
 
         CHECK(waiter.done());
         CHECK(acquired);
@@ -606,14 +607,12 @@ TEST_SUITE("verilator_utils/task")
         CHECK_FALSE(first.done());
         CHECK_FALSE(second.done());
 
-        semaphore.put();
-        scheduler.loop_once();
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.put(); });
         CHECK_EQ(acquisition_order, ::std::vector<int>{1});
         CHECK(first.done());
         CHECK_FALSE(second.done());
 
-        semaphore.put();
-        scheduler.loop_once();
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.put(); });
         CHECK_EQ(acquisition_order, (::std::vector<int>{1, 2}));
         CHECK(second.done());
         first.get_promise().rethrow_exception();
@@ -784,16 +783,7 @@ TEST_SUITE("verilator_utils/task")
         auto scheduler{fixture.make_scheduler()};
         ::verilator_utils::semaphore semaphore{};
         ::std::vector<int> acquisition_order;
-        bool signal{};
         bool drained{};
-
-        // 排水者先注册事件，会在同一轮唤醒中先于其他等待者恢复，
-        // 在信号量等待者恢复执行前消耗掉许可
-        auto drainer_task{[&](this auto) -> ::verilator_utils::task<void> {
-            co_await ::verilator_utils::wait_event([&signal] { return signal; });
-            drained = semaphore.try_get();
-        }()};
-        ::verilator_utils::async_task drainer{scheduler, ::std::move(drainer_task)};
 
         auto first_task{[&](this auto) -> ::verilator_utils::task<void> {
             co_await semaphore.get();
@@ -808,35 +798,39 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
 
         scheduler.loop_once();
-        CHECK_FALSE(drainer.done());
         CHECK_FALSE(first.done());
         CHECK_FALSE(second.done());
 
-        // 排水者与第一个等待者同时被唤醒：排水者先消耗掉许可，
-        // 第一个等待者必须重新等待，而不是透支计数器
-        signal = true;
-        semaphore.put();
-        scheduler.loop_once();
+        // 放入许可后在同一个协程内先消耗掉它：被唤醒的第一个等待者在恢复执行前
+        // 发现许可已被同伴消耗，必须重新检查可用性而不是透支计数器
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> {
+            co_await semaphore.put();
+            drained = semaphore.try_get();
+        });
         CHECK(drained);
         CHECK_FALSE(first.done());
         CHECK_FALSE(second.done());
         CHECK(acquisition_order.empty());
         CHECK_FALSE(semaphore.try_get());
 
-        // 补充许可后第一个等待者按票号顺序获得
-        semaphore.put();
-        scheduler.loop_once();
+        // 下一个许可唤醒排在队首的等待者，但其票号尚未轮到自己，必须继续等待
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.put(); });
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+
+        // 票号轮到的等待者获得许可，保持先来先得顺序
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.put(); });
         CHECK(first.done());
         CHECK_FALSE(second.done());
         CHECK_EQ(acquisition_order, ::std::vector<int>{1});
 
-        // 第二个等待者随后获得
-        semaphore.put();
-        scheduler.loop_once();
+        // 最后一个等待者在票号轮到时获得许可
+        run_with_scheduler(scheduler, [&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.put(); });
         CHECK(second.done());
         CHECK_EQ(acquisition_order, (::std::vector<int>{1, 2}));
+        // 统计：共放入4个许可，1个被排水者消耗、2个被等待者获得，恰好剩余1个
+        CHECK(semaphore.try_get(1));
         CHECK_FALSE(semaphore.try_get());
-        drainer.get_promise().rethrow_exception();
         first.get_promise().rethrow_exception();
         second.get_promise().rethrow_exception();
     }

@@ -1630,8 +1630,17 @@ export namespace verilator_utils
          * @brief 增加内部计数器
          *
          * @param update 要增加的量
+         * @return 子任务，配合co_await使用
          */
-        void put(::std::size_t update = 1) noexcept { count += update; }
+        [[nodiscard]] ::verilator_utils::task<void> put(::std::size_t update = 1)
+        {
+            count += update;
+            if(update == 1) [[likely]] { co_await event.notify_one(); }
+            else
+            {
+                co_await event.notify_all();
+            }
+        }
 
         /**
          * @brief 减少内部计数器，阻塞直到能如此
@@ -1639,7 +1648,7 @@ export namespace verilator_utils
          * @param update 要减小的量
          * @return 子任务，配合co_await使用
          */
-        ::verilator_utils::task<void> get(::std::size_t update = 1)
+        [[nodiscard]] ::verilator_utils::task<void> get(::std::size_t update = 1)
         {
             if(count >= update)
             {
@@ -1648,8 +1657,7 @@ export namespace verilator_utils
             }
 
             auto my_ticket{next_ticket++};
-            const auto check{[this, my_ticket, update] { return my_ticket == ticket && count >= update; }};
-            while(!check()) { co_await ::verilator_utils::wait_event(check); }
+            while(my_ticket != ticket || count < update) { co_await event; }
             count -= update;
             ++ticket;
         }
@@ -1677,6 +1685,7 @@ export namespace verilator_utils
         ::std::size_t count{};
         ::std::size_t ticket{};
         ::std::size_t next_ticket{};
+        ::verilator_utils::event event{};
     };
 
     /**
