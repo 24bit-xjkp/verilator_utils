@@ -44,6 +44,58 @@ export namespace verilator_utils
      */
     struct femtosecond_t
     {
+    private:
+        constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
+
+        /**
+         * @brief 检查乘法是否发生溢出
+         *
+         * @param lhs 左操作数
+         * @param rhs 右操作数
+         * @return 乘法结果
+         * @throws 溢出时抛出断言失败异常
+         */
+        constexpr static ::std::uint64_t check_mul_overflow(::std::uint64_t lhs, ::std::uint64_t rhs)
+        {
+            using namespace ::std::string_view_literals;
+            VU_CHECK(lhs == 0 || rhs <= max / lhs, "发生上溢"sv);
+            return lhs * rhs;
+        }
+
+        /**
+         * @brief 将浮点数舍入到最近整数
+         *
+         * @param value 浮点输入，应当不小于0
+         * @return 舍入结果
+         */
+        constexpr static ::std::uint64_t round(double value) noexcept
+        {
+            if consteval
+            {
+                return static_cast<::std::uint64_t>(value + .5);  // NOLINT(bugprone-incorrect-roundings)
+            }
+            else
+            {
+                return static_cast<::std::uint64_t>(::std::round(value));
+            }
+        }
+
+        /**
+         * @brief 检查乘法是否发生溢出
+         *
+         * @param lhs 左操作数
+         * @param rhs 右操作数
+         * @throws 溢出时抛出断言失败异常
+         */
+        constexpr static ::std::uint64_t check_mul_overflow(::std::uint64_t lhs, double rhs)
+        {
+            using namespace ::std::string_view_literals;
+            auto result{static_cast<double>(lhs) * rhs};
+            VU_CHECK(result < static_cast<double>(max), "发生上溢"sv);
+            return round(result);
+        }
+
+    public:
         /// 飞秒数
         ::std::uint64_t rep{};
 
@@ -53,6 +105,20 @@ export namespace verilator_utils
          * @param rep 飞秒数
          */
         constexpr explicit femtosecond_t(::std::uint64_t rep) noexcept : rep{rep} {}
+
+        /**
+         * @brief 构造一个飞秒时间对象
+         *
+         * @param rep 飞秒数
+         */
+        constexpr explicit femtosecond_t(double rep)
+        {
+            using namespace ::std::string_view_literals;
+            VU_CHECK(rep >= 0., "发生下溢");
+            VU_CHECK(rep < static_cast<double>(max), "发生上溢"sv);
+            // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
+            this->rep = round(rep);
+        }
 
         /**
          * @brief 类型转换运算符，将飞秒时间对象转换为std::uint64_t
@@ -68,8 +134,13 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 加法结果
          */
-        constexpr friend femtosecond_t operator+ (femtosecond_t lhs, femtosecond_t rhs) noexcept
-        { return femtosecond_t{lhs.rep + rhs.rep}; }
+        constexpr friend femtosecond_t operator+ (femtosecond_t lhs, femtosecond_t rhs)
+        {
+            using namespace ::std::string_view_literals;
+            auto rep{lhs.rep + rhs.rep};
+            VU_CHECK(rep >= lhs.rep, "发生上溢"sv);
+            return femtosecond_t{rep};
+        }
 
         /**
          * @brief 减法运算
@@ -78,8 +149,13 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 减法结果
          */
-        constexpr friend femtosecond_t operator- (femtosecond_t lhs, femtosecond_t rhs) noexcept
-        { return femtosecond_t{lhs.rep - rhs.rep}; }
+        constexpr friend femtosecond_t operator- (femtosecond_t lhs, femtosecond_t rhs)
+        {
+            using namespace ::std::string_view_literals;
+            auto rep{lhs.rep - rhs.rep};
+            VU_CHECK(rep <= lhs.rep, "发生下溢"sv);
+            return femtosecond_t{rep};
+        }
 
         /**
          * @brief 数乘运算
@@ -88,8 +164,8 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 乘法结果
          */
-        constexpr friend femtosecond_t operator* (femtosecond_t lhs, ::std::uint64_t rhs) noexcept
-        { return femtosecond_t{lhs.rep * rhs}; }
+        constexpr friend femtosecond_t operator* (femtosecond_t lhs, ::std::uint64_t rhs)
+        { return femtosecond_t{check_mul_overflow(lhs.rep, rhs)}; }
 
         /**
          * @brief 数乘运算
@@ -98,8 +174,12 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 乘法结果
          */
-        constexpr friend femtosecond_t operator* (femtosecond_t lhs, double rhs) noexcept
-        { return femtosecond_t{static_cast<::std::uint64_t>(static_cast<double>(lhs.rep) * rhs)}; }
+        constexpr friend femtosecond_t operator* (femtosecond_t lhs, double rhs)
+        {
+            using namespace ::std::string_view_literals;
+            VU_CHECK(rhs >= 0, "非法乘数: {}"sv, rhs);
+            return femtosecond_t{check_mul_overflow(lhs.rep, rhs)};
+        }
 
         /**
          * @brief 数除运算
@@ -108,8 +188,12 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 除法结果
          */
-        constexpr friend femtosecond_t operator/ (femtosecond_t lhs, ::std::uint64_t rhs) noexcept
-        { return femtosecond_t{lhs.rep / rhs}; }
+        constexpr friend femtosecond_t operator/ (femtosecond_t lhs, ::std::uint64_t rhs)
+        {
+            using namespace ::std::string_view_literals;
+            VU_CHECK(rhs != 0, "发生除0"sv);
+            return femtosecond_t{lhs.rep / rhs};
+        }
 
         /**
          * @brief 数除运算
@@ -118,8 +202,15 @@ export namespace verilator_utils
          * @param rhs 右操作数
          * @return femtosecond_t 除法结果
          */
-        constexpr friend femtosecond_t operator/ (femtosecond_t lhs, double rhs) noexcept
-        { return femtosecond_t{static_cast<::std::uint64_t>(static_cast<double>(lhs.rep) / rhs)}; }
+        constexpr friend femtosecond_t operator/ (femtosecond_t lhs, double rhs)
+        {
+            using namespace ::std::string_view_literals;
+            VU_CHECK(rhs > 0., "非法除数: {}"sv, rhs);
+            auto rep{static_cast<double>(lhs.rep) / rhs};
+            // static_cast<double>(max)为max + 1
+            VU_CHECK(rep < static_cast<double>(max), "发生上溢"sv);
+            return femtosecond_t{round(rep)};
+        }
 
         constexpr friend ::std::strong_ordering operator<=> (femtosecond_t, femtosecond_t) noexcept = default;
         constexpr friend bool operator== (femtosecond_t, femtosecond_t) noexcept = default;
@@ -137,7 +228,7 @@ export namespace verilator_utils::inline literals
      * @return femtosecond_t 对应的飞秒时间类型
      */
     consteval ::verilator_utils::femtosecond_t operator""_fs (unsigned long long rep) noexcept
-    { return ::verilator_utils::femtosecond_t{rep}; }
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep)}; }
 
     /**
      * @brief 飞秒时间字面值运算符
@@ -145,8 +236,8 @@ export namespace verilator_utils::inline literals
      * @param rep 飞秒数
      * @return femtosecond_t 对应的飞秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_fs (long double rep) noexcept
-    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep)}; }
+    consteval ::verilator_utils::femtosecond_t operator""_fs (long double rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<double>(rep)}; }
 
     /**
      * @brief 皮秒时间字面值运算符
@@ -154,8 +245,8 @@ export namespace verilator_utils::inline literals
      * @param rep 皮秒数
      * @return femtosecond_t 对应的皮秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_ps (unsigned long long rep) noexcept
-    { return ::verilator_utils::femtosecond_t{rep * 1'000zu}; }
+    consteval ::verilator_utils::femtosecond_t operator""_ps (unsigned long long rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep)} * 1'000zu; }
 
     /**
      * @brief 皮秒时间字面值运算符
@@ -163,8 +254,8 @@ export namespace verilator_utils::inline literals
      * @param rep 皮秒数
      * @return femtosecond_t 对应的皮秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_ps (long double rep) noexcept
-    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000zu)}; }
+    consteval ::verilator_utils::femtosecond_t operator""_ps (long double rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<double>(rep * 1e3)}; }
 
     /**
      * @brief 纳秒时间字面值运算符
@@ -172,8 +263,8 @@ export namespace verilator_utils::inline literals
      * @param rep 纳秒数
      * @return femtosecond_t 对应的纳秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_ns (unsigned long long rep) noexcept
-    { return ::verilator_utils::femtosecond_t{rep * 1'000'000zu}; }
+    consteval ::verilator_utils::femtosecond_t operator""_ns (unsigned long long rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep)} * 1'000'000zu; }
 
     /**
      * @brief 纳秒时间字面值运算符
@@ -181,8 +272,8 @@ export namespace verilator_utils::inline literals
      * @param rep 纳秒数
      * @return femtosecond_t 对应的纳秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_ns (long double rep) noexcept
-    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000zu)}; }
+    consteval ::verilator_utils::femtosecond_t operator""_ns (long double rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<double>(rep * 1e6)}; }
 
     /**
      * @brief 微秒时间字面值运算符
@@ -190,8 +281,8 @@ export namespace verilator_utils::inline literals
      * @param rep 微秒数
      * @return femtosecond_t 对应的微秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_us (unsigned long long rep) noexcept
-    { return ::verilator_utils::femtosecond_t{rep * 1'000'000'000zu}; }
+    consteval ::verilator_utils::femtosecond_t operator""_us (unsigned long long rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep)} * 1'000'000'000zu; }
 
     /**
      * @brief 微秒时间字面值运算符
@@ -199,26 +290,44 @@ export namespace verilator_utils::inline literals
      * @param rep 微秒数
      * @return femtosecond_t 对应的微秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_us (long double rep) noexcept
-    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000'000zu)}; }
+    consteval ::verilator_utils::femtosecond_t operator""_us (long double rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<double>(rep * 1e9)}; }
 
     /**
-     * @brief 微秒时间字面值运算符
+     * @brief 毫秒时间字面值运算符
      *
-     * @param rep 微秒数
-     * @return femtosecond_t 对应的微秒时间类型
+     * @param rep 毫秒数
+     * @return femtosecond_t 对应的毫秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_ms (unsigned long long rep) noexcept
-    { return ::verilator_utils::femtosecond_t{rep * 1'000'000'000'000zu}; }
+    consteval ::verilator_utils::femtosecond_t operator""_ms (unsigned long long rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep)} * 1'000'000'000'000zu; }
 
     /**
-     * @brief 微秒时间字面值运算符
+     * @brief 毫秒时间字面值运算符
      *
-     * @param rep 微秒数
-     * @return femtosecond_t 对应的微秒时间类型
+     * @param rep 毫秒数
+     * @return femtosecond_t 对应的毫秒时间类型
      */
-    consteval ::verilator_utils::femtosecond_t operator""_ms (long double rep) noexcept
-    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep * 1'000'000'000'000zu)}; }
+    consteval ::verilator_utils::femtosecond_t operator""_ms (long double rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<double>(rep * 1e12)}; }
+
+    /**
+     * @brief 秒时间字面值运算符
+     *
+     * @param rep 秒数
+     * @return femtosecond_t 对应的秒时间类型
+     */
+    consteval ::verilator_utils::femtosecond_t operator""_s (unsigned long long rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<::std::uint64_t>(rep)} * 1'000'000'000'000'000zu; }
+
+    /**
+     * @brief 秒时间字面值运算符
+     *
+     * @param rep 秒数
+     * @return femtosecond_t 对应的秒时间类型
+     */
+    consteval ::verilator_utils::femtosecond_t operator""_s (long double rep)
+    { return ::verilator_utils::femtosecond_t{static_cast<double>(rep * 1e15)}; }
 
     // NOLINTEND(google-runtime-float)
 }  // namespace verilator_utils::inline literals

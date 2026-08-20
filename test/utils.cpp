@@ -5,6 +5,7 @@ using namespace ::verilator_utils::verilator;
 
 TEST_SUITE("verilator_utils/utils")
 {
+    using namespace ::verilator_utils;
     using namespace ::verilator_utils::literals;
     using namespace ::verilator_utils::verilator;
 
@@ -12,7 +13,7 @@ TEST_SUITE("verilator_utils/utils")
     {
         CHECK_EQ(static_cast<::std::uint64_t>(0_fs), 0u);
         CHECK_EQ(static_cast<::std::uint64_t>(1_fs), 1u);
-        CHECK_EQ(static_cast<::std::uint64_t>(1.5_fs), 1u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1.5_fs), 2u);
         CHECK_EQ(static_cast<::std::uint64_t>(2_ps), 2'000u);
         CHECK_EQ(static_cast<::std::uint64_t>(2.5_ps), 2'500u);
         CHECK_EQ(static_cast<::std::uint64_t>(3_ns), 3'000'000u);
@@ -52,7 +53,7 @@ TEST_SUITE("verilator_utils/utils")
         CHECK_EQ(static_cast<::std::uint64_t>(2_ps * static_cast<::std::uint64_t>(0)), 0u);
         CHECK_EQ(static_cast<::std::uint64_t>(2_ps * static_cast<::std::uint64_t>(3)), 6'000u);
         CHECK_EQ(static_cast<::std::uint64_t>(2_ps * 1.5), 3'000u);
-        CHECK_EQ(static_cast<::std::uint64_t>(1_fs * 1.5), 1u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_fs * 1.5), 2u);
         CHECK_EQ(static_cast<::std::uint64_t>(6_ps / static_cast<::std::uint64_t>(3)), 2'000u);
         CHECK_EQ(static_cast<::std::uint64_t>(3_ps / 1.5), 2'000u);
         CHECK_EQ(static_cast<::std::uint64_t>(1_ps / 3.0), 333u);
@@ -63,6 +64,166 @@ TEST_SUITE("verilator_utils/utils")
         CHECK_EQ(1_us, 1'000_ps * static_cast<::std::uint64_t>(1'000));
         CHECK_EQ(1_ms, 1'000_us);
         CHECK_EQ(1_ms, 1'000'000_ps * static_cast<::std::uint64_t>(1'000));
+    }
+
+    TEST_CASE("second literals convert to femtoseconds")
+    {
+        CHECK_EQ(static_cast<::std::uint64_t>(0_s), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_s), 1'000'000'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(2_s), 2'000'000'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(1.5_s), 1'500'000'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(0.5_s), 500'000'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(0.000'001_s), 1'000'000'000ull);
+        CHECK_EQ(static_cast<::std::uint64_t>(18'000_s), 18'000'000'000'000'000'000ull);
+        CHECK_EQ(1_s, 1'000_ms);
+        CHECK_EQ(1_s, 1'000'000_us);
+        CHECK_EQ(1_s, 1'000'000'000_ns);
+        CHECK_EQ(1_s, 1'000'000'000'000_ps);
+        CHECK_EQ(1_s, 1'000'000'000'000'000_fs);
+    }
+
+    TEST_CASE("floating point femtosecond values round to nearest integer")
+    {
+        CHECK_EQ(static_cast<::std::uint64_t>(0.4_fs), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(0.5_fs), 1u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1.5_fs), 2u);
+        CHECK_EQ(static_cast<::std::uint64_t>(2.4_fs), 2u);
+        CHECK_EQ(static_cast<::std::uint64_t>(2.5_fs), 3u);
+        CHECK_EQ(static_cast<::std::uint64_t>(2.6_fs), 3u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_fs * 2.4), 2u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_fs * 2.5), 3u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_fs / 2.0), 1u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_fs / 3.0), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_ps / 3.0), 333u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_ps / 3.5), 286u);
+        CHECK_EQ(static_cast<::std::uint64_t>(1_ps / 4.0), 250u);
+    }
+
+    TEST_CASE("femtosecond addition throws on overflow")
+    {
+        constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
+        CHECK_THROWS_AS(femtosecond_t{max} + 1_fs, ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(femtosecond_t{max} + femtosecond_t{max}, ::verilator_utils::assertion_error);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{max} + 0_fs), max);
+    }
+
+    TEST_CASE("femtosecond subtraction throws on underflow")
+    {
+        constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
+        CHECK_THROWS_AS(1_fs - 2_fs, ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(0_fs - 1_fs, ::verilator_utils::assertion_error);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{max} - 0_fs), max);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{max} - femtosecond_t{max}), 0u);
+    }
+
+    TEST_CASE("femtosecond multiplication throws on overflow")
+    {
+        constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
+        CHECK_THROWS_AS(femtosecond_t{max} * static_cast<::std::uint64_t>(2), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(femtosecond_t{max / 2 + 1} * static_cast<::std::uint64_t>(2), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(femtosecond_t{max} * 2.0, ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(femtosecond_t{max} * 1e19, ::verilator_utils::assertion_error);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{max} * static_cast<::std::uint64_t>(1)), max);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{max / 2} * static_cast<::std::uint64_t>(2)), max - 1);
+    }
+
+    TEST_CASE("femtosecond multiplication rejects negative multiplier")
+    {
+        CHECK_THROWS_AS(1_fs * -1.0, ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(1_fs * -0.5, ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("femtosecond division rejects invalid divisors and overflow")
+    {
+        constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
+        CHECK_THROWS_AS(1_fs / static_cast<::std::uint64_t>(0), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(1_fs / 0.0, ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(1_fs / -1.0, ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(1_fs / 1e-20, ::verilator_utils::assertion_error);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{max} / static_cast<::std::uint64_t>(1)), max);
+    }
+
+    TEST_CASE("femtosecond double constructor validates range")
+    {
+        CHECK_THROWS_AS(femtosecond_t{-1.0}, ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(femtosecond_t{-0.5}, ::verilator_utils::assertion_error);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{0.0}), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{0.5}), 1u);
+        CHECK_EQ(static_cast<::std::uint64_t>(femtosecond_t{1.5}), 2u);
+    }
+
+    TEST_CASE("femtosecond operations are usable in constant evaluation")
+    {
+        static_assert(static_cast<::std::uint64_t>(1_s) == 1'000'000'000'000'000ull);
+        // NOLINTBEGIN(google-runtime-float)
+        static_assert(static_cast<::std::uint64_t>(1.5_s) == 1'500'000'000'000'000ull);
+        static_assert(static_cast<::std::uint64_t>(1.5_fs) == 2u);
+        // NOLINTEND(google-runtime-float)
+        static_assert(1_s == 1'000_ms);
+        static_assert(1_s == 1'000'000'000'000_ps);
+        constexpr auto sum{1_s + 2_s};
+        static_assert(static_cast<::std::uint64_t>(sum) == 3'000'000'000'000'000ull);
+        constexpr auto product{1_ms * static_cast<::std::uint64_t>(3)};
+        static_assert(static_cast<::std::uint64_t>(product) == 3'000'000'000'000ull);
+        constexpr auto quotient{1_ms / static_cast<::std::uint64_t>(2)};
+        static_assert(static_cast<::std::uint64_t>(quotient) == 500'000'000'000ull);
+        constexpr auto scaled{1_ns * 1.5};
+        static_assert(static_cast<::std::uint64_t>(scaled) == 1'500'000u);
+    }
+
+    TEST_CASE("femtosecond overflow errors carry descriptive messages")
+    {
+        constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
+        try
+        {
+            auto result{femtosecond_t{max} + 1_fs};
+            (void)result;
+            FAIL("expected assertion_error for addition overflow");
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "发生上溢");
+        }
+        try
+        {
+            auto result{1_fs - 2_fs};
+            (void)result;
+            FAIL("expected assertion_error for subtraction underflow");
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "发生下溢");
+        }
+        try
+        {
+            auto result{1_fs / static_cast<::std::uint64_t>(0)};
+            (void)result;
+            FAIL("expected assertion_error for division by zero");
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "发生除0");
+        }
+        try
+        {
+            auto result{1_fs * -1.0};
+            (void)result;
+            FAIL("expected assertion_error for negative multiplier");
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "非法乘数: -1");
+        }
+        try
+        {
+            auto result{1_fs / -1.0};
+            (void)result;
+            FAIL("expected assertion_error for negative divisor");
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "非法除数: -1");
+        }
     }
 
     TEST_CASE("verilator data type traits identify supported types")
