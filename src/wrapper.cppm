@@ -262,7 +262,7 @@ export namespace verilator_utils
             using namespace ::std::string_view_literals;
 
             auto do_check{[this](::std::size_t value_width) constexpr {
-                VU_CHECK(value_width <= width(), "数据宽度{}过大，不能超过{}", value_width, width());
+                VU_CHECK(value_width <= width(), "数据宽度{}过大，不能超过{}"sv, value_width, width());
             }};
             if constexpr(is_vl_wide)
             {
@@ -377,7 +377,8 @@ export namespace verilator_utils
          */
         bit_slice& operator= (::std::uint64_t value)
         {
-            VU_CHECK(value <= 1, "位包装器只能赋值0或1");
+            using namespace ::std::string_view_literals;
+            VU_CHECK(value <= 1, "位包装器只能赋值0或1"sv);
             if constexpr(is_vl_wide)
             {
                 auto word_index{index / word_width};
@@ -424,7 +425,8 @@ export namespace verilator_utils
             requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
         bit_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
-            VU_CHECK(value.width() == 1, "位包装器只能赋值宽度为1的值，实际宽度为{}", value.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(value.width() == 1, "位包装器只能赋值宽度为1的值，实际宽度为{}"sv, value.width());
             return *this = value.to_verilator();
         }
 
@@ -438,7 +440,8 @@ export namespace verilator_utils
             requires (::std::same_as<underlying_type, ::std::uint64_t> || ::std::same_as<underlying_type, bool>)
         friend bool operator== (const bit_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
-            VU_CHECK(value.width() == 1, "位包装器只能赋值宽度为1的值，实际宽度为{}", value.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(value.width() == 1, "位包装器只能赋值宽度为1的值，实际宽度为{}"sv, value.width());
             return static_cast<::std::uint64_t>(self) == value.to_verilator();
         }
 
@@ -586,7 +589,8 @@ export namespace verilator_utils
                               ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}, data_format{::std::move(format)}
         {
-            VU_CHECK(left_bound >= right_bound, "切片上界{}不能小于下界{}", left_bound, right_bound);
+            using namespace ::std::string_view_literals;
+            VU_CHECK(left_bound >= right_bound, "切片上界{}不能小于下界{}"sv, left_bound, right_bound);
             ::verilator_utils::data_format::check_format(data_format, width());
         }
 
@@ -602,7 +606,8 @@ export namespace verilator_utils
                               ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             data{data}, left_bound{width - 1}, right_bound{0}, data_format{::std::move(format)}
         {
-            VU_CHECK(width != 0, "切片宽度不能为0，实际为{}", width);
+            using namespace ::std::string_view_literals;
+            VU_CHECK(width != 0, "切片宽度不能为0，实际为{}"sv, width);
             ::verilator_utils::data_format::check_format(data_format, width);
         }
 
@@ -634,7 +639,8 @@ export namespace verilator_utils
          */
         bit_slice<type> operator[] (::std::size_t index) const
         {
-            VU_CHECK(index <= width() - 1, "位索引{}超出切片宽度{}", index, width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(index <= width() - 1, "位索引{}超出切片宽度{}"sv, index, width());
             return bit_slice<type>{data, index + right_bound};
         }
 
@@ -652,9 +658,10 @@ export namespace verilator_utils
                         ::std::size_t right_bound_index,
                         const ::verilator_utils::data_format::format& format = ::verilator_utils::data_format::format{}) const
         {
-            VU_CHECK(left_bound_index >= right_bound_index, "切片上界{}不能小于下界{}", left_bound_index, right_bound_index);
-            VU_CHECK(right_bound_index <= left_bound, "切片下界{}超出切片上界{}", right_bound_index, left_bound);
-            VU_CHECK(left_bound_index <= width() - 1, "切片上界{}超出切片宽度{}", left_bound_index, width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(left_bound_index >= right_bound_index, "切片上界{}不能小于下界{}"sv, left_bound_index, right_bound_index);
+            VU_CHECK(right_bound_index <= left_bound, "切片下界{}超出切片上界{}"sv, right_bound_index, left_bound);
+            VU_CHECK(left_bound_index <= width() - 1, "切片上界{}超出切片宽度{}"sv, left_bound_index, width());
             if(!::verilator_utils::detail::is_variable_width_format(data_format) &&
                left_bound_index - right_bound_index + 1 != width())
             {
@@ -712,9 +719,10 @@ export namespace verilator_utils
          */
         vector_slice& operator= (::std::uint64_t value)
         {
-            VU_CHECK(width() <= 64, "向量宽度{}不能超过64位", width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(width() <= 64, "向量宽度{}不能超过64位"sv, width());
             auto width_is_enough{width() == 64 || (value >> width()) == 0};
-            VU_CHECK(width_is_enough, "值宽度超出向量宽度");
+            VU_CHECK(width_is_enough, "值宽度超出向量宽度"sv);
             if constexpr(is_vl_wide)
             {
                 value_type temp{};
@@ -738,7 +746,8 @@ export namespace verilator_utils
          */
         vector_slice& operator= (const vector_slice& other)
         {
-            VU_CHECK(width() == other.width(), "切片宽度{}与赋值源宽度{}不同", width(), other.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(width() == other.width(), "切片宽度{}与赋值源宽度{}不同"sv, width(), other.width());
             auto aligned_value{static_cast<cast_type>(other)};
             if constexpr(is_vl_wide) { assign_aligned_value(aligned_value); }
             else
@@ -759,7 +768,8 @@ export namespace verilator_utils
             requires (is_vl_wide || !::VlIsVlWide<underlying_type>::value)
         vector_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
-            VU_CHECK(width() == value.width(), "切片宽度{}与赋值源宽度{}不同", width(), value.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(width() == value.width(), "切片宽度{}与赋值源宽度{}不同"sv, width(), value.width());
             return *this = value.to_verilator();
         }
 
@@ -771,9 +781,10 @@ export namespace verilator_utils
          */
         friend bool operator== (const vector_slice& self, ::std::uint64_t value)
         {
-            VU_CHECK(self.width() <= 64, "向量宽度{}不能超过64位", self.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(self.width() <= 64, "向量宽度{}不能超过64位"sv, self.width());
             auto width_is_enough{self.width() == 64 || (value >> self.width()) == 0};
-            VU_CHECK(width_is_enough, "值宽度超出向量宽度");
+            VU_CHECK(width_is_enough, "值宽度超出向量宽度"sv);
             auto temp{static_cast<cast_type>(self)};
             if constexpr(is_vl_wide) { return wide_to_uint64(temp) == value; }
             else
@@ -791,9 +802,10 @@ export namespace verilator_utils
         friend bool operator== (const vector_slice& self, const type& value)
             requires (is_vl_wide)
         {
+            using namespace ::std::string_view_literals;
             auto temp{static_cast<cast_type>(self)};
             auto value_width{::verilator_utils::detail::vlwide_width(value)};
-            VU_CHECK(self.width() >= value_width, "切片宽度{}小于值宽度{}", self.width(), value_width);
+            VU_CHECK(self.width() >= value_width, "切片宽度{}小于值宽度{}"sv, self.width(), value_width);
             return temp == value;
         }
 
@@ -875,7 +887,8 @@ export namespace verilator_utils
         template <::verilator_utils::is_verilator_data_type other_type>
         vector_slice& operator= (const ::verilator_utils::vector_slice<other_type>& other)
         {
-            VU_CHECK(width() == other.width(), "切片宽度{}与赋值源宽度{}不同", width(), other.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(width() == other.width(), "切片宽度{}与赋值源宽度{}不同"sv, width(), other.width());
             auto aligned_value{static_cast<::verilator_utils::vector_slice<other_type>::cast_type>(other)};
             if constexpr(is_vl_wide)
             {
@@ -923,7 +936,8 @@ export namespace verilator_utils
         template <::verilator_utils::is_verilator_data_type other_type>
         friend bool operator== (const vector_slice& self, const ::verilator_utils::vector_slice<other_type>& other)
         {
-            VU_CHECK(self.width() == other.width(), "切片宽度{}与赋值源宽度{}不同", self.width(), other.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(self.width() == other.width(), "切片宽度{}与赋值源宽度{}不同"sv, self.width(), other.width());
             auto aligned_other{static_cast<::verilator_utils::vector_slice<other_type>::cast_type>(other)};
             if constexpr(is_vl_wide)
             {
@@ -985,7 +999,8 @@ export namespace verilator_utils
          */
         [[nodiscard]] underlying_type to_underlying() const
         {
-            VU_CHECK(width() <= 64, "向量宽度{}不能超过64位", width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(width() <= 64, "向量宽度{}不能超过64位"sv, width());
             ::std::uint64_t aligned_value{};
             if constexpr(is_vl_wide) { aligned_value = wide_to_uint64(static_cast<cast_type>(*this)); }
             else
@@ -1301,7 +1316,8 @@ export namespace verilator_utils
 
         unpacked_array& operator= (const unpacked_array& other)
         {
-            VU_CHECK(width() == other.width(), "数组宽度{}与赋值源宽度{}不同", width(), other.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(width() == other.width(), "数组宽度{}与赋值源宽度{}不同"sv, width(), other.width());
             ::std::ranges::copy(other.data, data.begin());
             return *this;
         }
@@ -1312,7 +1328,8 @@ export namespace verilator_utils
 
         bool operator== (const unpacked_array& other) const
         {
-            VU_CHECK(width() == other.width(), "数组宽度{}与比较对象宽度{}不同", width(), other.width());
+            using namespace ::std::string_view_literals;
+            VU_CHECK(width() == other.width(), "数组宽度{}与比较对象宽度{}不同"sv, width(), other.width());
             return data == other.data;
         }
 
@@ -1325,7 +1342,10 @@ export namespace verilator_utils
          */
         template <typename iter_t>
         iter_t format_to(iter_t iter) const
-        { return ::std::format_to(iter, "{}", data); }
+        {
+            using namespace ::std::string_view_literals;
+            return ::std::format_to(iter, "{}"sv, data);
+        }
 
         /**
          * @brief 转换为字符串表示
@@ -1434,7 +1454,10 @@ export namespace std
     struct formatter<::verilator_utils::bit_slice<value_type>>
     {
         constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
-        { return ::verilator_utils::detail::parse_format_string_without_flags(ctx, "无效的verilator_utils::bit_slice格式符"); }
+        {
+            using namespace ::std::string_view_literals;
+            return ::verilator_utils::detail::parse_format_string_without_flags(ctx, "无效的verilator_utils::bit_slice格式符"sv);
+        }
 
         template <typename iter_t, typename char_t>
         static auto format(const ::verilator_utils::bit_slice<value_type>& value,
@@ -1452,7 +1475,11 @@ export namespace std
     struct formatter<::verilator_utils::vector_slice<value_type>>
     {
         constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
-        { return ::verilator_utils::detail::parse_format_string_without_flags(ctx, "无效的verilator_utils::vector_slice格式符"); }
+        {
+            using namespace ::std::string_view_literals;
+            return ::verilator_utils::detail::parse_format_string_without_flags(ctx,
+                                                                                "无效的verilator_utils::vector_slice格式符"sv);
+        }
 
         template <typename iter_t, typename char_t>
         static auto format(const ::verilator_utils::vector_slice<value_type>& value,
@@ -1472,8 +1499,9 @@ export namespace std
     {
         constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
         {
+            using namespace ::std::string_view_literals;
             return ::verilator_utils::detail::parse_format_string_without_flags(ctx,
-                                                                                "无效的verilator_utils::unpacked_array格式符");
+                                                                                "无效的verilator_utils::unpacked_array格式符"sv);
         }
 
         template <typename iter_t, typename char_t>
@@ -1493,8 +1521,9 @@ export namespace std
     {
         constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
         {
+            using namespace ::std::string_view_literals;
             return ::verilator_utils::detail::parse_format_string_without_flags(ctx,
-                                                                                "无效的verilator_utils::format_wrapper格式符");
+                                                                                "无效的verilator_utils::format_wrapper格式符"sv);
         }
 
         template <typename iter_t, typename char_t>

@@ -7,7 +7,7 @@ import verilator_utils.full;
 TEST_SUITE("lfsr_m7")
 {
     using namespace verilator_utils;
-    using namespace std::string_literals;
+    using namespace std::literals;
     namespace views = std::views;
     using dut_t = unit_test_rtl_lfsr_m7_verilator;
     using dut_context_t = dut_context<dut_t, VerilatedFstC>;
@@ -55,7 +55,7 @@ TEST_SUITE("lfsr_m7")
         };
         CAPTURE(lfsr_feedback);
         port.lfsr_feedback = lfsr_feedback;
-        ctx.set_base_name(std::format("lfsr_m7_{}", lfsr_feedback));
+        ctx.set_base_name(std::format("lfsr_m7_{}"sv, lfsr_feedback));
 
         const auto do_verify{
             [&] -> task<void> {

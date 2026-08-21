@@ -114,7 +114,7 @@ export namespace verilator_utils
         constexpr explicit femtosecond_t(double rep)
         {
             using namespace ::std::string_view_literals;
-            VU_CHECK(rep >= 0., "发生下溢");
+            VU_CHECK(rep >= 0., "发生下溢"sv);
             VU_CHECK(rep < static_cast<double>(max), "发生上溢"sv);
             // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
             this->rep = round(rep);
@@ -392,8 +392,9 @@ namespace verilator_utils
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(this const auto& self, iter_t iter, double data)
             {
-                if(self.format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
-                return ::std::format_to(iter, "{}", data);
+                using namespace ::std::string_view_literals;
+                if(self.format_as_hex) { return ::std::format_to(iter, "{:a}"sv, data); }
+                return ::std::format_to(iter, "{}"sv, data);
             }
         };
 
@@ -539,10 +540,10 @@ namespace verilator_utils
          * @return 解析后的迭代器
          */
         constexpr ::std::format_parse_context::iterator parse_format_string_without_flags(::std::format_parse_context& ctx,
-                                                                                          const char* message)
+                                                                                          ::std::string_view message)
         {
             auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
-            if(iter != ctx.end() && *iter != '}') { throw ::std::format_error{message}; }
+            if(iter != ctx.end() && *iter != '}') { throw ::std::format_error{::std::string{message}}; }
             return iter;
         }
 
@@ -555,7 +556,7 @@ namespace verilator_utils
          * @return 解析后的迭代器
          */
         constexpr ::std::format_parse_context::iterator
-            parse_format_string_with_detail_flag(::std::format_parse_context& ctx, const char* message, bool& with_detail)
+            parse_format_string_with_detail_flag(::std::format_parse_context& ctx, ::std::string_view message, bool& with_detail)
         {
             auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
             auto end{ctx.end()};     // NOLINT(readability-qualified-auto)
@@ -569,7 +570,7 @@ namespace verilator_utils
                         with_detail = true;
                         break;
                     case '}': return iter;
-                    default: throw ::std::format_error{message};
+                    default: throw ::std::format_error{::std::string{message}};
                 }
             }
             return iter;
@@ -611,7 +612,8 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
-                VU_CHECK(width != 0, "数据宽度不能为0，实际为{}", width);
+                using namespace ::std::string_view_literals;
+                VU_CHECK(width != 0, "数据宽度不能为0，实际为{}"sv, width);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 /// 每个十六进制位的位宽
@@ -627,18 +629,18 @@ namespace verilator_utils
                     auto end{data.data() + (width + word_width - 1) / word_width};
                     auto left_word{end - 1};
                     iter = ::std::format_to(iter,
-                                            "{:#0{}x}",
+                                            "{:#0{}x}"sv,
                                             *left_word,  // NOLINT(clang-analyzer-security.ArrayBound)
                                             (left_word_width + digit_width - 1) / digit_width + prefix_size);
                     for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, left_word}))
                     {
-                        iter = ::std::format_to(iter, "{:0{}x}", value, word_width / digit_width);
+                        iter = ::std::format_to(iter, "{:0{}x}"sv, value, word_width / digit_width);
                     }
                     return iter;
                 }
                 else
                 {
-                    return ::std::format_to(iter, "{:#0{}x}", data, (width + digit_width - 1) / digit_width + prefix_size);
+                    return ::std::format_to(iter, "{:#0{}x}"sv, data, (width + digit_width - 1) / digit_width + prefix_size);
                 }
             }
 
@@ -694,7 +696,8 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
-                VU_CHECK(width != 0, "数据宽度不能为0，实际为{}", width);
+                using namespace ::std::string_view_literals;
+                VU_CHECK(width != 0, "数据宽度不能为0，实际为{}"sv, width);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 // 0b前缀长度
@@ -708,16 +711,16 @@ namespace verilator_utils
                     auto end{data.data() + (width + word_width - 1) / word_width};
                     auto left_word{end - 1};
                     // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
-                    iter = ::std::format_to(iter, "{:#0{}b}", *left_word, left_word_width + prefix_size);
+                    iter = ::std::format_to(iter, "{:#0{}b}"sv, *left_word, left_word_width + prefix_size);
                     for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, left_word}))
                     {
-                        iter = ::std::format_to(iter, "{:0{}b}", value, word_width);
+                        iter = ::std::format_to(iter, "{:0{}b}"sv, value, word_width);
                     }
                     return iter;
                 }
                 else
                 {
-                    return ::std::format_to(iter, "{:#0{}b}", data, width + prefix_size);
+                    return ::std::format_to(iter, "{:#0{}b}"sv, data, width + prefix_size);
                 }
             }
 
@@ -771,7 +774,10 @@ namespace verilator_utils
              */
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, ::std::int64_t data) const
-            { return ::std::format_to(iter, "{}", data); }
+            {
+                using namespace ::std::string_view_literals;
+                return ::std::format_to(iter, "{}"sv, data);
+            }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -835,7 +841,10 @@ namespace verilator_utils
              */
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, ::std::uint64_t data) const
-            { return ::std::format_to(iter, "{}", data); }
+            {
+                using namespace ::std::string_view_literals;
+                return ::std::format_to(iter, "{}"sv, data);
+            }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -884,8 +893,9 @@ namespace verilator_utils
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, float data) const
             {
-                if(format_as_hex) { return ::std::format_to(iter, "{:a}", data); }
-                return ::std::format_to(iter, "{}", data);
+                using namespace ::std::string_view_literals;
+                if(format_as_hex) { return ::std::format_to(iter, "{:a}"sv, data); }
+                return ::std::format_to(iter, "{}"sv, data);
             }
 
             /**
@@ -1157,10 +1167,11 @@ namespace verilator_utils
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, ::std::uint64_t data) const
             {
+                using namespace ::std::string_view_literals;
                 return ::std::format_to(iter,
-                                        "{}",
+                                        "{}"sv,
                                         data < enum_string.size() ? enum_string[data]
-                                                                  : ::std::format("\"invalid enum: {}\"", data));
+                                                                  : ::std::format("\"invalid enum: {}\""sv, data));
             }
 
             /**
@@ -1206,7 +1217,10 @@ namespace verilator_utils
              */
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, bool data) const
-            { return ::std::format_to(iter, "{}", data); }
+            {
+                using namespace ::std::string_view_literals;
+                return ::std::format_to(iter, "{}"sv, data);
+            }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -1331,7 +1345,8 @@ namespace verilator_utils
              */
             constexpr ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
             {
-                VU_CHECK(!enum_string.empty(), "枚举列表不能为空");
+                using namespace ::std::string_view_literals;
+                VU_CHECK(!enum_string.empty(), "枚举列表不能为空"sv);
                 return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
             }
 
@@ -1364,14 +1379,14 @@ namespace verilator_utils
                     auto max_width{format.max_width()};
 
                     VU_CHECK(width >= min_width && width <= max_width,
-                             "数据宽度{}超出格式允许范围[{}, {}]",
+                             "数据宽度{}超出格式允许范围[{}, {}]"sv,
                              width,
                              min_width,
                              max_width);
                 }
                 else
                 {
-                    VU_CHECK(width == format.width(), "数据宽度{}与格式宽度{}不同", width, format.width());
+                    VU_CHECK(width == format.width(), "数据宽度{}与格式宽度{}不同"sv, width, format.width());
                 }
             });
         }

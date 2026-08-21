@@ -495,7 +495,8 @@ export namespace verilator_utils
              */
             [[nodiscard]] return_type get_result()
             {
-                VU_CHECK(is_coroutine_returned(), "协程尚未执行完成，不能获取结果");
+                using namespace ::std::string_view_literals;
+                VU_CHECK(is_coroutine_returned(), "协程尚未执行完成，不能获取结果"sv);
                 return get_return_value();
             }
         };
@@ -590,7 +591,8 @@ export namespace verilator_utils
          */
         friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
         {
-            VU_CHECK(subtask.joinable(), "子任务未绑定协程，不能等待");
+            using namespace ::std::string_view_literals;
+            VU_CHECK(subtask.joinable(), "子任务未绑定协程，不能等待"sv);
             return {subtask.handle};
         }
 
@@ -765,7 +767,8 @@ export namespace verilator_utils::detail
 
         [[nodiscard]] bool is_ready() const
         {
-            VU_CHECK(event_callback != nullptr, "事件回调不能为空");
+            using namespace ::std::string_view_literals;
+            VU_CHECK(event_callback != nullptr, "事件回调不能为空"sv);
             return (*event_callback)();
         }
     };
@@ -1061,8 +1064,9 @@ export namespace verilator_utils
          */
         [[nodiscard]] ::std::string time_in_string() const
         {
+            using namespace ::std::string_view_literals;
             auto time_in_output_unit{static_cast<double>(time_in_time_precision()) * output_unit_per_time_precision};
-            return ::std::format("{:.6g}{}", time_in_output_unit, output_unit_suffix);
+            return ::std::format("{:.6g}{}"sv, time_in_output_unit, output_unit_suffix);
         }
 
         /**
@@ -1277,7 +1281,8 @@ export namespace verilator_utils
     template <typename promise_type>
     auto ::verilator_utils::detail::subtask_awaiter<promise_type>::await_resume() -> return_type
     {
-        VU_CHECK(subhandle.done(), "子任务尚未完成，不能获取结果");
+        using namespace ::std::string_view_literals;
+        VU_CHECK(subhandle.done(), "子任务尚未完成，不能获取结果"sv);
         subhandle.promise().scheduler->throw_if_finish();
         subhandle.promise().rethrow_exception();
         return subhandle.promise().get_result();

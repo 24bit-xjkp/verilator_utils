@@ -62,6 +62,8 @@ namespace
 
 TEST_SUITE("verilator_utils/task")
 {
+    using namespace ::std::string_view_literals;
+
     TEST_CASE("fibonacci LFSR generates the expected maximal-length sequence")
     {
         const auto bits{::verilator_utils::fibonacci_lfsr_generator(3) | ::to_vector(14)};
@@ -193,19 +195,20 @@ TEST_SUITE("verilator_utils/task")
         CHECK(put1);
         CHECK(put2);
 
-        CHECK_EQ(::std::format("{}", bounded_mailbox), "[10, 20]");
-        CHECK_EQ(::std::format("{:#}", bounded_mailbox), "{max_count: 3, value: [10, 20]}");
+        CHECK_EQ(::std::format("{}"sv, bounded_mailbox), "[10, 20]"sv);
+        CHECK_EQ(::std::format("{:#}"sv, bounded_mailbox), "{max_count: 3, value: [10, 20]}"sv);
         CHECK_EQ(::doctest::StringMaker<mailbox_t>::convert(bounded_mailbox), "{max_count: 3, value: [10, 20]}");
 
         mailbox_t empty_mailbox{};
-        CHECK_EQ(::std::format("{:#}", empty_mailbox), "{max_count: 0, value: []}");
+        CHECK_EQ(::std::format("{:#}"sv, empty_mailbox), "{max_count: 0, value: []}"sv);
     }
 
     TEST_CASE("mailbox formatter rejects unsupported format specifiers")
     {
+
         ::verilator_utils::mailbox<int> mailbox{};
 
-        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}", ::std::make_format_args(mailbox))), ::std::format_error);
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(mailbox))), ::std::format_error);
     }
 
     TEST_CASE("shift_register delays values by the configured depth")
@@ -221,17 +224,17 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(first->value(), 0x01u);
         CHECK_EQ(first->width(), 8u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::hex_t>(first->format()));
-        CHECK_EQ(first->to_string(), "0x01");
+        CHECK_EQ(first->to_string(), "0x01"sv);
 
         auto second{delay_line.update(0x05u)};
         REQUIRE(second.has_value());
         CHECK_EQ(second->value(), 0x02u);
-        CHECK_EQ(second->to_string(), "0x02");
+        CHECK_EQ(second->to_string(), "0x02"sv);
 
         auto third{delay_line.update(0x06u)};
         REQUIRE(third.has_value());
         CHECK_EQ(third->value(), 0x03u);
-        CHECK_EQ(third->to_string(), "0x03");
+        CHECK_EQ(third->to_string(), "0x03"sv);
     }
 
     TEST_CASE("shift_register with depth one echoes the previous value")
@@ -243,7 +246,7 @@ TEST_SUITE("verilator_utils/task")
         auto echoed{delay_line.update(0x22u)};
         REQUIRE(echoed.has_value());
         CHECK_EQ(echoed->value(), 0x11u);
-        CHECK_EQ(echoed->to_string(), "0x11");
+        CHECK_EQ(echoed->to_string(), "0x11"sv);
 
         auto echoed_again{delay_line.update(0x33u)};
         REQUIRE(echoed_again.has_value());
@@ -285,7 +288,7 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(held_first->value(), 0x01u);
         CHECK_EQ(held_first->width(), 8u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::hex_t>(held_first->format()));
-        CHECK_EQ(held_first->to_string(), "0x01");
+        CHECK_EQ(held_first->to_string(), "0x01"sv);
 
         auto held_again{delay_line.update(0x06u, false)};
         REQUIRE(held_again.has_value());
@@ -364,7 +367,7 @@ TEST_SUITE("verilator_utils/task")
         REQUIRE(held.has_value());
         CHECK_EQ(held->value().at(0), 0x89ab'cdefu);
         CHECK_EQ(held->value().at(1), 0x0000'0123u);
-        CHECK_EQ(held->to_string(), "0x012389abcdef");
+        CHECK_EQ(held->to_string(), "0x012389abcdef"sv);
     }
 
     TEST_CASE("shift_register preserves the configured data format")
@@ -380,7 +383,7 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(binary_value->value(), 0xbu);
         CHECK_EQ(binary_value->width(), 4u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::bin_t>(binary_value->format()));
-        CHECK_EQ(binary_value->to_string(), "0b1011");
+        CHECK_EQ(binary_value->to_string(), "0b1011"sv);
 
         ::verilator_utils::shift_register<::std::uint64_t> decimal_delay_line{2, 8, ::verilator_utils::data_format::dec_unsigned};
         decimal_delay_line.update(42u);
@@ -389,7 +392,7 @@ TEST_SUITE("verilator_utils/task")
         REQUIRE(decimal_value.has_value());
         CHECK_EQ(decimal_value->value(), 42u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(decimal_value->format()));
-        CHECK_EQ(decimal_value->to_string(), "42");
+        CHECK_EQ(decimal_value->to_string(), "42"sv);
     }
 
     TEST_CASE("shift_register supports Verilator wide data")
@@ -409,7 +412,7 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(delayed->value().at(1), 0x0000'0123u);
         CHECK_EQ(delayed->width(), 48u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::hex_t>(delayed->format()));
-        CHECK_EQ(delayed->to_string(), "0x012389abcdef");
+        CHECK_EQ(delayed->to_string(), "0x012389abcdef"sv);
 
         ::VlWide<2> fourth_value{0xaabb'ccddu, 0x0000'0003u};
         auto delayed_again{delay_line.update(fourth_value)};
@@ -420,6 +423,7 @@ TEST_SUITE("verilator_utils/task")
 
     TEST_CASE("shift_register formatter renders contents and detailed state")
     {
+
         using shift_register_t = ::verilator_utils::shift_register<::std::uint64_t>;
         static_assert(::std::formattable<shift_register_t, char>);
 
@@ -428,16 +432,17 @@ TEST_SUITE("verilator_utils/task")
         delay_line.update(0x02u);
         delay_line.update(0x03u);
 
-        CHECK_EQ(::std::format("{}", delay_line), "[1, 2, 3]");
-        CHECK_EQ(::std::format("{:#}", delay_line), "{depth: 3, reg: [1, 2, 3]}");
+        CHECK_EQ(::std::format("{}"sv, delay_line), "[1, 2, 3]"sv);
+        CHECK_EQ(::std::format("{:#}"sv, delay_line), "{depth: 3, reg: [1, 2, 3]}"sv);
         CHECK_EQ(::doctest::StringMaker<shift_register_t>::convert(delay_line), "{depth: 3, reg: [1, 2, 3]}");
     }
 
     TEST_CASE("shift_register formatter rejects unsupported format specifiers")
     {
+
         ::verilator_utils::shift_register<::std::uint64_t> delay_line{1, 8, ::verilator_utils::data_format::hex};
 
-        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}", ::std::make_format_args(delay_line))), ::std::format_error);
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(delay_line))), ::std::format_error);
     }
 
     TEST_CASE("mailbox get and peek wait until a value is available")

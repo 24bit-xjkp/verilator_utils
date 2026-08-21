@@ -5,6 +5,7 @@ using namespace ::verilator_utils::verilator;
 TEST_SUITE("verilator_utils/wrapper")
 {
     using namespace ::verilator_utils::verilator;
+    using namespace ::std::string_view_literals;
 
     TEST_CASE("slice concepts identify wrapper types")
     {
@@ -58,7 +59,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(value.width(), 8u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::bin_t>(value.format()));
         CHECK_EQ(value.to_string(), "0b00101010");
-        CHECK_EQ(::std::format("{}", value), "0b00101010");
+        CHECK_EQ(::std::format("{}"sv, value), "0b00101010");
         CHECK_EQ(value.to_verilator(), 0x2au);
 
         value = 0xau;
@@ -120,7 +121,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(enum_value.to_string(), "run");
         CHECK_EQ(boolean_value.to_verilator(), 1u);
         CHECK_EQ(boolean_value.to_string(), "true");
-        CHECK_EQ(::std::format("{}", boolean_value), "true");
+        CHECK_EQ(::std::format("{}"sv, boolean_value), "true");
         boolean_value = false;
         CHECK_EQ(boolean_value.to_verilator(), 0u);
         CHECK_EQ(boolean_value.to_string(), "false");
@@ -138,7 +139,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(wide_value.value().at(0), 0x89ab'cdefu);
         CHECK_EQ(wide_value.value().at(1), 0x0000'0123u);
         CHECK_EQ(wide_value.to_string(), "0x012389abcdef");
-        CHECK_EQ(::std::format("{}", wide_value), "0x012389abcdef");
+        CHECK_EQ(::std::format("{}"sv, wide_value), "0x012389abcdef");
         CHECK_EQ(word_aligned_hex.to_string(), "0x0000012389abcdef");
         CHECK_EQ(word_aligned_bin.to_string(), "0b10001001101010111100110111101111");
 
@@ -182,7 +183,7 @@ TEST_SUITE("verilator_utils/wrapper")
         ::verilator_utils::bit_slice<::CData> boolean_bit{data, 0, ::verilator_utils::data_format::boolean};
 
         CHECK_EQ(boolean_bit.to_string(), "false");
-        CHECK_EQ(::std::format("{}", boolean_bit), "false");
+        CHECK_EQ(::std::format("{}"sv, boolean_bit), "false");
         boolean_bit = 1;
         CHECK_EQ(data, 1u);
         CHECK_EQ(boolean_bit.to_string(), "true");
@@ -287,7 +288,7 @@ TEST_SUITE("verilator_utils/wrapper")
 
         CHECK_EQ(binary.format().index(), 2u);
         CHECK_EQ(binary.to_string(), "0b10100110");
-        CHECK_EQ(::std::format("{}", binary), "0b10100110");
+        CHECK_EQ(::std::format("{}"sv, binary), "0b10100110");
         CHECK_EQ(::std::get<::std::uint64_t>(binary.to_underlying()), 0xa6u);
         CHECK_EQ(unsigned_value.to_string(), "166");
         CHECK_EQ(::std::get<::std::uint64_t>(unsigned_value.to_underlying()), 166u);
@@ -302,7 +303,7 @@ TEST_SUITE("verilator_utils/wrapper")
 
         CHECK_EQ(::std::get<bool>(bool_value.to_underlying()), true);
         CHECK_EQ(bool_value.to_string(), "true");
-        CHECK_EQ(::std::format("{}", bool_value), "true");
+        CHECK_EQ(::std::format("{}"sv, bool_value), "true");
 
         data = 0;
         CHECK_EQ(bool_value.to_string(), "false");
@@ -405,7 +406,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(::std::get<::std::uint64_t>(valid_value.to_underlying()), 2u);
         CHECK(valid_value.is_valid());
         CHECK_EQ(valid_value.to_string(), "run");
-        CHECK_EQ(::std::format("{}", valid_value), "run");
+        CHECK_EQ(::std::format("{}"sv, valid_value), "run");
         CHECK_FALSE(invalid_value.is_valid());
         CHECK_EQ(invalid_value.to_string(), "\"invalid enum: 3\"");
     }
@@ -670,7 +671,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(wrapper, ::std::span<::std::uint64_t, 3>{values});
         CHECK_EQ(wrapper.to_string(), "[0xab, 0xcd, 0xef]");
         static_assert(::std::formattable<verilator_utils::vector_slice<unsigned char>, char>);
-        CHECK_EQ(::std::format("{}", wrapper), "[0xab, 0xcd, 0xef]");
+        CHECK_EQ(::std::format("{}"sv, wrapper), "[0xab, 0xcd, 0xef]");
     }
 
     TEST_CASE("unpacked array propagates element format")
@@ -684,7 +685,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(width, 8u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(format));
         CHECK_EQ(wrapper.to_string(), "[10, 11, 12]");
-        CHECK_EQ(::std::format("{}", wrapper), "[10, 11, 12]");
+        CHECK_EQ(::std::format("{}"sv, wrapper), "[10, 11, 12]");
     }
 
     TEST_CASE("unpacked array supports wide elements and wrapper copy")
@@ -704,7 +705,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(destination_data[1].at(1), 0x0000'fedcu);
         CHECK_EQ(destination, source);
         CHECK_EQ(destination.to_string(), "[0x012389abcdef, 0xfedc76543210]");
-        CHECK_EQ(::std::format("{}", destination), "[0x012389abcdef, 0xfedc76543210]");
+        CHECK_EQ(::std::format("{}"sv, destination), "[0x012389abcdef, 0xfedc76543210]");
     }
 
     TEST_CASE("make unpacked array recursively wraps multidimensional arrays")
@@ -737,6 +738,6 @@ TEST_SUITE("verilator_utils/wrapper")
             {{1, 2}, {3, 4}}
         };
         auto wrapper2{::verilator_utils::make_unpacked_array(data2, 4)};
-        CHECK_EQ(::std::format("{}", wrapper2), "[[0x1, 0x2], [0x3, 0x4]]");
+        CHECK_EQ(::std::format("{}"sv, wrapper2), "[[0x1, 0x2], [0x3, 0x4]]");
     }
 }

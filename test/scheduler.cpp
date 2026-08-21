@@ -4,6 +4,7 @@ import verilator_utils.full;
 namespace
 {
     using namespace ::verilator_utils::verilator;
+    using namespace ::std::string_view_literals;
 
     struct fake_dut final : ::VerilatedModel
     {
@@ -205,7 +206,7 @@ TEST_SUITE("verilator_utils/scheduler")
             }
             catch(const ::std::runtime_error& exception)
             {
-                observed_exception = ::std::string_view{exception.what()} == "value task failure";
+                observed_exception = ::std::string_view{exception.what()} == "value task failure"sv;
             }
         }};
         scheduler.add_task(parent());
@@ -312,16 +313,16 @@ TEST_SUITE("verilator_utils/scheduler")
 
         CHECK_EQ(scheduler.time_in_time_precision(), 0u);
         CHECK_EQ(scheduler.time_in_time_unit(), 0.0);
-        CHECK_EQ(scheduler.time_in_string(), "0ns");
+        CHECK_EQ(scheduler.time_in_string(), "0ns"sv);
 
         const auto&& task{
             [&] -> ::verilator_utils::task<void> {
                 co_await ::verilator_utils::wait_time(5_ps);
                 CHECK_EQ(scheduler.time_in_time_precision(), 5u);
-                CHECK_EQ(scheduler.time_in_string(), "0.005ns");
+                CHECK_EQ(scheduler.time_in_string(), "0.005ns"sv);
                 co_await ::verilator_utils::wait_time(2_ns);
                 CHECK_EQ(scheduler.time_in_time_precision(), 2'005u);
-                CHECK_EQ(scheduler.time_in_string(), "2.005ns");
+                CHECK_EQ(scheduler.time_in_string(), "2.005ns"sv);
             },
         };
 
@@ -336,9 +337,9 @@ TEST_SUITE("verilator_utils/scheduler")
         fixture.context.timeunit(-12);
 
         const auto&& task{[&] -> ::verilator_utils::task<void> {
-            CHECK_EQ(scheduler.time_in_string(), "1ns");
+            CHECK_EQ(scheduler.time_in_string(), "1ns"sv);
             co_await ::verilator_utils::wait_time(999_ns);
-            CHECK_EQ(scheduler.time_in_string(), "1000ns");
+            CHECK_EQ(scheduler.time_in_string(), "1000ns"sv);
         }};
 
         fixture.context.time(1'000u);
@@ -355,12 +356,12 @@ TEST_SUITE("verilator_utils/scheduler")
         };
 
         constexpr static ::std::array test_cases{
-            test_case{-7,  "100ns"},
-            test_case{-8,  "10ns" },
-            test_case{-9,  "1ns"  },
-            test_case{-10, "100ps"},
-            test_case{-11, "10ps" },
-            test_case{-12, "1ps"  },
+            test_case{-7,  "100ns"sv},
+            test_case{-8,  "10ns"sv },
+            test_case{-9,  "1ns"sv  },
+            test_case{-10, "100ps"sv},
+            test_case{-11, "10ps"sv },
+            test_case{-12, "1ps"sv  },
         };
 
         for(auto&& [time_unit, expected]: test_cases)
@@ -382,8 +383,8 @@ TEST_SUITE("verilator_utils/scheduler")
             [&] -> ::verilator_utils::task<void> {
                 co_await ::verilator_utils::wait_time(1'000_ns);
                 CHECK_EQ(scheduler.time_in_time_precision(), 1'000'000u);
-                CHECK_EQ(scheduler.time_in_time_unit(), doctest::Approx{1.0});
-                CHECK_EQ(scheduler.time_in_string(), "1us");
+                CHECK_EQ(scheduler.time_in_time_unit(), ::doctest::Approx{1.0});
+                CHECK_EQ(scheduler.time_in_string(), "1us"sv);
             },
         };
 
@@ -910,7 +911,7 @@ TEST_SUITE("verilator_utils/scheduler")
                 }
                 catch(const ::std::runtime_error& exception)
                 {
-                    caught = exception.what() == ::std::string{"async child failure"};
+                    caught = exception.what() == "async child failure"sv;
                 }
             },
         };
@@ -1091,7 +1092,7 @@ TEST_SUITE("verilator_utils/scheduler")
         REQUIRE_NE(promise.suspend_location.line(), 0u);
         CHECK_EQ(promise.suspend_location.line(), recorded_line + 1);
         REQUIRE_NE(promise.suspend_location.file_name(), nullptr);
-        CHECK(::std::string_view{promise.suspend_location.file_name()}.ends_with("scheduler.cpp"));
+        CHECK(::std::string_view{promise.suspend_location.file_name()}.ends_with("scheduler.cpp"sv));
 
         signal.value = 1;
         scheduler.loop_once();

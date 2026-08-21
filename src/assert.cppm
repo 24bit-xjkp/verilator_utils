@@ -103,10 +103,11 @@ export namespace verilator_utils
                                                        const ::std::source_location& location,
                                                        const ::verilator_utils::trace::stacktrace& trace)
         {
+            using namespace ::std::string_view_literals;
             const auto use_colors{::verilator_utils::detail::should_colorize_assertion_message()};
             if(use_colors)
             {
-                return ::std::format("At {}{}:{}:{}{}: {}{}{}: {}{}{}\n{}",
+                return ::std::format("At {}{}:{}:{}{}: {}{}{}: {}{}{}\n{}"sv,
                                      assertion_color::cyan,
                                      location.file_name(),
                                      location.line(),
@@ -120,7 +121,7 @@ export namespace verilator_utils
                                      assertion_color::reset,
                                      trace.to_string(true));
             }
-            return ::std::format("At {}:{}:{}: {}: {}\n{}",
+            return ::std::format("At {}:{}:{}: {}: {}\n{}"sv,
                                  location.file_name(),
                                  location.line(),
                                  location.column(),

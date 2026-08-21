@@ -75,12 +75,13 @@ export namespace verilator_utils
 
             void operator() (::std::ostream* stream) const
             {
+                using namespace ::std::string_view_literals;
                 constexpr auto location{::std::source_location::current()};
                 ::doctest::detail::MessageBuilder msg_builder{location.file_name(),
                                                               location.line(),
                                                               ::doctest::assertType::is_warn};
                 msg_builder.m_stream = stream;
-                msg_builder* ::std::format("random_seed := {}", static_cast<::std::size_t>(context->randSeed()));
+                msg_builder* ::std::format("random_seed := {}"sv, static_cast<::std::size_t>(context->randSeed()));
             }
         };
 
@@ -137,10 +138,11 @@ export namespace verilator_utils
 
         ~dut_context() noexcept
         {
+            using namespace ::std::string_view_literals;
             if(dut) { dut->final(); }
             if(coverage && scheduler->get_eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
             {
-                context->coverageFilename(::std::format("{}.dat", file_base_name));
+                context->coverageFilename(::std::format("{}.dat"sv, file_base_name));
                 context->coveragep()->write();
             }
         }
@@ -162,17 +164,18 @@ export namespace verilator_utils
          */
         void initial_eval()
         {
+            using namespace ::std::string_view_literals;
             if constexpr(::std::same_as<tracer_t, ::VerilatedVcdC>)
             {
-                tracer->open(::std::format("{}.vcd", file_base_name).data());
+                tracer->open(::std::format("{}.vcd"sv, file_base_name).data());
             }
             else if constexpr(::std::same_as<tracer_t, ::VerilatedFstC>)
             {
-                tracer->open(::std::format("{}.fst", file_base_name).data());
+                tracer->open(::std::format("{}.fst"sv, file_base_name).data());
             }
             else if constexpr(::std::same_as<tracer_t, ::VerilatedSaifC>)
             {
-                tracer->open(::std::format("{}.saif", file_base_name).data());
+                tracer->open(::std::format("{}.saif"sv, file_base_name).data());
             }
 
             scheduler->initial_eval();
@@ -194,8 +197,9 @@ export namespace verilator_utils
          */
         void set_base_name(::std::string_view base_name)
         {
+            using namespace ::std::string_view_literals;
             VU_CHECK(scheduler->get_eval_stage() == ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin,
-                     "必须在initial_eval之前设置文件基本名称");
+                     "必须在initial_eval之前设置文件基本名称"sv);
             file_base_name = base_name;
         }
 

@@ -362,7 +362,8 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_posedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}", edge_to_wait);
+        using namespace ::std::string_view_literals;
+        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event(
             [edge_detector = edge_detector_t{bit, edge_detector_t::rising}, edge_to_wait] mutable {
@@ -382,7 +383,8 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_negedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}", edge_to_wait);
+        using namespace ::std::string_view_literals;
+        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event(
             [edge_detector = edge_detector_t{bit, edge_detector_t::falling}, edge_to_wait] mutable {
@@ -402,7 +404,8 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_alledge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}", edge_to_wait);
+        using namespace ::std::string_view_literals;
+        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event([edge_detector = edge_detector_t{bit, edge_detector_t::both}, edge_to_wait] mutable {
             edge_to_wait -= edge_detector();
@@ -479,7 +482,8 @@ export namespace verilator_utils
                     ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
                         ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval)
     {
-        VU_CHECK(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿");
+        using namespace ::std::string_view_literals;
+        VU_CHECK(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿"sv);
         return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, edge, eval_stage);
     }
 
@@ -501,7 +505,8 @@ export namespace verilator_utils
                        ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
                            ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
     {
-        VU_CHECK(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿");
+        using namespace ::std::string_view_literals;
+        VU_CHECK(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿"sv);
 
         if(eval_stage == ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
         {
@@ -780,12 +785,12 @@ export namespace verilator_utils
         void check_lfsr_generator_args(::std::size_t width, ::std::uint64_t& feedback_mask, ::std::uint64_t initial_value)
         {
             using namespace ::std::string_view_literals;
-            VU_CHECK(width >= 3 && width <= 64, "LFSR宽度{}超出范围[3, 64]", width);
+            VU_CHECK(width >= 3 && width <= 64, "LFSR宽度{}超出范围[3, 64]"sv, width);
             VU_CHECK(initial_value != 0, "初始值为0时LFSR输出恒为0"sv);
             if(width != 64)
             {
-                VU_CHECK((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度{}", width);
-                VU_CHECK((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度{}", width);
+                VU_CHECK((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度{}"sv, width);
+                VU_CHECK((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度{}"sv, width);
             }
 
             if(feedback_mask == 0) { feedback_mask = ::verilator_utils::detail::lfsr_feedback_mask_table[width - 3]; }
@@ -1078,7 +1083,8 @@ export namespace verilator_utils
 
         async_task_awaiter operator co_await()
         {
-            VU_CHECK(joinable(), "异步任务未绑定协程，不能等待");
+            using namespace ::std::string_view_literals;
+            VU_CHECK(joinable(), "异步任务未绑定协程，不能等待"sv);
             return async_task_awaiter{::std::exchange(subhandle, nullptr)};
         }
 
@@ -1790,18 +1796,20 @@ export namespace std
 
         constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
         {
+            using namespace ::std::string_view_literals;
             return ::verilator_utils::detail::parse_format_string_with_detail_flag(ctx,
-                                                                                   "无效的verilator_utils::mailbox格式符",
+                                                                                   "无效的verilator_utils::mailbox格式符"sv,
                                                                                    with_detail);
         }
 
         template <typename iter_t, typename char_t>
         auto format(const ::verilator_utils::mailbox<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx) const
         {
-            if(with_detail) { return ::std::format_to(ctx.out(), "{{max_count: {}, value: {}}}", value.max_count, value.queue); }
+            using namespace ::std::string_view_literals;
+            if(with_detail) { return ::std::format_to(ctx.out(), "{{max_count: {}, value: {}}}"sv, value.max_count, value.queue); }
             else
             {
-                return ::std::format_to(ctx.out(), "{}", value.queue);
+                return ::std::format_to(ctx.out(), "{}"sv, value.queue);
             }
         }
     };
@@ -1820,18 +1828,20 @@ export namespace std
 
         constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
         {
+            using namespace ::std::string_view_literals;
             return ::verilator_utils::detail::parse_format_string_with_detail_flag(ctx,
-                                                                                   "无效的verilator_utils::shift_register格式符",
+                                                                                   "无效的verilator_utils::shift_register格式符"sv,
                                                                                    with_detail);
         }
 
         template <typename iter_t, typename char_t>
         auto format(const ::verilator_utils::shift_register<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx) const
         {
-            if(with_detail) { return ::std::format_to(ctx.out(), "{{depth: {}, reg: {}}}", value.depth, value.reg); }
+            using namespace ::std::string_view_literals;
+            if(with_detail) { return ::std::format_to(ctx.out(), "{{depth: {}, reg: {}}}"sv, value.depth, value.reg); }
             else
             {
-                return ::std::format_to(ctx.out(), "{}", value.reg);
+                return ::std::format_to(ctx.out(), "{}"sv, value.reg);
             }
         }
     };
@@ -1842,13 +1852,20 @@ export namespace doctest
     template <::std::move_constructible type>
     struct StringMaker<::verilator_utils::mailbox<type>>
     {
-        static ::doctest::String convert(const ::verilator_utils::mailbox<type>& value) { return ::std::format("{:#}", value); }
+        static ::doctest::String convert(const ::verilator_utils::mailbox<type>& value)
+        {
+            using namespace ::std::string_view_literals;
+            return ::std::format("{:#}"sv, value);
+        }
     };
 
     template <::verilator_utils::is_format_wrapper_data_type type>
     struct StringMaker<::verilator_utils::shift_register<type>>
     {
         static ::doctest::String convert(const ::verilator_utils::shift_register<type>& value)
-        { return ::std::format("{:#}", value); }
+        {
+            using namespace ::std::string_view_literals;
+            return ::std::format("{:#}"sv, value);
+        }
     };
 }  // namespace doctest

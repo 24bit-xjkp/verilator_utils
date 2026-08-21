@@ -6,8 +6,8 @@ using namespace ::verilator_utils::verilator;
 TEST_SUITE("verilator_utils/utils")
 {
     using namespace ::verilator_utils;
-    using namespace ::verilator_utils::literals;
     using namespace ::verilator_utils::verilator;
+    using namespace ::std::string_view_literals;
 
     TEST_CASE("femtosecond literals convert to femtoseconds")
     {
@@ -178,51 +178,51 @@ TEST_SUITE("verilator_utils/utils")
         {
             auto result{femtosecond_t{max} + 1_fs};
             (void)result;
-            FAIL("expected assertion_error for addition overflow");
+            FAIL("expected assertion_error for addition overflow"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK_EQ(error.message(), "发生上溢");
+            CHECK_EQ(error.message(), "发生上溢"sv);
         }
         try
         {
             auto result{1_fs - 2_fs};
             (void)result;
-            FAIL("expected assertion_error for subtraction underflow");
+            FAIL("expected assertion_error for subtraction underflow"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK_EQ(error.message(), "发生下溢");
+            CHECK_EQ(error.message(), "发生下溢"sv);
         }
         try
         {
             auto result{1_fs / static_cast<::std::uint64_t>(0)};
             (void)result;
-            FAIL("expected assertion_error for division by zero");
+            FAIL("expected assertion_error for division by zero"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK_EQ(error.message(), "发生除0");
+            CHECK_EQ(error.message(), "发生除0"sv);
         }
         try
         {
             auto result{1_fs * -1.0};
             (void)result;
-            FAIL("expected assertion_error for negative multiplier");
+            FAIL("expected assertion_error for negative multiplier"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK_EQ(error.message(), "非法乘数: -1");
+            CHECK_EQ(error.message(), "非法乘数: -1"sv);
         }
         try
         {
             auto result{1_fs / -1.0};
             (void)result;
-            FAIL("expected assertion_error for negative divisor");
+            FAIL("expected assertion_error for negative divisor"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK_EQ(error.message(), "非法除数: -1");
+            CHECK_EQ(error.message(), "非法除数: -1"sv);
         }
     }
 
@@ -279,14 +279,14 @@ TEST_SUITE("verilator_utils/assert")
     {
         ::verilator_utils::check(true);
         VU_CHECK(true);
-        VU_CHECK(1 == 1, "消息{}", 1);
+        VU_CHECK(1 == 1, "消息{}"sv, 1);
     }
 
     TEST_CASE("check is usable in constant evaluation")
     {
         constexpr auto ok_result{[] {
             ::verilator_utils::check(true);
-            VU_CHECK(2 == 2, "常量求值消息{}", 2);
+            VU_CHECK(2 == 2, "常量求值消息{}"sv, 2);
             return true;
         }()};
         static_assert(ok_result);
@@ -294,15 +294,15 @@ TEST_SUITE("verilator_utils/assert")
 
     TEST_CASE("check throws assertion_error with formatted message")
     {
-        CHECK_THROWS_AS(VU_CHECK(false, "自定义消息{}", 42), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(VU_CHECK(false, "自定义消息{}"sv, 42), ::verilator_utils::assertion_error);
         try
         {
-            VU_CHECK(false, "自定义消息{}", 42);
+            VU_CHECK(false, "自定义消息{}"sv, 42);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK_EQ(error.message(), "自定义消息42");
-            CHECK(::std::string_view{error.what()}.find("自定义消息42") != ::std::string_view::npos);
+            CHECK_EQ(error.message(), "自定义消息42"sv);
+            CHECK(::std::string_view{error.what()}.contains("自定义消息42"sv));
         }
     }
 
@@ -310,15 +310,15 @@ TEST_SUITE("verilator_utils/assert")
     {
         try
         {
-            VU_CHECK(false, "位置测试");
+            VU_CHECK(false, "位置测试"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK(::std::string_view{error.location().file_name()}.ends_with("test/utils.cpp"));
+            CHECK(::std::string_view{error.location().file_name()}.ends_with("test/utils.cpp"sv));
             CHECK_GT(error.location().line(), 0u);
             CHECK_FALSE(::std::string_view{error.location().function_name()}.empty());
-            CHECK(::std::string_view{error.what()}.find("位置测试") != ::std::string_view::npos);
-            CHECK(::std::string_view{error.what()}.find("test/utils.cpp") != ::std::string_view::npos);
+            CHECK(::std::string_view{error.what()}.contains("位置测试"sv));
+            CHECK(::std::string_view{error.what()}.contains("test/utils.cpp"sv));
         }
     }
 
@@ -326,7 +326,7 @@ TEST_SUITE("verilator_utils/assert")
     {
         try
         {
-            VU_CHECK(false, "调用栈测试");
+            VU_CHECK(false, "调用栈测试"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
@@ -334,8 +334,7 @@ TEST_SUITE("verilator_utils/assert")
             CHECK_FALSE(error.trace().frames.empty());
             for(const auto& frame: error.trace().frames)
             {
-                CHECK_FALSE(::std::string_view{frame.symbol}.find("verilator_utils::assertion_error") !=
-                            ::std::string_view::npos);
+                CHECK_FALSE(::std::string_view{frame.symbol}.contains("verilator_utils::assertion_error"sv));
             }
             error.print_trace();
         }
@@ -347,24 +346,24 @@ TEST_SUITE("verilator_utils/assert")
         ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = true});
         try
         {
-            VU_CHECK(false, "颜色配置测试");
+            VU_CHECK(false, "颜色配置测试"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK(::std::string_view{error.what()}.find("\033[") == ::std::string_view::npos);
-            CHECK(::std::string_view{error.what()}.find("颜色配置测试") != ::std::string_view::npos);
+            CHECK(::std::string_view{error.what()}.contains("\033["sv));
+            CHECK(::std::string_view{error.what()}.contains("颜色配置测试"sv));
         }
 
         // 强制使用彩色输出
         ::verilator_utils::set_assertion_color_config({.force_colors = true, .no_colors = false});
         try
         {
-            VU_CHECK(false, "颜色配置测试");
+            VU_CHECK(false, "颜色配置测试"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
-            CHECK(::std::string_view{error.what()}.find("\033[") != ::std::string_view::npos);
-            CHECK(::std::string_view{error.what()}.find("颜色配置测试") != ::std::string_view::npos);
+            CHECK(::std::string_view{error.what()}.contains("\033["sv));
+            CHECK(::std::string_view{error.what()}.contains("颜色配置测试"sv));
         }
 
         // 恢复默认配置
