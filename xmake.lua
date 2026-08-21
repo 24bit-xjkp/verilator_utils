@@ -10,65 +10,21 @@ local config = {
     debug = is_mode("debug"),
     configs = {
         shared = is_kind("shared"),
-        main = false,
-        std_harden = get_config("use_std_harden"),
         asan = get_config("use_sanitizer"),
         lto = get_config("use_lto")
     }
 }
-add_requires("doctest_module", config)
-add_requires("cpptrace", { configs = { shared = is_kind("shared"), lto = get_config("use_lto") } })
+add_requires("doctest_module", "cpptrace", config)
+add_requireconfs("doctest_module", { configs = { main = false, std_harden = get_config("use_std_harden") } })
+add_requireconfs("cpptrace", { configs = { cxxflags = get_std_harden_options() } })
 set_exceptions("cxx")
 set_policy("build.c++.modules.hide_dependencies", true)
 set_defaultmode("release")
 
-option("use_sanitizer")
-    set_default(false)
-    set_description("Enable sanitizer for unit tests.")
-option_end()
-
-option("use_std_harden")
-    set_default(false)
-    set_description("Enable c++ standard library harden.")
-option_end()
-
-option("use_lto")
-    set_default(false)
-    set_description("Enable link time optimization.")
-option_end()
-
-if get_config("use_std_harden") then
-    if is_mode("debug") then
-        add_defines("_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_DEBUG", "_GLIBCXX_DEBUG")
-    else
-        add_defines("_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_FAST", "_GLIBCXX_ASSERTIONS")
-    end
-end
-
-option("trace_support_fst")
-    set_default(true)
-    set_description("Enable FST trace support. This feature needs zlib and lz4.")
-option_end()
+add_options("use_std_harden")
 if get_config("trace_support_fst") then
     add_requires("zlib", "lz4")
 end
-
-option("check_kind")
-    set_values(false)
-    set_showmenu(false)
-    set_description([[Check the build kind. "static" and "shared" are supported.]])
-
-    on_check(function (option)
-        local kind = get_config("kind")
-        assert(kind == "static" or kind == "shared", [[The kind "%s" is not supported.]], kind)
-        option:enable(true)
-    end)
-option_end()
-
-option("with_main")
-    set_default(true)
-    set_description("Enable main function support.")
-option_end()
 
 rule("verilator_include")
     after_load(function (target)

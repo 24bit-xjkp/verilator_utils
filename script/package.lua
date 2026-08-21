@@ -22,6 +22,7 @@ package("doctest_module", function ()
         "https://github.com/24bit-xjkp/doctest_module/archive/refs/tags/$(version).tar.gz",
         "https://github.com/24bit-xjkp/doctest_module.git"
     )
+    add_versions("v1.2.0", "2f2005bf5f28acc853a75a4bc81860543bf5da6ef78ab52f89dc89fc4a3e867f")
     add_versions("v1.1.0", "427b0977e30844956e3fd7bfc9e159e12df5df5c3e0dc5922a104a90c1e8f599")
     add_versions("v1.0.0", "4a864de74790fdc70f876a20c5bad7589b4c10058f2a6e0a7041c0c351702ee6")
     add_deps("clean_std_heads >=1.1", "doctest")
