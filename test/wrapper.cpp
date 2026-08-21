@@ -740,4 +740,123 @@ TEST_SUITE("verilator_utils/wrapper")
         auto wrapper2{::verilator_utils::make_unpacked_array(data2, 4)};
         CHECK_EQ(::std::format("{}"sv, wrapper2), "[[0x1, 0x2], [0x3, 0x4]]");
     }
+
+    TEST_CASE("format wrapper rejects width exceeding storage capacity")
+    {
+        // 数据宽度不能超过 value_type 的存储位宽（sizeof * CHAR_BIT）
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<::std::uint64_t>{0u, 65, ::verilator_utils::data_format::hex}),
+                        ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<::std::int64_t>{0, 65, ::verilator_utils::data_format::dec_signed}),
+                        ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<float>{0.0F, 33, ::verilator_utils::data_format::real_float()}),
+                        ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<double>{0.0, 65, ::verilator_utils::data_format::real_double()}),
+                        ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<bool>{false, 9, ::verilator_utils::data_format::boolean}),
+                        ::verilator_utils::assertion_error);
+
+        ::VlWide<2> two_words{};
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<::VlWide<2>>{two_words, 65, ::verilator_utils::data_format::hex}),
+                        ::verilator_utils::assertion_error);
+        ::VlWide<3> three_words{};
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<::VlWide<3>>{three_words, 97, ::verilator_utils::data_format::hex}),
+                        ::verilator_utils::assertion_error);
+
+        // 边界值：宽度恰好等于存储位宽仍然合法
+        CHECK_EQ(::verilator_utils::format_wrapper<::std::uint64_t>{0u, 64, ::verilator_utils::data_format::hex}.width(), 64u);
+        CHECK_EQ(::verilator_utils::format_wrapper<float>{0.0F, 32, ::verilator_utils::data_format::real_float()}.width(), 32u);
+        CHECK_EQ(::verilator_utils::format_wrapper<::VlWide<3>>{three_words, 96, ::verilator_utils::data_format::hex}.width(),
+                 96u);
+
+        // 打包格式构造路径同样执行宽度检查
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<::std::uint64_t>{
+                            0u,
+                            {65, ::verilator_utils::data_format::hex}
+        }),
+                        ::verilator_utils::assertion_error);
+
+        // 错误消息携带宽度和上限
+        try
+        {
+            ::verilator_utils::format_wrapper<::std::uint64_t> invalid{0u, 65, ::verilator_utils::data_format::hex};
+            FAIL("expected assertion_error for oversized width"sv);
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "数据宽度65超出上限64"sv);
+        }
+    }
+
+    TEST_CASE("bit slice rejects index exceeding storage capacity")
+    {
+        ::CData cdata{0u};
+        ::SData sdata{0u};
+        ::IData idata{0u};
+        ::QData qdata{0u};
+
+        // 位索引必须严格小于 value_type 的存储位宽
+        CHECK_THROWS_AS((::verilator_utils::bit_slice<::CData>{cdata, 8}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::bit_slice<::SData>{sdata, 16}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::bit_slice<::IData>{idata, 32}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::bit_slice<::QData>{qdata, 64}), ::verilator_utils::assertion_error);
+
+        ::VlWide<2> wide_data{};
+        CHECK_THROWS_AS((::verilator_utils::bit_slice<::VlWide<2>>{wide_data, 64}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::bit_slice<::VlWide<2>>{wide_data, 1024}), ::verilator_utils::assertion_error);
+
+        // 边界值：最大合法位索引仍然可以构造和读写
+        ::verilator_utils::bit_slice<::CData> highest_cdata_bit{cdata, 7};
+        CHECK_EQ(static_cast<::std::uint64_t>(highest_cdata_bit), 0u);
+        highest_cdata_bit = 1;
+        CHECK_EQ(cdata, 0x80u);
+        ::verilator_utils::bit_slice<::VlWide<2>> highest_wide_bit{wide_data, 63};
+        CHECK_EQ(static_cast<::std::uint64_t>(highest_wide_bit), 0u);
+
+        // 错误消息携带位索引和上限
+        try
+        {
+            ::CData data{0u};
+            ::verilator_utils::bit_slice<::CData> invalid{data, 8};
+            FAIL("expected assertion_error for out of range bit index"sv);
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "位索引8超出上限8"sv);
+        }
+    }
+
+    TEST_CASE("vector slice rejects upper bound exceeding storage capacity")
+    {
+        ::CData cdata{0u};
+        ::QData qdata{0u};
+
+        // 切片上界必须严格小于 value_type 的存储位宽
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::CData>{cdata, 8, 0}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::CData>{cdata, 64, 0}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::QData>{qdata, 64, 0}), ::verilator_utils::assertion_error);
+
+        ::VlWide<3> wide_data{};
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::VlWide<3>>{wide_data, 96, 0}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::VlWide<3>>{wide_data, 1024, 0}), ::verilator_utils::assertion_error);
+
+        // 边界值：上界恰好为存储位宽减一时仍然合法
+        ::verilator_utils::vector_slice<::CData> full_cdata{cdata, 7, 0};
+        CHECK_EQ(full_cdata.width(), 8u);
+        CHECK_EQ(static_cast<::std::uint64_t>(full_cdata), 0u);
+        ::verilator_utils::vector_slice<::VlWide<3>> full_wide{wide_data, 95, 0};
+        CHECK_EQ(full_wide.width(), 96u);
+        CHECK_EQ(static_cast<::VlWide<3>>(full_wide) == ::VlWide<3>{}, true);
+
+        // 错误消息携带切片上界和上限
+        try
+        {
+            ::CData data{0u};
+            ::verilator_utils::vector_slice<::CData> invalid{data, 8, 0};
+            FAIL("expected assertion_error for out of range slice upper bound"sv);
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "切片上界8超出上限8"sv);
+        }
+    }
 }
