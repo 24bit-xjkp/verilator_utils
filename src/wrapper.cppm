@@ -47,6 +47,9 @@ export namespace verilator_utils
                                  ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             underlying_value{value}, data_width{width}, data_format{::std::move(format)}
         {
+            using namespace ::std::string_view_literals;
+            constexpr static auto max{sizeof(value_type) * ::std::numeric_limits<::std::uint8_t>::digits};
+            VU_CHECK(width <= max, "数据宽度{}超出上限{}"sv, width, max);
             check_format();
             check_value();
         }
@@ -355,7 +358,12 @@ export namespace verilator_utils
                            ::std::size_t index,
                            ::verilator_utils::data_format::format format = ::verilator_utils::data_format::dec_unsigned) :
             data{data}, index{index}, data_format{::std::move(format)}
-        { check_format(); }
+        {
+            using namespace ::std::string_view_literals;
+            constexpr static auto max{sizeof(value_type) * ::std::numeric_limits<::std::uint8_t>::digits};
+            VU_CHECK(index < max, "位索引{}超出上限{}"sv, index, max);
+            check_format();
+        }
 
         /**
          * @brief 从数据引用的最低位构造一个位切片对象
@@ -590,7 +598,9 @@ export namespace verilator_utils
             data{data}, left_bound{left_bound_index}, right_bound{right_bound_index}, data_format{::std::move(format)}
         {
             using namespace ::std::string_view_literals;
+            constexpr static auto max{sizeof(value_type) * ::std::numeric_limits<::std::uint8_t>::digits};
             VU_CHECK(left_bound >= right_bound, "切片上界{}不能小于下界{}"sv, left_bound, right_bound);
+            VU_CHECK(left_bound_index < max, "切片上界{}超出上限{}"sv, left_bound_index, max);
             ::verilator_utils::data_format::check_format(data_format, width());
         }
 
