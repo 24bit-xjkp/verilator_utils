@@ -66,6 +66,80 @@ namespace verilator_utils::detail
         constexpr inline auto yellow{"\033[33m"sv};
         constexpr inline auto red{"\033[31m"sv};
     }  // namespace assertion_color
+
+    /**
+     * @brief 组合断言失败消息和源代码位置为异常描述字符串
+     *
+     * 根据全局颜色配置和标准错误输出是否为控制台自适应用色：
+     * 控制台默认使用彩色输出，非控制台默认不使用彩色输出，
+     * 也可通过set_assertion_color_config强制启用或禁用
+     * @param message 断言失败消息
+     * @param location 源代码位置
+     * @param trace 栈回溯信息
+     * @return 异常描述字符串
+     */
+    ::std::string compose_assertion_message(::std::string_view message,
+                                            const ::std::source_location& location,
+                                            const ::verilator_utils::trace::stacktrace& trace)
+    {
+        using namespace ::std::string_view_literals;
+        const auto use_colors{::verilator_utils::detail::should_colorize_assertion_message()};
+        if(use_colors)
+        {
+            return ::std::format("At {}{}:{}:{}{}: {}{}{}: {}{}{}\n{}"sv,
+                                 assertion_color::cyan,
+                                 location.file_name(),
+                                 location.line(),
+                                 location.column(),
+                                 assertion_color::reset,
+                                 assertion_color::yellow,
+                                 location.function_name(),
+                                 assertion_color::reset,
+                                 assertion_color::red,
+                                 message,
+                                 assertion_color::reset,
+                                 trace.to_string(true));
+        }
+        return ::std::format("At {}:{}:{}: {}: {}\n{}"sv,
+                             location.file_name(),
+                             location.line(),
+                             location.column(),
+                             location.function_name(),
+                             message,
+                             trace.to_string(false));
+    }
+
+    /**
+     * @brief 生成断言失败时的调用栈
+     *
+     * 生成调用栈并过滤掉断言机制自身的栈帧，使调用栈从断言调用处开始
+     * @return 过滤后的调用栈
+     */
+    ::verilator_utils::trace::stacktrace generate_assertion_trace() noexcept
+    {
+        using namespace ::std::string_view_literals;
+        try
+        {
+            auto trace{::verilator_utils::trace::generate_trace()};
+            constexpr static ::std::array internal_names{
+                "cpptrace::"sv,
+                "verilator_utils::assertion_error"sv,
+                "verilator_utils::detail::assert_fail"sv,
+                "verilator_utils::detail::generate_assertion_trace"sv,
+                "verilator_utils::check"sv,
+            };
+            auto erase_begin{::std::ranges::find_if(trace.frames, [](const ::verilator_utils::trace::stacktrace_frame& frame) {
+                return ::std::ranges::none_of(internal_names,
+                                              [&frame](::std::string_view name) { return frame.symbol.contains(name); });
+            })};
+            trace.frames.erase(trace.frames.begin(), erase_begin);
+            return trace;
+        }
+        catch(...)
+        {
+            return ::verilator_utils::trace::stacktrace{};
+        }
+    }
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
@@ -85,84 +159,6 @@ export namespace verilator_utils
      */
     void set_assertion_color_config(::verilator_utils::detail::assertion_color_config_t config) noexcept
     { ::verilator_utils::detail::assertion_color_config = config; }
-
-    namespace detail
-    {
-        /**
-         * @brief 组合断言失败消息和源代码位置为异常描述字符串
-         *
-         * 根据全局颜色配置和标准错误输出是否为控制台自适应用色：
-         * 控制台默认使用彩色输出，非控制台默认不使用彩色输出，
-         * 也可通过set_assertion_color_config强制启用或禁用
-         * @param message 断言失败消息
-         * @param location 源代码位置
-         * @param trace 栈回溯信息
-         * @return 异常描述字符串
-         */
-        inline ::std::string compose_assertion_message(::std::string_view message,
-                                                       const ::std::source_location& location,
-                                                       const ::verilator_utils::trace::stacktrace& trace)
-        {
-            using namespace ::std::string_view_literals;
-            const auto use_colors{::verilator_utils::detail::should_colorize_assertion_message()};
-            if(use_colors)
-            {
-                return ::std::format("At {}{}:{}:{}{}: {}{}{}: {}{}{}\n{}"sv,
-                                     assertion_color::cyan,
-                                     location.file_name(),
-                                     location.line(),
-                                     location.column(),
-                                     assertion_color::reset,
-                                     assertion_color::yellow,
-                                     location.function_name(),
-                                     assertion_color::reset,
-                                     assertion_color::red,
-                                     message,
-                                     assertion_color::reset,
-                                     trace.to_string(true));
-            }
-            return ::std::format("At {}:{}:{}: {}: {}\n{}"sv,
-                                 location.file_name(),
-                                 location.line(),
-                                 location.column(),
-                                 location.function_name(),
-                                 message,
-                                 trace.to_string(false));
-        }
-
-        /**
-         * @brief 生成断言失败时的调用栈
-         *
-         * 生成调用栈并过滤掉断言机制自身的栈帧，使调用栈从断言调用处开始
-         * @return 过滤后的调用栈
-         */
-        inline ::verilator_utils::trace::stacktrace generate_assertion_trace() noexcept
-        {
-            using namespace ::std::string_view_literals;
-            try
-            {
-                auto trace{::verilator_utils::trace::generate_trace()};
-                constexpr static ::std::array internal_names{
-                    "cpptrace::"sv,
-                    "verilator_utils::assertion_error"sv,
-                    "verilator_utils::detail::assert_fail"sv,
-                    "verilator_utils::detail::generate_assertion_trace"sv,
-                    "verilator_utils::check"sv,
-                };
-                auto erase_begin{
-                    ::std::ranges::find_if(trace.frames, [](const ::verilator_utils::trace::stacktrace_frame& frame) {
-                        return ::std::ranges::none_of(internal_names,
-                                                      [&frame](::std::string_view name) { return frame.symbol.contains(name); });
-                    })};
-                trace.frames.erase(trace.frames.begin(), erase_begin);
-                return trace;
-            }
-            catch(...)
-            {
-                return ::verilator_utils::trace::stacktrace{};
-            }
-        }
-    }  // namespace detail
 
     /**
      * @brief 断言失败异常
@@ -230,52 +226,55 @@ export namespace verilator_utils
         [[nodiscard]] const char* what() const noexcept override { return composed_message.c_str(); }
     };
 
-    namespace detail
+    /**
+     * @brief 常量求值语境中的断言失败异常
+     *
+     * 断言函数在常量求值语境中失败时抛出该异常，使常量求值失败并产生编译错误
+     * @note 该异常只能在常量求值语境中被捕获
+     */
+    struct constexpr_assertion_error
     {
-        /**
-         * @brief 常量求值语境中的断言失败异常
-         *
-         * 断言函数在常量求值语境中失败时抛出该异常，使常量求值失败并产生编译错误
-         * @note 该异常只能在常量求值语境中被捕获
-         */
-        struct constexpr_assertion_failure
-        {
-        };
+    };
+}  // namespace verilator_utils
 
-        /**
-         * @brief 断言失败处理函数，无自定义消息
-         *
-         * @param location 断言失败的源代码位置
-         */
-        [[noreturn]] constexpr void assert_fail(::std::source_location location)
+namespace verilator_utils::detail
+{
+    /**
+     * @brief 断言失败处理函数，无自定义消息
+     *
+     * @param location 断言失败的源代码位置
+     */
+    [[noreturn]] constexpr void assert_fail(::std::source_location location)
+    {
+        if consteval { throw ::verilator_utils::constexpr_assertion_error{}; }
+        else
         {
-            if consteval { throw ::verilator_utils::detail::constexpr_assertion_failure{}; }
-            else
-            {
-                throw ::verilator_utils::assertion_error{"断言失败", location};
-            }
+            throw ::verilator_utils::assertion_error{"断言失败", location};
         }
+    }
 
-        /**
-         * @brief 断言失败处理函数，携带格式化消息
-         *
-         * @tparam args_t 格式化参数类型
-         * @param location 断言失败的源代码位置
-         * @param fmt 格式化字符串
-         * @param args 格式化参数
-         */
-        template <typename... args_t>
-        [[noreturn]] constexpr void
-            assert_fail(::std::source_location location, ::std::format_string<args_t...> fmt, args_t&&... args)
+    /**
+     * @brief 断言失败处理函数，携带格式化消息
+     *
+     * @tparam args_t 格式化参数类型
+     * @param location 断言失败的源代码位置
+     * @param fmt 格式化字符串
+     * @param args 格式化参数
+     */
+    template <typename... args_t>
+    [[noreturn]] constexpr void
+        assert_fail(::std::source_location location, ::std::format_string<args_t...> fmt, args_t&&... args)
+    {
+        if consteval { throw ::verilator_utils::constexpr_assertion_error{}; }
+        else
         {
-            if consteval { throw ::verilator_utils::detail::constexpr_assertion_failure{}; }
-            else
-            {
-                throw ::verilator_utils::assertion_error{::std::format(fmt, ::std::forward<args_t>(args)...), location};
-            }
+            throw ::verilator_utils::assertion_error{::std::format(fmt, ::std::forward<args_t>(args)...), location};
         }
-    }  // namespace detail
+    }
+}  // namespace verilator_utils::detail
 
+export namespace verilator_utils
+{
     /**
      * @brief 断言检查函数
      *

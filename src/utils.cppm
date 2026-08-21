@@ -543,7 +543,10 @@ namespace verilator_utils
                                                                                           ::std::string_view message)
         {
             auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
-            if(iter != ctx.end() && *iter != '}') { throw ::std::format_error{::std::string{message}}; }
+            if(iter != ctx.end() && *iter != '}')
+            {
+                throw ::std::format_error{::std::string{message}};
+            }
             return iter;
         }
 
@@ -1353,7 +1356,10 @@ namespace verilator_utils
             /// 布尔型
             constexpr ::verilator_utils::data_format::format boolean{::verilator_utils::data_format::boolean_t{}};
         }  // namespace interface
+    }  // namespace data_format
 
+    namespace data_format
+    {
         /**
          * @brief 检查数据格式是否合法
          *
