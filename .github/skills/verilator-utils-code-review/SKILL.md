@@ -47,6 +47,14 @@ Do not report formatting, naming, comment language, preferred assertion spelling
 - Check module purview, global module fragment includes, `extern "C++"` includes, and dependency imports for ODR or compiler-portability risks.
 - Treat API compatibility deliberately: deleted copy/move operations, changed constraints, return/reference categories, exception behavior, and ownership transfer can break existing tests or downstream users.
 - Verify concepts against supported Verilator scalar and wide types, including cv/ref behavior when the contract is intentionally strict.
+- In module interface files (`src/*.cppm`), `using namespace` directives must stay at block (local) scope; namespace-scope `using namespace` is reserved for internal files such as tests where it may simplify code. The only namespace-scope exception in interface files is the deliberate `export using namespace ::verilator_utils::data_format::interface;` re-export of the module's own public inline namespace.
+- Prefer `::std::string_view` literals (`"..."sv`) over C-style string literals for `::std::format`/`::std::format_to` format strings, `VU_CHECK` messages, and trace file names, enabling them with a local `using namespace ::std::string_view_literals;` at the point of use.
+
+### String Formatting and string_view Literals
+- All format strings and assertion messages use `"..."sv` string_view literals; check every `::std::format`/`::std::format_to` call and `VU_CHECK` message for the `sv` suffix, since a missing suffix materializes the string and defeats the convention.
+- Enable the literal operators with `using namespace ::std::string_view_literals;` inside the function body at the point of use; never hoist it to namespace scope in a module interface file.
+- Keep message parameters of internal formatter helpers as `::std::string_view` (e.g. `parse_format_string_without_flags`), converting with `::std::string{message}` only where an API requires a materialized string, such as `::std::format_error`.
+- When a formatted result feeds a C-style API like `tracer->open`, format with a `sv` literal and pass the temporary's `.data()`.
 
 ### Preconditions and Error Behavior
 - Framework runtime validation must not depend on doctest assertions such as `REQUIRE_*`; those can abort the test process and couple production behavior to the test framework.
@@ -184,4 +192,6 @@ If there are no actionable findings, explicitly state that no concrete defects w
 - Hand-written RTL tests prove sampling, reset, latency, joining, and finish semantics.
 - Agent-generated tests have independently verified expectations and no obvious copy/paste coverage holes.
 - xmake filters, suite names, and requested test targets execute the intended cases.
+- Format strings and assertion messages use `"..."sv` string_view literals with `using namespace ::std::string_view_literals;` kept at block scope in interface files.
+- `using namespace` appears at namespace scope only in internal files (tests); interface files confine it to block scope apart from the sanctioned `export using namespace` re-export.
 - Findings are concrete, prioritized, changed-code-specific, and free of style-only noise.

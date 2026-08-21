@@ -40,6 +40,8 @@ argument-hint: 'Describe the component or behavior to test'
 - Split behavior into small `TEST_CASE`s with precise English names.
 - Use `static_assert` for compile-time concepts, type aliases, and module API contracts.
 - Preserve repository style: global names use `::`, imports use C++ modules (`import verilator_utils; import std;`), and local constants prefer brace initialization.
+- Compare or format strings with `string_view` literals: `CHECK_EQ(scheduler.time_in_string(), "0ns"sv)`, `CHECK_EQ(::std::format("{}"sv, value), "[10, 20]"sv)`.
+- Test files are internal code, so `using namespace` may appear at global or namespace scope to simplify code (e.g. `using namespace ::verilator_utils::verilator;` at file scope, `using namespace verilator_utils;` inside a suite). Module interface files (`src/*.cppm`) must keep every `using namespace` at block scope.
 
 ## Edge-Case Checklist
 - Numeric conversions: test zero, minimum non-zero value, fractional truncation, and unit-boundary conversions.
@@ -65,6 +67,6 @@ argument-hint: 'Describe the component or behavior to test'
   - Any required Verilator headers such as `#include <verilated.h>`
   - `import verilator_utils;`
   - `import std;`
-- Use `using namespace ::verilator_utils::literals;` inside a suite when testing time literals.
-- For string formatting checks, compare exact strings with `CHECK_EQ(value.to_string(), "expected")`.
+- Use `using namespace ::verilator_utils::literals;` inside a suite when testing time literals; `using namespace ::std::string_view_literals;` may also be declared at suite scope for `"..."sv` comparisons.
+- For string formatting checks, compare exact strings with `CHECK_EQ(value.to_string(), "expected"sv)` or `CHECK_EQ(::std::format("{}"sv, value), "expected"sv)`.
 - For wide Verilator data, call helpers directly when the public wrapper only stores scalar values.
