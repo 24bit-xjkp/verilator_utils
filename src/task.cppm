@@ -1385,8 +1385,9 @@ export namespace verilator_utils
     struct event
     {
     private:
+        using pair_t = ::verilator_utils::detail::coroutine_pair;
         /// 等待队列类型，考虑测试激励中协程的数量不会很多，使用vector而不是deqeue
-        using wait_queue_t = ::std::vector<::verilator_utils::detail::coroutine_pair>;
+        using wait_queue_t = ::std::vector<pair_t>;
         /// 等待队列
         wait_queue_t wait_queue{};
 
@@ -1405,11 +1406,11 @@ export namespace verilator_utils
 
             void await_resume()
             {
-                if(!queue.empty())
-                {
-                    for(auto&& pair: queue) { scheduler->register_ready(pair); }
-                    queue.clear();
-                }
+                ::std::ranges::for_each(queue, [this](const pair_t& pair) {
+                    scheduler->register_ready(pair);
+                    scheduler->remove_suspend(pair);
+                });
+                queue.clear();
             }
         };
 
@@ -1431,6 +1432,7 @@ export namespace verilator_utils
                 if(!queue.empty())
                 {
                     scheduler->register_ready(queue.front());
+                    scheduler->remove_suspend(queue.front());
                     queue.erase(queue.begin());
                 }
             }
@@ -1440,20 +1442,27 @@ export namespace verilator_utils
          * @brief 实现挂起功能的可等待体
          *
          */
-        struct suspend_awaiter
+        struct suspend_awaiter : ::std::suspend_always
         {
             wait_queue_t& queue;
 
-            static bool await_ready() noexcept { return false; }
-
             template <::verilator_utils::is_coroutine_promise promise_type>
             void await_suspend(::std::coroutine_handle<promise_type> handle)
-            { queue.emplace_back(handle); }
-
-            static void await_resume() noexcept {}
+            {
+                ::verilator_utils::eval_scheduler* scheduler{handle.promise().check_scheduler()};
+                queue.emplace_back(handle);
+                scheduler->register_suspend(handle);
+            }
         };
 
     public:
+        event() noexcept = default;
+        event(const event&) noexcept = delete;
+        event& operator= (const event&) noexcept = delete;
+        event(event&&) noexcept = delete;
+        event& operator= (event&&) noexcept = delete;
+        ~event() noexcept = default;
+
         /**
          * @brief 唤醒所有等待此事件的协程
          *
@@ -1481,7 +1490,10 @@ export namespace verilator_utils
          * @param self 事件对象
          * @return 可等待体
          */
-        [[nodiscard]] friend suspend_awaiter operator co_await(event& self) noexcept { return suspend_awaiter{self.wait_queue}; }
+        [[nodiscard]] friend suspend_awaiter operator co_await(event& self) noexcept
+        {
+            return suspend_awaiter{.queue{self.wait_queue}};
+        }
     };
 
     /**
@@ -1515,6 +1527,12 @@ export namespace verilator_utils
         {
             if(max_count != 0) { queue.reserve(max_count); }
         }
+
+        mailbox(const mailbox&) noexcept = delete;
+        mailbox& operator= (const mailbox&) noexcept = delete;
+        mailbox(mailbox&&) noexcept = delete;
+        mailbox& operator= (mailbox&&) noexcept = delete;
+        ~mailbox() noexcept = default;
 
         /**
          * @brief 获取邮箱内元素数量
@@ -1630,6 +1648,12 @@ export namespace verilator_utils
          * @param initial_count 计数器初值
          */
         explicit semaphore(::std::size_t initial_count = 0) noexcept : count{initial_count} {}
+
+        semaphore(const semaphore&) noexcept = delete;
+        semaphore& operator= (const semaphore&) noexcept = delete;
+        semaphore(semaphore&&) noexcept = delete;
+        semaphore& operator= (semaphore&&) noexcept = delete;
+        ~semaphore() noexcept = default;
 
         /**
          * @brief 增加内部计数器

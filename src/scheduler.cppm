@@ -264,15 +264,15 @@ namespace verilator_utils::detail
         template <::verilator_utils::is_coroutine_promise promise_type, typename type>
         decltype(auto) await_transform(this promise_type& self, type&& awaiter)
         {
-            if constexpr(::std::derived_from<type, ::verilator_utils::detail::no_suspend_awaiter>)
+            if constexpr(::std::derived_from<::std::remove_cvref_t<type>, ::verilator_utils::detail::no_suspend_awaiter>)
             {
                 // 通过set_handle向可等待体传递协程柄
                 awaiter.set_handle(::std::coroutine_handle<promise_type>::from_promise(self));
                 return ::std::forward<type>(awaiter);
             }
-            else if constexpr(::std::same_as<::std::remove_cvref_t<decltype(awaiter)>, ::std::suspend_never>)
+            else if constexpr(::std::derived_from<::std::remove_cvref_t<type>, ::std::suspend_never>)
             {
-                return ::std::suspend_never{};
+                return ::std::forward<type>(awaiter);
             }
             else if constexpr(requires() {
                                   { ::std::forward<type>(awaiter).await_ready() } -> ::std::same_as<bool>;
@@ -736,6 +736,18 @@ namespace verilator_utils::detail
         {
         }
 
+        friend bool operator== (const coroutine_pair& lhs, const coroutine_pair& rhs) noexcept
+        {
+            // 由于协程柄和承诺指针指代同一个协程，因此比较一个即可
+            return lhs.handle.address() == rhs.handle.address();
+        }
+
+        friend ::std::strong_ordering operator<=> (const coroutine_pair& lhs, const coroutine_pair& rhs) noexcept
+        {
+            // 由于协程柄和承诺指针指代同一个协程，因此比较一个即可
+            return lhs.handle.address() <=> rhs.handle.address();
+        }
+
         // NOLINTEND(*-explicit-constructor)
     };
 
@@ -784,6 +796,13 @@ namespace verilator_utils::detail
 
     /// 就绪队列类型
     using ready_queue_t = ::std::vector<::verilator_utils::detail::coroutine_pair>;
+
+    /**
+     * @brief 挂起队列类型
+     *
+     * 考虑测试激励厂家，调度器内协程数量不太多，使用flat_map以提高cache命中率
+     */
+    using suspend_queue_t = ::std::flat_map<::verilator_utils::detail::coroutine_pair, ::std::size_t>;
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
@@ -841,6 +860,8 @@ export namespace verilator_utils
         ::verilator_utils::detail::wait_queue_t wait_queue{};
         /// 事件队列
         ::verilator_utils::detail::event_queue_t event_queue{};
+        /// 挂起队列
+        ::verilator_utils::detail::suspend_queue_t suspend_queue{};
         /// 就绪队列
         ::verilator_utils::detail::ready_queue_t ready_queue{};
 
@@ -1127,6 +1148,9 @@ export namespace verilator_utils
             for(auto&& [_, pair]: event_queue) { do_destroy(pair); }
             event_queue.clear();
 
+            for(auto pair: suspend_queue.keys()) { do_destroy(pair); }
+            suspend_queue.clear();
+
             for(auto i{0zu}; i != ready_queue.size(); ++i) { do_destroy(ready_queue[i]); }
             ready_queue.clear();
         }
@@ -1233,6 +1257,30 @@ export namespace verilator_utils
             {
                 ::std::terminate();
             }
+        }
+
+        /**
+         * @brief 向挂起队列中注册一个协程
+         *
+         * 挂起队列用于跟踪挂起在调度器外的协程
+         * @param pair 协程状态对
+         */
+        void register_suspend(::verilator_utils::detail::coroutine_pair pair)
+        {
+            if(auto&& [iter, success]{suspend_queue.emplace(pair, 1zu)}; !success) { ++iter->second; }
+        }
+
+        /**
+         * @brief 从挂起队列中删除协程
+         *
+         * 挂起队列用于跟踪挂起在调度器外的协程
+         * @param pair 协程状态对
+         */
+        void remove_suspend(::verilator_utils::detail::coroutine_pair pair)
+        {
+            auto iter{suspend_queue.find(pair)};
+            VU_CHECK(iter != suspend_queue.end(), "要取消的协程在挂起队列中不存在，协程柄为: {}", pair.handle.address());
+            if(--iter->second == 0) { suspend_queue.erase(iter); }
         }
 
         /**
