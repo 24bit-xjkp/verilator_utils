@@ -65,6 +65,19 @@ namespace
         return location.line() == 0u && location.column() == 0u &&
                (location.file_name() == nullptr || location.file_name()[0] == '\0');
     }
+
+    /**
+     * @brief 协程帧析构计数器
+     *
+     * 作为协程体中的局部对象使用：协程帧被销毁时，帧内局部对象的析构函数会执行。
+     * 通过统计析构次数即可观察调度器在析构时是否回收了挂起在事件上的协程帧
+     */
+    struct frame_destruction_counter // NOLINT(cppcoreguidelines-special-member-functions)
+    {
+        ::std::size_t* count;
+
+        ~frame_destruction_counter() noexcept { ++*count; }
+    };
 }  // namespace
 
 TEST_SUITE("verilator_utils/scheduler")
@@ -1061,6 +1074,14 @@ TEST_SUITE("verilator_utils/scheduler")
             pool.add_task(just_wait());
             co_await just_wait();
         }());
+        scheduler.add_task([] -> ::verilator_utils::task<void> {
+            auto pool{co_await ::verilator_utils::get_spawn_pool()};
+            ::verilator_utils::event event{};
+            const auto subtask{[&] -> ::verilator_utils::task<void> { co_await event; }};
+            pool.add_task(subtask());
+            pool.add_task(subtask());
+            co_await pool.join_all();
+        }());
         scheduler.initial_eval();
     }
 
@@ -1259,5 +1280,323 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::suspended);
         REQUIRE_NE(promise.suspend_location.line(), 0u);
         CHECK_EQ(promise.suspend_location.line(), recorded_line + 1);
+    }
+
+    // --- 事件挂起跟踪与协程帧回收 (suspend_queue) ---
+
+    TEST_CASE("scheduler reclaims a root coroutine suspended on a never-fired event")
+    {
+        ::std::size_t destroyed{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            ::verilator_utils::event event{};
+            const auto waiter_lambda{[&] -> ::verilator_utils::task<void> {
+                frame_destruction_counter counter{&destroyed};
+                co_await event;
+            }};
+            scheduler.add_task(waiter_lambda());
+            // 事件永远不会被通知，协程挂起在调度器外；仅剩挂起协程时循环应正常终止
+            scheduler.loop_until_finish();
+            CHECK(scheduler.empty());
+        }
+        // 调度器析构时应通过挂起队列回收该协程帧，否则帧随事件一起泄漏
+        CHECK_EQ(destroyed, 1zu);
+    }
+
+    TEST_CASE("scheduler reclaims async tasks suspended on a never-fired event")
+    {
+        ::std::size_t destroyed{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            ::verilator_utils::event event{};
+            auto make_waiter{[&] -> ::verilator_utils::task<void> {
+                frame_destruction_counter counter{&destroyed};
+                co_await event;
+            }};
+
+            // async_task对象先于调度器析构：detach后由调度器的挂起队列兜底回收
+            ::verilator_utils::async_task first{scheduler, make_waiter()};
+            ::verilator_utils::async_task second{scheduler, make_waiter()};
+            scheduler.loop_once();
+            CHECK_FALSE(first.done());
+            CHECK_FALSE(second.done());
+        }
+        CHECK_EQ(destroyed, 2zu);
+    }
+
+    TEST_CASE("scheduler reclaims a pool of subtasks suspended on a never-fired event")
+    {
+        ::std::size_t destroyed{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            const auto parent_lambda{[&] -> ::verilator_utils::task<void> {
+                frame_destruction_counter pool_counter{&destroyed};
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                ::verilator_utils::event event{};
+                const auto subtask{[&] -> ::verilator_utils::task<void> {
+                    frame_destruction_counter subtask_counter{&destroyed};
+                    co_await event;
+                }};
+                pool.add_task(subtask());
+                pool.add_task(subtask());
+                co_await pool.join_all();
+            }};
+            scheduler.add_task(parent_lambda());
+            scheduler.initial_eval();
+        }
+        // 父任务与两个挂起在事件上的子任务都应由调度器回收
+        CHECK_EQ(destroyed, 3zu);
+    }
+
+    TEST_CASE("scheduler reclaims an event-suspended chain without double-destroying external subtasks")
+    {
+        ::std::size_t destroyed{};
+        ::verilator_utils::event event{};
+        const auto child_lambda{[&] -> ::verilator_utils::task<void> {
+            frame_destruction_counter counter{&destroyed};
+            co_await event;
+        }};
+        auto child{child_lambda()};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            const auto parent{[&] -> ::verilator_utils::task<void> {
+                frame_destruction_counter counter{&destroyed};
+                co_await child;
+            }};
+            scheduler.add_task(parent());
+            scheduler.initial_eval();
+        }
+        // 调度器只销毁链路中的根协程；外部持有的子协程仍存活，由task对象负责销毁
+        CHECK_EQ(destroyed, 1zu);
+        CHECK_FALSE(child.done());
+        child.destroy();
+        CHECK_EQ(destroyed, 2zu);
+    }
+
+    TEST_CASE("scheduler reclaims coroutines blocked in mailbox events")
+    {
+        ::std::size_t destroyed{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            ::verilator_utils::mailbox<int> mailbox{};
+            const auto waiter_lambda{[&] -> ::verilator_utils::task<void> {
+                frame_destruction_counter counter{&destroyed};
+                [[maybe_unused]] auto value{co_await mailbox.get()};
+            }};
+            auto task{waiter_lambda()};
+            scheduler.add_task(::std::move(task));
+            scheduler.initial_eval();
+        }
+        CHECK_EQ(destroyed, 1zu);
+    }
+
+    TEST_CASE("notify_all removes every waiter from suspend tracking")
+    {
+        ::std::size_t destroyed{};
+        ::std::size_t wake_count{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            ::verilator_utils::event event{};
+
+            auto make_waiter{[&]-> ::verilator_utils::task<void> {
+                frame_destruction_counter counter{&destroyed};
+                co_await event;
+                ++wake_count;
+            }};
+            ::verilator_utils::async_task first{scheduler, make_waiter()};
+            ::verilator_utils::async_task second{scheduler, make_waiter()};
+            scheduler.loop_once();
+            CHECK_FALSE(first.done());
+            CHECK_FALSE(second.done());
+            CHECK_EQ(wake_count, 0u);
+
+            auto notifier{[&]-> ::verilator_utils::task<void> { co_await event.notify_all(); }};
+            ::verilator_utils::async_task notify{scheduler, notifier()};
+            scheduler.loop_once();
+            CHECK(notify.done());
+            CHECK(first.done());
+            CHECK(second.done());
+            CHECK_EQ(wake_count, 2zu);
+
+            notify.get_promise().rethrow_exception();
+            first.get_promise().rethrow_exception();
+            second.get_promise().rethrow_exception();
+        }
+        // 通知时挂起条目被清除，协程帧由async_task正常回收，析构调度器时不会二次销毁
+        CHECK_EQ(destroyed, 2zu);
+    }
+
+    TEST_CASE("notify_one removes only the notified waiter from suspend tracking")
+    {
+        ::std::size_t destroyed{};
+        ::std::vector<int> wake_order;
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            ::verilator_utils::event event{};
+
+            auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+                frame_destruction_counter counter{&destroyed};
+                co_await event;
+                wake_order.push_back(id);
+            }};
+            ::verilator_utils::async_task first{scheduler, make_waiter(1)};
+            ::verilator_utils::async_task second{scheduler, make_waiter(2)};
+            scheduler.loop_once();
+            CHECK_FALSE(first.done());
+            CHECK_FALSE(second.done());
+
+            auto notifier{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_one(); }};
+            ::verilator_utils::async_task notify{scheduler, notifier()};
+            scheduler.loop_once();
+            CHECK(notify.done());
+            CHECK(first.done());
+            CHECK_FALSE(second.done());
+            CHECK_EQ(wake_order, ::std::vector<int>{1});
+
+            notify.get_promise().rethrow_exception();
+            first.get_promise().rethrow_exception();
+        }
+        // 第二个等待者仍由挂起队列跟踪，留待析构调度器时回收
+        CHECK_EQ(destroyed, 2zu);
+    }
+
+    TEST_CASE("repeated event suspension and notification keeps suspend tracking balanced")
+    {
+        ::std::size_t destroyed{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            ::verilator_utils::event event{};
+            ::std::size_t wake_count{};
+
+            auto waiter{[&](this auto) -> ::verilator_utils::task<void> {
+                frame_destruction_counter counter{&destroyed};
+                for(::std::size_t i{}; i != 3; ++i)
+                {
+                    co_await event;
+                    ++wake_count;
+                }
+            }};
+            ::verilator_utils::async_task task{scheduler, waiter()};
+            scheduler.loop_once();
+            CHECK_FALSE(task.done());
+            CHECK_EQ(wake_count, 0u);
+
+            for(::std::size_t i{1}; i != 4; ++i)
+            {
+                auto notifier{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_all(); }};
+                ::verilator_utils::async_task notify{scheduler, notifier()};
+                scheduler.loop_once();
+                CHECK_EQ(wake_count, i);
+                notify.get_promise().rethrow_exception();
+            }
+            CHECK(task.done());
+            task.get_promise().rethrow_exception();
+        }
+        // 3次挂起对应3次通知，挂起条目均被清除，析构调度器时不会二次销毁
+        CHECK_EQ(destroyed, 1zu);
+    }
+
+    TEST_CASE("register_suspend and remove_suspend track suspension counts")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        const auto task_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
+        auto task{task_lambda()};
+        auto handle{task.get_handle()};
+        ::verilator_utils::detail::coroutine_pair pair{handle};
+
+        // 未注册的协程不能移除
+        CHECK_THROWS_AS(scheduler.remove_suspend(pair), ::verilator_utils::assertion_error);
+
+        // 同一协程可注册多次，计数归零后条目才被移除
+        scheduler.register_suspend(pair);
+        scheduler.register_suspend(pair);
+        scheduler.remove_suspend(pair);
+        scheduler.remove_suspend(pair);
+        CHECK_THROWS_AS(scheduler.remove_suspend(pair), ::verilator_utils::assertion_error);
+
+        // 清除后可重新注册
+        scheduler.register_suspend(pair);
+        scheduler.remove_suspend(pair);
+    }
+
+    TEST_CASE("suspend tracking entry kept after partial removal is reclaimed at destruction")
+    {
+        ::std::size_t destroyed{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            ::verilator_utils::event event{};
+            const auto waiter_lambda{[&] -> ::verilator_utils::task<void> {
+                frame_destruction_counter counter{&destroyed};
+                co_await event;
+            }};
+            auto task{waiter_lambda()};
+            auto handle{task.get_handle()};
+            scheduler.add_task(::std::move(task));
+            scheduler.initial_eval();
+
+            // 挂起注册计数为1；再注册并移除一次后计数仍为1，条目应保留
+            scheduler.register_suspend(handle);
+            scheduler.remove_suspend(handle);
+        }
+        // 条目保留 → 析构调度器时帧被回收恰好一次
+        CHECK_EQ(destroyed, 1zu);
+    }
+
+    TEST_CASE("suspending on an event requires a scheduler-bound task")
+    {
+        ::verilator_utils::event event{};
+        const auto waiter_lambda{[&] -> ::verilator_utils::task<void> { co_await event; }};
+        auto task{waiter_lambda()};
+
+        // 任务未绑定调度器时挂起失败：断言异常被存入协程并传播到承诺体
+        task.resume();
+        CHECK(task.done());
+        CHECK(task.get_promise().with_unhandled_exception());
+        CHECK_THROWS_AS(task.get_promise().rethrow_exception(), ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("event, mailbox and semaphore are immobile synchronization primitives")
+    {
+        static_assert(!::std::is_copy_constructible_v<::verilator_utils::event>);
+        static_assert(!::std::is_copy_assignable_v<::verilator_utils::event>);
+        static_assert(!::std::is_move_constructible_v<::verilator_utils::event>);
+        static_assert(!::std::is_move_assignable_v<::verilator_utils::event>);
+        static_assert(!::std::is_copy_constructible_v<::verilator_utils::semaphore>);
+        static_assert(!::std::is_copy_assignable_v<::verilator_utils::semaphore>);
+        static_assert(!::std::is_move_constructible_v<::verilator_utils::semaphore>);
+        static_assert(!::std::is_move_assignable_v<::verilator_utils::semaphore>);
+        static_assert(!::std::is_copy_constructible_v<::verilator_utils::mailbox<int>>);
+        static_assert(!::std::is_copy_assignable_v<::verilator_utils::mailbox<int>>);
+        static_assert(!::std::is_move_constructible_v<::verilator_utils::mailbox<int>>);
+        static_assert(!::std::is_move_assignable_v<::verilator_utils::mailbox<int>>);
+        // 事件不可复制/移动，保证挂起时持有的等待队列引用不会悬垂
+    }
+    TEST_CASE("coroutine_pair compares by coroutine identity")
+    {
+        const auto first_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
+        const auto second_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
+        auto first{first_lambda()};
+        auto second{second_lambda()};
+        ::verilator_utils::detail::coroutine_pair first_pair{first.get_handle()};
+        ::verilator_utils::detail::coroutine_pair first_pair_duplicate{first.get_handle()};
+        ::verilator_utils::detail::coroutine_pair second_pair{second.get_handle()};
+
+        // 同一协程柄构造的状态对相等，不同协程柄不相等
+        CHECK(first_pair == first_pair_duplicate);
+        CHECK(first_pair != second_pair);
+        CHECK_EQ(first_pair <=> first_pair_duplicate, ::std::strong_ordering::equal);
+        // 全序关系与协程柄地址序一致
+        const auto expected_order{first.get_handle().address() < second.get_handle().address()};
+        CHECK_EQ(first_pair < second_pair, expected_order);
     }
 }
