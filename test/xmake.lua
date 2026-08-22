@@ -26,7 +26,7 @@ target_end()
 
 for name, _ in pairs(rtl_verilator_target) do
     target("unit_test_rtl_"..name)
-        set_group("unit_test")
+        set_group("unit_test_rtl")
         add_deps(format("unit_test_rtl_%s_verilator", name), "verilator_utils_main")
         add_packages("zlib", "lz4")
         set_default(false)
