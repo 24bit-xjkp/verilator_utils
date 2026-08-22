@@ -14,6 +14,125 @@ export namespace verilator_utils
     template <typename type>
     concept is_format_wrapper_data_type = ::verilator_utils::is_cpp_underlying_type<type> || ::VlIsVlWide<type>::value;
 
+    template <::verilator_utils::is_format_wrapper_data_type type>
+    struct format_wrapper;
+
+    template <::verilator_utils::is_verilator_data_type type>
+    struct bit_slice;
+
+    template <::verilator_utils::is_verilator_data_type type>
+    struct vector_slice;
+
+    template <::verilator_utils::is_verilator_data_type type, ::std::size_t n>
+        requires (n != 0)
+    struct unpacked_array;
+}  // namespace verilator_utils
+
+namespace verilator_utils::detail
+{
+    template <typename type>
+    constexpr bool is_format_wrapper_impl{false};
+
+    template <::verilator_utils::is_format_wrapper_data_type type>
+    constexpr bool is_format_wrapper_impl<::verilator_utils::format_wrapper<type>>{true};
+
+    template <typename type>
+    constexpr bool is_bit_slice_impl{false};
+
+    template <::verilator_utils::is_verilator_data_type type>
+    constexpr bool is_bit_slice_impl<::verilator_utils::bit_slice<type>>{true};
+
+    template <typename type>
+    constexpr bool is_vector_slice_impl{false};
+
+    template <::verilator_utils::is_verilator_data_type type>
+    constexpr bool is_vector_slice_impl<::verilator_utils::vector_slice<type>>{true};
+
+    template <typename type>
+    constexpr bool is_unpacked_array_impl{false};
+
+    template <typename type, ::std::size_t n>
+    constexpr bool is_unpacked_array_impl<::verilator_utils::unpacked_array<type, n>>{true};
+
+    /**
+     * @brief 检查数据格式是否支持三路比较
+     *
+     * @param format 数据格式
+     */
+    void check_three_way_compare(const ::verilator_utils::format& format)
+    {
+        constexpr static auto bin_index{
+            ::verilator_utils::variant_type_index<::verilator_utils::data_format::bin_t, ::verilator_utils::format>};
+        VU_CHECK(format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
+        VU_CHECK(!::std::holds_alternative<::verilator_utils::data_format::boolean_t>(format),
+                 "布尔型不支持三路比较，只支持相等比较"sv);
+    }
+
+    /**
+     * @brief 在C++基本数据类型间进行三路比较
+     *
+     * @tparam left_type 左操作数类型
+     * @tparam right_type 右操作数类型
+     * @param lhs 左操作数
+     * @param rhs 右操作数
+     * @return 比较结果
+     */
+    template <::verilator_utils::is_cpp_underlying_type left_type, ::verilator_utils::is_cpp_underlying_type right_type>
+    auto three_way_compare_underlying(left_type lhs, right_type rhs) noexcept
+    {
+        // bool不支持三路比较
+        if constexpr(::std::same_as<bool, left_type> || ::std::same_as<bool, right_type>)
+        {
+            ::std::unreachable();
+            return ::std::partial_ordering::unordered;
+        }
+        else if constexpr(::std::integral<left_type> && ::std::integral<right_type>)
+        {
+            if(::std::cmp_less(lhs, rhs)) { return ::std::strong_ordering::less; }
+            if(::std::cmp_greater(lhs, rhs)) { return ::std::strong_ordering::greater; }
+            return ::std::strong_ordering::equivalent;
+        }
+        else
+        {
+            return lhs <=> rhs;
+        }
+    }
+}  // namespace verilator_utils::detail
+
+export namespace verilator_utils
+{
+    /**
+     * @brief 检查类型是否为格式包装器
+     *
+     * @tparam type 要检查的类型
+     */
+    template <typename type>
+    concept is_format_wrapper = ::verilator_utils::detail::is_format_wrapper_impl<type>;
+
+    /**
+     * @brief 检查类型是否为位切片
+     *
+     * @tparam type 要检查的类型
+     */
+    template <typename type>
+    concept is_bit_slice = ::verilator_utils::detail::is_bit_slice_impl<type>;
+
+    /**
+     * @brief 检查类型是否为向量切片
+     *
+     * @tparam type 要检查的类型
+     */
+    template <typename type>
+    concept is_vector_slice = ::verilator_utils::detail::is_vector_slice_impl<type>;
+
+    /**
+     * @brief 检查类型是否为unpacked数组
+     *
+     * @tparam type 要检查的类型
+     */
+    template <typename type>
+    concept is_unpacked_array = ::verilator_utils::detail::is_unpacked_array_impl<type>;
+
     /// 打包储存的格式，包含宽度和数据格式
     using packed_format = ::std::pair<::std::size_t, ::verilator_utils::data_format::format>;
 
@@ -110,7 +229,7 @@ export namespace verilator_utils
          *
          * @return 打包储存的数据，当type为VlWide时返回VlWide，其他时候返回std::uint64_t
          */
-        constexpr to_verilator_t to_verilator() const noexcept
+        [[nodiscard]] constexpr to_verilator_t to_verilator() const noexcept
         {
             if constexpr(is_vl_wide) { return underlying_value; }
             else
@@ -186,10 +305,71 @@ export namespace verilator_utils
             return result;
         }
 
+        /**
+         * @brief 相等运算符
+         *
+         * @param self 要比较的值
+         * @param other 要比较的值
+         * @return 是否相等
+         */
+        template <::verilator_utils::is_format_wrapper_data_type other_type>
+        constexpr friend bool operator== (const format_wrapper& self, const ::verilator_utils::format_wrapper<other_type>& other)
+        {
+            using namespace ::std::string_view_literals;
+            VU_CHECK(self.width() == other.width(), "数据宽度{}和{}不同"sv, self.width(), other.width());
+            // 与三路比较保持一致的数值语义：整型（bool除外）使用std::cmp_equal避免混合符号的原始位比较
+            constexpr static auto equal_values{[](auto lhs, auto rhs) constexpr static noexcept {
+                if constexpr(::std::integral<decltype(lhs)> && ::std::integral<decltype(rhs)> &&
+                             !::std::same_as<bool, ::std::remove_cvref_t<decltype(lhs)>> &&
+                             !::std::same_as<bool, ::std::remove_cvref_t<decltype(rhs)>>)
+                {
+                    return ::std::cmp_equal(lhs, rhs);
+                }
+                else
+                {
+                    return lhs == rhs;
+                }
+            }};
+            constexpr static auto other_is_vl_wide{::VlIsVlWide<other_type>::value};
+            if constexpr(is_vl_wide && other_is_vl_wide)
+            {
+                if consteval { return ::std::ranges::equal(self.value().m_storage, other.value().m_storage); }
+                else
+                {
+                    return self.value() == other.value();
+                }
+            }
+            else if constexpr(!is_vl_wide && !other_is_vl_wide) { return equal_values(self.value(), other.value()); }
+            else if constexpr(!is_vl_wide && other_is_vl_wide) { return equal_values(self.value(), other.vl_wide_to_uint64()); }
+            else
+            {
+                return equal_values(self.vl_wide_to_uint64(), other.value());
+            }
+        }
+
+        /**
+         * @brief 三路比较运算符
+         *
+         * @param self 要比较的值
+         * @param other 要比较的值
+         * @return 比较结果
+         * @note 数据类型为VlWide的format_wrapper只支持十六进制和二进制，因此不能用于三路比较
+         */
+        template <::verilator_utils::is_format_wrapper_data_type other_type>
+            requires (!is_vl_wide && !::VlIsVlWide<other_type>::value)
+        constexpr friend auto operator<=> (const format_wrapper& self, const ::verilator_utils::format_wrapper<other_type>& other)
+        {
+            ::verilator_utils::detail::check_three_way_compare(self.format());
+            ::verilator_utils::detail::check_three_way_compare(other.format());
+            return ::verilator_utils::detail::three_way_compare_underlying(self.value(), other.value());
+        }
+
     private:
         type underlying_value;
         ::std::size_t data_width;
         ::verilator_utils::data_format::format data_format;
+        /// 每个字的位宽
+        constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
 
         /**
          * @brief 检查格式是否合法
@@ -202,7 +382,7 @@ export namespace verilator_utils
             auto is_monostate{::std::holds_alternative<::std::monostate>(data_format)};
             VU_CHECK(!is_monostate, "必须设定数据格式"sv);
 
-            if constexpr(::VlIsVlWide<type>::value)
+            if constexpr(is_vl_wide)
             {
                 constexpr static auto bin_index{::verilator_utils::variant_type_index<::verilator_utils::data_format::bin_t,
                                                                                       ::verilator_utils::data_format::format>};
@@ -335,6 +515,23 @@ export namespace verilator_utils
                 static_assert(false, "未支持的格式");
             }
         }
+
+        template <::verilator_utils::is_format_wrapper_data_type other_type>
+        friend struct format_wrapper;
+
+        /**
+         * @brief 将VlWide转化为std::uint64_t
+         *
+         */
+        [[nodiscard]] constexpr ::std::uint64_t vl_wide_to_uint64() const noexcept
+            requires (is_vl_wide && (type::Words == 1 || type::Words == 2))
+        {
+            if constexpr(type::Words == 1) { return underlying_value.m_storage[0]; }
+            else
+            {
+                return static_cast<::std::uint64_t>(underlying_value.m_storage[1]) << word_width | underlying_value.m_storage[0];
+            }
+        }
     };
 
     /**
@@ -434,13 +631,14 @@ export namespace verilator_utils
         bit_slice& operator= (const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
             using namespace ::std::string_view_literals;
-            VU_CHECK(value.width() == 1, "位包装器只能赋值宽度为1的值，实际宽度为{}"sv, value.width());
+            VU_CHECK(value.width() == 1, "期待宽度为1，实际宽度为{}"sv, value.width());
             return *this = value.to_verilator();
         }
 
         /**
          * @brief 相等运算符
          *
+         * @param self 要比较的值
          * @param value 要比较的值
          * @return 是否相等
          */
@@ -449,8 +647,51 @@ export namespace verilator_utils
         friend bool operator== (const bit_slice& self, const ::verilator_utils::format_wrapper<underlying_type>& value)
         {
             using namespace ::std::string_view_literals;
-            VU_CHECK(value.width() == 1, "位包装器只能赋值宽度为1的值，实际宽度为{}"sv, value.width());
+            VU_CHECK(value.width() == 1, "期待宽度为1，实际宽度为{}"sv, value.width());
             return static_cast<::std::uint64_t>(self) == value.to_verilator();
+        }
+
+        /**
+         * @brief 相等运算符
+         *
+         * @param self 要比较的值
+         * @param other 要比较的值
+         * @return 是否相等
+         */
+        template <::verilator_utils::is_verilator_data_type other_type>
+        friend bool operator== (const bit_slice& self, const ::verilator_utils::bit_slice<other_type>& other)
+        { return static_cast<::std::uint64_t>(self) == static_cast<::std::uint64_t>(other); }
+
+        /**
+         * @brief 三路比较运算符
+         *
+         * @param other 要比较的值
+         * @return 比较结果
+         * @note 数据类型为VlWide的bit_slice只支持十六进制和二进制，因此不能用于三路比较
+         */
+        template <::verilator_utils::is_verilator_data_type other_type>
+        friend ::std::strong_ordering operator<=> (const bit_slice& self, const ::verilator_utils::bit_slice<other_type>& other)
+        {
+            ::verilator_utils::detail::check_three_way_compare(self.format());
+            ::verilator_utils::detail::check_three_way_compare(other.format());
+            return static_cast<::std::uint64_t>(self) <=> static_cast<::std::uint64_t>(other);
+        }
+
+        /**
+         * @brief 三路比较运算符
+         *
+         * @param self 要比较的值
+         * @param value 要比较的值
+         * @return 比较结果
+         */
+        friend ::std::strong_ordering operator<=> (const bit_slice& self,
+                                                   const ::verilator_utils::format_wrapper<::std::uint64_t>& value)
+        {
+            using namespace ::std::string_view_literals;
+            ::verilator_utils::detail::check_three_way_compare(self.data_format);
+            ::verilator_utils::detail::check_three_way_compare(value.format());
+            VU_CHECK(value.width() == 1, "期待宽度为1，实际宽度为{}"sv, value.width());
+            return static_cast<::std::uint64_t>(self) <=> value.value();
         }
 
         /**
@@ -786,6 +1027,7 @@ export namespace verilator_utils
         /**
          * @brief 相等运算符
          *
+         * @param self 要比较的值
          * @param value 要比较的值
          * @return 是否相等
          */
@@ -806,6 +1048,7 @@ export namespace verilator_utils
         /**
          * @brief 相等运算符
          *
+         * @param self 要比较的值
          * @param value 要比较的值
          * @return 是否相等
          */
@@ -822,6 +1065,7 @@ export namespace verilator_utils
         /**
          * @brief 相等运算符
          *
+         * @param self 要比较的值
          * @param value 要比较的值
          * @return 是否相等
          */
@@ -830,8 +1074,20 @@ export namespace verilator_utils
         { return self == value.to_verilator(); }
 
         /**
+         * @brief 相等运算符
+         *
+         * @param self 要比较的值
+         * @param value 要比较的值
+         * @return 是否相等
+         */
+        template <::verilator_utils::is_format_wrapper_data_type underlying_type>
+        friend bool operator== (const vector_slice& self, const ::verilator_utils::bit_slice<underlying_type>& value)
+        { return self == static_cast<::std::uint64_t>(value); }
+
+        /**
          * @brief 三路比较运算符
          *
+         * @param self 要比较的值
          * @param value 要比较的值
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
          */
@@ -839,19 +1095,16 @@ export namespace verilator_utils
             requires (!::std::same_as<bool, underlying_type>)
         friend ::std::partial_ordering operator<=> (const vector_slice& self, underlying_type value)
         {
-            using namespace ::std::string_view_literals;
-            constexpr static auto bin_index{2zu};
-            VU_CHECK(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
-            VU_CHECK(!::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
-                     "布尔型不支持三路比较，只支持相等比较"sv);
+            ::verilator_utils::detail::check_three_way_compare(self.data_format);
             return self.to_underlying().visit([value](auto underlying_value) noexcept -> ::std::partial_ordering {
-                return three_way_compare_underlying(underlying_value, value);
+                return ::verilator_utils::detail::three_way_compare_underlying(underlying_value, value);
             });
         }
 
         /**
          * @brief 三路比较运算符
          *
+         * @param self 要比较的值
          * @param value 要比较的值
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
          * @note 数据类型为VlWide的format_wrapper只支持十六进制和二进制，因此不能用于三路比较
@@ -865,26 +1118,38 @@ export namespace verilator_utils
         /**
          * @brief 三路比较运算符
          *
-         * @param value 要比较的值
+         * @param self 要比较的值
+         * @param other 要比较的值
          * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
          */
-        friend ::std::partial_ordering operator<=> (const vector_slice& self, const vector_slice& other)
+        template <::verilator_utils::is_verilator_data_type other_type>
+        friend ::std::partial_ordering operator<=> (const vector_slice& self,
+                                                    const ::verilator_utils::vector_slice<other_type>& other)
         {
-            using namespace ::std::string_view_literals;
-            constexpr static auto bin_index{2zu};
-            VU_CHECK(self.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
-            VU_CHECK(other.data_format.index() > bin_index, "十六进制和二进制格式不支持三路比较，只支持相等比较"sv);
-            VU_CHECK(!::std::holds_alternative<::verilator_utils::data_format::boolean_t>(self.data_format),
-                     "布尔型不支持三路比较，只支持相等比较"sv);
-            VU_CHECK(!::std::holds_alternative<::verilator_utils::data_format::boolean_t>(other.data_format),
-                     "布尔型不支持三路比较，只支持相等比较"sv);
-            return self.to_underlying().visit(
-                [other_to_underlying = other.to_underlying()](auto self_underlying_value) noexcept -> ::std::partial_ordering {
-                    return other_to_underlying.visit(
-                        [self_underlying_value](auto other_underlying_value) noexcept -> ::std::partial_ordering {
-                            return three_way_compare_underlying(self_underlying_value, other_underlying_value);
-                        });
+            ::verilator_utils::detail::check_three_way_compare(self.format());
+            ::verilator_utils::detail::check_three_way_compare(other.format());
+            return self.to_underlying().visit([other_to_underlying = other.to_underlying()](
+                                                  auto self_underlying_value) noexcept -> ::std::partial_ordering {
+                return other_to_underlying.visit([self_underlying_value](
+                                                     auto other_underlying_value) noexcept -> ::std::partial_ordering {
+                    return ::verilator_utils::detail::three_way_compare_underlying(self_underlying_value, other_underlying_value);
                 });
+            });
+        }
+
+        /**
+         * @brief 三路比较运算符
+         *
+         * @param self 要比较的值
+         * @param other 要比较的值
+         * @return 比较结果，由于潜在的浮点比较，因此退化为std::partial_ordering
+         */
+        template <::verilator_utils::is_verilator_data_type other_type>
+        friend ::std::partial_ordering operator<=> (const vector_slice& self,
+                                                    const ::verilator_utils::bit_slice<other_type>& other)
+        {
+            ::verilator_utils::detail::check_three_way_compare(other.format());
+            return self <=> static_cast<::std::uint64_t>(other);
         }
 
         /**
@@ -1151,27 +1416,6 @@ export namespace verilator_utils
         { return ::verilator_utils::packed_format{width(), format()}; }
 
     private:
-        template <::verilator_utils::is_cpp_underlying_type left_type, ::verilator_utils::is_cpp_underlying_type right_type>
-        static ::std::partial_ordering three_way_compare_underlying(left_type left, right_type right) noexcept
-        {
-            // bool不支持三路比较
-            if constexpr(::std::same_as<bool, left_type> || ::std::same_as<bool, right_type>)
-            {
-                ::std::unreachable();
-                return ::std::partial_ordering::unordered;
-            }
-            else if constexpr(::std::integral<left_type> && ::std::integral<right_type>)
-            {
-                if(::std::cmp_less(left, right)) { return ::std::partial_ordering::less; }
-                if(::std::cmp_greater(left, right)) { return ::std::partial_ordering::greater; }
-                return ::std::partial_ordering::equivalent;
-            }
-            else
-            {
-                return left <=> right;
-            }
-        }
-
         /// 每个字的位宽
         constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
         /// 数据引用
@@ -1402,54 +1646,6 @@ export namespace verilator_utils
             }(::std::make_index_sequence<traits::n>{});
         }
     }
-}  // namespace verilator_utils
-
-namespace verilator_utils::detail
-{
-    template <typename type>
-    constexpr bool is_bit_slice_impl{false};
-
-    template <::verilator_utils::is_verilator_data_type type>
-    constexpr bool is_bit_slice_impl<::verilator_utils::bit_slice<type>>{true};
-
-    template <typename type>
-    constexpr bool is_vector_slice_impl{false};
-
-    template <::verilator_utils::is_verilator_data_type type>
-    constexpr bool is_vector_slice_impl<::verilator_utils::vector_slice<type>>{true};
-
-    template <typename type>
-    constexpr bool is_unpacked_array_impl{false};
-
-    template <typename type, ::std::size_t n>
-    constexpr bool is_unpacked_array_impl<::verilator_utils::unpacked_array<type, n>>{true};
-}  // namespace verilator_utils::detail
-
-export namespace verilator_utils
-{
-    /**
-     * @brief 检查类型是否为位切片
-     *
-     * @tparam type 要检查的类型
-     */
-    template <typename type>
-    concept is_bit_slice = ::verilator_utils::detail::is_bit_slice_impl<type>;
-
-    /**
-     * @brief 检查类型是否为向量切片
-     *
-     * @tparam type 要检查的类型
-     */
-    template <typename type>
-    concept is_vector_slice = ::verilator_utils::detail::is_vector_slice_impl<type>;
-
-    /**
-     * @brief 检查类型是否为unpacked数组
-     *
-     * @tparam type 要检查的类型
-     */
-    template <typename type>
-    concept is_unpacked_array = ::verilator_utils::detail::is_unpacked_array_impl<type>;
 }  // namespace verilator_utils
 
 export namespace std
