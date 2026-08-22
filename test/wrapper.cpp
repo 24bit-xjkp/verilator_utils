@@ -35,7 +35,13 @@ TEST_SUITE("verilator_utils/wrapper")
         static_assert(::std::same_as<::verilator_utils::vector_slice<::SData>::cast_type, ::std::uint64_t>);
         static_assert(::std::same_as<::verilator_utils::vector_slice<::IData>::cast_type, ::std::uint64_t>);
         static_assert(::std::same_as<::verilator_utils::vector_slice<::QData>::cast_type, ::std::uint64_t>);
-        static_assert(::std::same_as<::verilator_utils::vector_slice<::VlWide<2>>::cast_type, ::VlWide<2>>);
+        static_assert(::verilator_utils::is_format_wrapper<::verilator_utils::format_wrapper<::std::uint64_t>>);
+        static_assert(::verilator_utils::is_format_wrapper<::verilator_utils::format_wrapper<::std::int64_t>>);
+        static_assert(::verilator_utils::is_format_wrapper<::verilator_utils::format_wrapper<double>>);
+        static_assert(::verilator_utils::is_format_wrapper<::verilator_utils::format_wrapper<::VlWide<2>>>);
+        static_assert(!::verilator_utils::is_format_wrapper<::std::uint64_t>);
+        static_assert(!::verilator_utils::is_format_wrapper<::verilator_utils::bit_slice<::CData>>);
+        static_assert(!::verilator_utils::is_format_wrapper<const ::verilator_utils::format_wrapper<::std::uint64_t>>);
     }
 
     TEST_CASE("format wrapper exposes compile time and runtime metadata")
@@ -156,6 +162,152 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK(low_slice == comparison_value);
     }
 
+    TEST_CASE("format wrapper equality compares values across scalar and wide types")
+    {
+        ::verilator_utils::format_wrapper<::std::uint64_t> unsigned_value{166u, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::format_wrapper<::std::uint64_t> same_value{166u, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::format_wrapper<::std::uint64_t> different_value{167u, 8, ::verilator_utils::data_format::dec_unsigned};
+        CHECK(unsigned_value == same_value);
+        CHECK_FALSE(unsigned_value == different_value);
+
+        // 不同底层类型按存储值比较
+        ::verilator_utils::format_wrapper<::std::int64_t> signed_value{-90, 8, ::verilator_utils::data_format::dec_signed};
+        CHECK_FALSE(unsigned_value == signed_value);
+        CHECK(signed_value ==
+              ::verilator_utils::format_wrapper<::std::int64_t>{-90, 8, ::verilator_utils::data_format::dec_signed});
+
+        // 宽度不同直接报错
+        CHECK_THROWS_AS(
+            (void)(unsigned_value ==
+                   ::verilator_utils::format_wrapper<::std::uint64_t>{166u, 16, ::verilator_utils::data_format::dec_unsigned}),
+            ::verilator_utils::assertion_error);
+
+        // bool与整数按存储值比较
+        ::verilator_utils::format_wrapper<bool> boolean_value{true, 1, ::verilator_utils::data_format::boolean};
+        CHECK(boolean_value ==
+              ::verilator_utils::format_wrapper<::std::uint64_t>{1u, 1, ::verilator_utils::data_format::dec_unsigned});
+        CHECK_FALSE(boolean_value ==
+                    ::verilator_utils::format_wrapper<::std::uint64_t>{0u, 1, ::verilator_utils::data_format::dec_unsigned});
+
+        // VlWide之间按存储内容比较
+        ::VlWide<2> wide_low{0x89ab'cdefu, 0x0000'0123u};
+        ::VlWide<2> wide_high_word_different{0x89ab'cdefu, 0x0000'0124u};
+        ::verilator_utils::format_wrapper<::VlWide<2>> wide_value{wide_low, 48};
+        ::verilator_utils::format_wrapper<::VlWide<2>> same_wide_value{wide_low, 48};
+        ::verilator_utils::format_wrapper<::VlWide<2>> different_wide_value{wide_high_word_different, 48};
+        CHECK(wide_value == same_wide_value);
+        CHECK_FALSE(wide_value == different_wide_value);
+
+        // VlWide与标量双向比较
+        ::verilator_utils::format_wrapper<::std::uint64_t> matching_scalar{0x0123'89ab'cdefu,
+                                                                           48,
+                                                                           ::verilator_utils::data_format::hex};
+        ::verilator_utils::format_wrapper<::std::uint64_t> missing_high_word{0x89ab'cdefu,
+                                                                             48,
+                                                                             ::verilator_utils::data_format::hex};
+        CHECK(wide_value == matching_scalar);
+        CHECK(matching_scalar == wide_value);
+        CHECK_FALSE(wide_value == missing_high_word);
+        CHECK_FALSE(missing_high_word == wide_value);
+
+        // 低字非零、高字为零时仍按64位合并值比较
+        ::VlWide<2> low_word_only{0x0000'00a5u, 0u};
+        ::verilator_utils::format_wrapper<::VlWide<2>> low_wide_value{low_word_only, 8};
+        CHECK(low_wide_value ==
+              ::verilator_utils::format_wrapper<::std::uint64_t>{0xa5u, 8, ::verilator_utils::data_format::hex});
+        CHECK_FALSE(low_wide_value ==
+                    ::verilator_utils::format_wrapper<::std::uint64_t>{0xa6u, 8, ::verilator_utils::data_format::hex});
+
+        // 单字VlWide与标量比较
+        ::VlWide<1> single_word{0x0000'00a5u};
+        ::verilator_utils::format_wrapper<::VlWide<1>> single_word_value{single_word, 8};
+        CHECK(single_word_value ==
+              ::verilator_utils::format_wrapper<::std::uint64_t>{0xa5u, 8, ::verilator_utils::data_format::hex});
+    }
+
+    TEST_CASE("format wrapper compares integer values with strong ordering")
+    {
+        constexpr ::verilator_utils::format_wrapper<::std::uint64_t> constant_low{10u,
+                                                                                  8,
+                                                                                  ::verilator_utils::data_format::dec_unsigned};
+        constexpr ::verilator_utils::format_wrapper<::std::uint64_t> constant_high{11u,
+                                                                                   8,
+                                                                                   ::verilator_utils::data_format::dec_unsigned};
+        constexpr static ::VlWide<2> constant_wide{0xabu, 0u};
+        static_assert(constant_low == constant_low);  // NOLINT(misc-redundant-expression)
+        static_assert(!(constant_low == constant_high));
+        static_assert(::verilator_utils::format_wrapper<::VlWide<2>>{constant_wide, 8} ==
+                      ::verilator_utils::format_wrapper<::VlWide<2>>{constant_wide, 8});
+        static_assert(::verilator_utils::format_wrapper<::VlWide<2>>{constant_wide, 8} ==
+                      ::verilator_utils::format_wrapper<::std::uint64_t>{0xabu, 8, ::verilator_utils::data_format::hex});
+
+        ::verilator_utils::format_wrapper<::std::uint64_t> lower{10u, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::format_wrapper<::std::uint64_t> equal{10u, 8, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::format_wrapper<::std::uint64_t> higher{11u, 8, ::verilator_utils::data_format::dec_unsigned};
+        static_assert(::std::same_as<decltype(lower <=> higher), ::std::strong_ordering>);
+        CHECK_LT(lower, higher);
+        CHECK_LE(lower, equal);
+        CHECK_GE(higher, lower);
+        CHECK_GT(higher, lower);
+        CHECK_EQ(lower <=> higher, ::std::strong_ordering::less);
+        CHECK_EQ(lower <=> equal, ::std::strong_ordering::equivalent);
+
+        // 有符号和无符号混合比较按数值语义进行
+        ::verilator_utils::format_wrapper<::std::int64_t> negative{-5, 8, ::verilator_utils::data_format::dec_signed};
+        ::verilator_utils::format_wrapper<::std::uint64_t> positive{5u, 8, ::verilator_utils::data_format::dec_unsigned};
+        CHECK_LT(negative, positive);
+        CHECK_GT(positive, negative);
+        CHECK_EQ(negative <=> positive, ::std::strong_ordering::less);
+
+        // 位相同但数值不同的混合符号值：相等与三路比较必须保持一致
+        ::verilator_utils::format_wrapper<::std::int64_t> negative_one{-1, 64, ::verilator_utils::data_format::dec_signed};
+        ::verilator_utils::format_wrapper<::std::uint64_t> all_ones{0xffff'ffff'ffff'ffffu,
+                                                                    64,
+                                                                    ::verilator_utils::data_format::dec_unsigned};
+        CHECK_FALSE(negative_one == all_ones);
+        CHECK_EQ(negative_one <=> all_ones, ::std::strong_ordering::less);
+    }
+
+    TEST_CASE("format wrapper compares floating point values with partial ordering")
+    {
+        ::verilator_utils::format_wrapper<double> finite{1.5, 64, ::verilator_utils::data_format::real_double()};
+        ::verilator_utils::format_wrapper<double> larger{2.5, 64, ::verilator_utils::data_format::real_double()};
+        ::verilator_utils::format_wrapper<double> nan{::std::numeric_limits<double>::quiet_NaN(),
+                                                      64,
+                                                      ::verilator_utils::data_format::real_double()};
+
+        static_assert(::std::same_as<decltype(finite <=> larger), ::std::partial_ordering>);
+        CHECK_LT(finite, larger);
+        CHECK_GT(larger, finite);
+        CHECK_EQ(finite <=> ::verilator_utils::format_wrapper<double>{1.5, 64, ::verilator_utils::data_format::real_double()},
+                 ::std::partial_ordering::equivalent);
+        CHECK_EQ(nan <=> finite, ::std::partial_ordering::unordered);
+
+        // float与double互比
+        ::verilator_utils::format_wrapper<float> float_value{1.5F, 32, ::verilator_utils::data_format::real_float()};
+        CHECK_EQ(float_value <=> finite, ::std::partial_ordering::equivalent);
+
+        // 整数与浮点互比时整数值提升为浮点数
+        ::verilator_utils::format_wrapper<::std::uint64_t> integer_value{3u, 8, ::verilator_utils::data_format::dec_unsigned};
+        CHECK_EQ(integer_value <=> finite, ::std::partial_ordering::greater);
+        CHECK_EQ(finite <=> integer_value, ::std::partial_ordering::less);
+    }
+
+    TEST_CASE("format wrapper rejects three way comparison for unsupported formats")
+    {
+        ::verilator_utils::format_wrapper<::std::uint64_t> hex_value{0xau, 8, ::verilator_utils::data_format::hex};
+        ::verilator_utils::format_wrapper<::std::uint64_t> bin_value{0xau, 8, ::verilator_utils::data_format::bin};
+        ::verilator_utils::format_wrapper<bool> boolean_value{true, 1, ::verilator_utils::data_format::boolean};
+
+        CHECK_THROWS_AS((void)(hex_value <=> hex_value), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((void)(bin_value <=> bin_value), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((void)(boolean_value <=> boolean_value), ::verilator_utils::assertion_error);
+
+        // 相等比较不受影响
+        CHECK(hex_value == ::verilator_utils::format_wrapper<::std::uint64_t>{0xau, 8, ::verilator_utils::data_format::hex});
+        CHECK(boolean_value == ::verilator_utils::format_wrapper<bool>{true, 1, ::verilator_utils::data_format::boolean});
+    }
+
     TEST_CASE("bit slice reads writes and formats a single bit")
     {
         ::CData data{0b1010'1010u};
@@ -188,6 +340,70 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(data, 1u);
         CHECK_EQ(boolean_bit.to_string(), "true");
         CHECK(boolean_bit == ::verilator_utils::format_wrapper<bool>{true, 1, ::verilator_utils::data_format::boolean});
+    }
+
+    TEST_CASE("bit slice compares bit values across scalar and wide types")
+    {
+        ::CData cdata{0u};
+        ::SData sdata{0u};
+        ::QData qdata{0u};
+        ::verilator_utils::bit_slice<::CData> cbit{cdata, 0};
+        ::verilator_utils::bit_slice<::SData> sbit{sdata, 0};
+        ::verilator_utils::bit_slice<::QData> qbit{qdata, 0};
+
+        CHECK(cbit == sbit);
+        CHECK(cbit == qbit);
+        CHECK_EQ(cbit <=> sbit, ::std::strong_ordering::equivalent);
+        CHECK_EQ(cbit <=> qbit, ::std::strong_ordering::equivalent);
+
+        cbit = 1;
+        CHECK(cbit != sbit);
+        CHECK_EQ(cbit <=> sbit, ::std::strong_ordering::greater);
+        CHECK_GT(cbit, sbit);
+        CHECK_LT(sbit, cbit);
+
+        // VlWide跨字位比较
+        ::VlWide<2> wide_data{0u, 0u};
+        ::verilator_utils::bit_slice<::VlWide<2>> wide_bit{wide_data, 33};
+        CHECK_EQ(wide_bit <=> cbit, ::std::strong_ordering::less);
+        CHECK_LT(wide_bit, cbit);
+        wide_bit = 1;
+        CHECK_EQ(wide_bit <=> cbit, ::std::strong_ordering::equivalent);
+        CHECK(wide_bit == cbit);
+    }
+
+    TEST_CASE("bit slice compares with format wrappers")
+    {
+        ::CData data{1u};
+        ::verilator_utils::bit_slice<::CData> bit{data, 0};
+
+        CHECK(bit == ::verilator_utils::format_wrapper<::std::uint64_t>{1u, 1, ::verilator_utils::data_format::dec_unsigned});
+        CHECK(::verilator_utils::format_wrapper<::std::uint64_t>{1u, 1, ::verilator_utils::data_format::dec_unsigned} == bit);
+        CHECK_FALSE(bit ==
+                    ::verilator_utils::format_wrapper<::std::uint64_t>{0u, 1, ::verilator_utils::data_format::dec_unsigned});
+        CHECK(bit == ::verilator_utils::format_wrapper<bool>{true, 1, ::verilator_utils::data_format::boolean});
+
+        CHECK_EQ(bit <=> ::verilator_utils::format_wrapper<::std::uint64_t>{0u, 1, ::verilator_utils::data_format::dec_unsigned},
+                 ::std::strong_ordering::greater);
+        CHECK_EQ(::verilator_utils::format_wrapper<::std::uint64_t>{1u, 1, ::verilator_utils::data_format::dec_unsigned} <=> bit,
+                 ::std::strong_ordering::equivalent);
+        CHECK_GT(bit, ::verilator_utils::format_wrapper<::std::uint64_t>{0u, 1, ::verilator_utils::data_format::dec_unsigned});
+
+        // 宽度必须为1
+        CHECK_THROWS_AS(
+            (void)(bit ==
+                   ::verilator_utils::format_wrapper<::std::uint64_t>{1u, 2, ::verilator_utils::data_format::dec_unsigned}),
+            ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(
+            (void)(bit <=>
+                   ::verilator_utils::format_wrapper<::std::uint64_t>{1u, 2, ::verilator_utils::data_format::dec_unsigned}),
+            ::verilator_utils::assertion_error);
+
+        // 布尔格式的位切片不支持三路比较，但相等比较可用
+        ::CData boolean_data{1u};
+        ::verilator_utils::bit_slice<::CData> boolean_bit{boolean_data, 0, ::verilator_utils::data_format::boolean};
+        CHECK_THROWS_AS((void)(boolean_bit <=> bit), ::verilator_utils::assertion_error);
+        CHECK(boolean_bit == bit);
     }
 
     TEST_CASE("bit slice dumps current value and format")
@@ -480,6 +696,58 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_GT(higher, lower);
         CHECK_EQ(lower <=> equal, ::std::partial_ordering::equivalent);
         CHECK_LT(signed_value, lower);
+    }
+
+    TEST_CASE("vector slice compares with bit slices")
+    {
+        ::CData vector_data{0b0001u};
+        ::CData zero_data{0u};
+        ::CData one_data{1u};
+        ::verilator_utils::vector_slice<::CData> one_value{vector_data, 4, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::bit_slice<::CData> zero_bit{zero_data, 0, ::verilator_utils::data_format::dec_unsigned};
+        ::verilator_utils::bit_slice<::CData> one_bit{one_data, 0, ::verilator_utils::data_format::dec_unsigned};
+
+        CHECK(one_value == one_bit);
+        CHECK(one_bit == one_value);
+        CHECK_FALSE(one_value == zero_bit);
+        CHECK_EQ(one_value <=> one_bit, ::std::partial_ordering::equivalent);
+        CHECK_EQ(one_bit <=> one_value, ::std::partial_ordering::equivalent);
+        CHECK_EQ(one_value <=> zero_bit, ::std::partial_ordering::greater);
+        CHECK_EQ(zero_bit <=> one_value, ::std::partial_ordering::less);
+        CHECK_GT(one_value, zero_bit);
+
+        // VlWide向量切片与位切片比较
+        ::VlWide<2> wide_vector_data{0x0000'0001u, 0u};
+        ::verilator_utils::vector_slice<::VlWide<2>> wide_one_value{wide_vector_data,
+                                                                    64,
+                                                                    ::verilator_utils::data_format::dec_unsigned};
+        CHECK_EQ(wide_one_value <=> one_bit, ::std::partial_ordering::equivalent);
+        CHECK(wide_one_value == one_bit);
+
+        // 布尔格式不能用于三路比较，但相等比较可用
+        ::CData boolean_data{1u};
+        ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
+        ::verilator_utils::bit_slice<::CData> boolean_bit{boolean_data, 0, ::verilator_utils::data_format::boolean};
+        CHECK_THROWS_AS((void)(boolean_value <=> one_bit), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((void)(one_value <=> boolean_bit), ::verilator_utils::assertion_error);
+        CHECK(boolean_value == boolean_bit);
+    }
+
+    TEST_CASE("vector slice rejects three way comparison for unsupported formats")
+    {
+        ::CData data{0xau};
+        ::CData boolean_data{1u};
+        ::verilator_utils::vector_slice<::CData> hex_value{data, 4, ::verilator_utils::data_format::hex};
+        ::verilator_utils::vector_slice<::CData> bin_value{data, 4, ::verilator_utils::data_format::bin};
+        ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
+
+        CHECK_THROWS_AS((void)(hex_value <=> ::std::uint64_t{10}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((void)(bin_value <=> ::std::uint64_t{10}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((void)(boolean_value <=> ::std::uint64_t{1}), ::verilator_utils::assertion_error);
+
+        // 相等比较不受影响
+        CHECK(hex_value == ::std::uint64_t{10});
+        CHECK(boolean_value == ::std::uint64_t{1});
     }
 
     TEST_CASE("vector slice conversion changes format and preserves range")
