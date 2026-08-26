@@ -17,6 +17,11 @@ extern "C++"
     #pragma clang diagnostic pop
 #endif
 
+namespace
+{
+    using namespace ::std::string_view_literals;
+}
+
 export namespace verilator_utils::trace
 {
     using ::cpptrace::generate_trace;
@@ -60,7 +65,6 @@ namespace verilator_utils::detail
     /// ANSI颜色转义序列
     namespace assertion_color
     {
-        using namespace ::std::string_view_literals;
         constexpr inline auto reset{"\033[0m"sv};
         constexpr inline auto cyan{"\033[36m"sv};
         constexpr inline auto yellow{"\033[33m"sv};
@@ -82,7 +86,6 @@ namespace verilator_utils::detail
                                             const ::std::source_location& location,
                                             const ::verilator_utils::trace::stacktrace& trace)
     {
-        using namespace ::std::string_view_literals;
         const auto use_colors{::verilator_utils::detail::should_colorize_assertion_message()};
         if(use_colors)
         {
@@ -117,7 +120,6 @@ namespace verilator_utils::detail
      */
     ::verilator_utils::trace::stacktrace generate_assertion_trace() noexcept
     {
-        using namespace ::std::string_view_literals;
         try
         {
             auto trace{::verilator_utils::trace::generate_trace()};

@@ -67,4 +67,13 @@ namespace verilator_utils
      */
     template <typename type, ::verilator_utils::is_variant variant>
     constexpr ::std::size_t variant_type_index{::verilator_utils::detail::variant_index_impl<type, variant>::value};
+
+    /**
+     * @brief 判断类型type是否与类型参数包types中的一个类型相同
+     *
+     * @tparam type 要判断的类型
+     * @tparam types 所有目标类型
+     */
+    template <typename type, typename... types>
+    concept same_as_any = (::std::same_as<type, types> || ...);
 }  // namespace verilator_utils

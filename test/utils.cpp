@@ -239,17 +239,17 @@ TEST_SUITE("verilator_utils/utils")
 
     TEST_CASE("verilator unpacked array type traits identify supported types")
     {
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::CData, 1>>);
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::SData, 1>>);
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::IData, 1>>);
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::QData, 1>>);
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::VlWide<1>, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::CData, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::SData, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::IData, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::QData, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::VlWide<1>, 1>>);
 
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::VlUnpacked<::CData, 1>, 1>>);
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::VlUnpacked<::SData, 1>, 1>>);
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::VlUnpacked<::IData, 1>, 1>>);
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::VlUnpacked<::QData, 1>, 1>>);
-        static_assert(::verilator_utils::is_verilator_unpacked_array_type<::VlUnpacked<::VlUnpacked<::VlWide<1>, 1>, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::VlUnpacked<::CData, 1>, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::VlUnpacked<::SData, 1>, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::VlUnpacked<::IData, 1>, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::VlUnpacked<::QData, 1>, 1>>);
+        static_assert(::verilator_utils::is_vl_unpacked_type<::VlUnpacked<::VlUnpacked<::VlWide<1>, 1>, 1>>);
 
         {
             using type_traits = ::verilator_utils::verilator_unpacked_array_type_traits<::VlUnpacked<::CData, 1>>;

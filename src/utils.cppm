@@ -8,6 +8,11 @@ import :verilator;
 import :internal;
 import :assert;
 
+namespace
+{
+    using namespace ::std::string_view_literals;
+}
+
 export namespace verilator_utils
 {
     /**
@@ -57,7 +62,6 @@ export namespace verilator_utils
          */
         constexpr static ::std::uint64_t check_mul_overflow(::std::uint64_t lhs, ::std::uint64_t rhs)
         {
-            using namespace ::std::string_view_literals;
             VU_CHECK(lhs == 0 || rhs <= max / lhs, "发生上溢"sv);
             return lhs * rhs;
         }
@@ -89,7 +93,6 @@ export namespace verilator_utils
          */
         constexpr static ::std::uint64_t check_mul_overflow(::std::uint64_t lhs, double rhs)
         {
-            using namespace ::std::string_view_literals;
             auto result{static_cast<double>(lhs) * rhs};
             VU_CHECK(result < static_cast<double>(max), "发生上溢"sv);
             return round(result);
@@ -113,7 +116,6 @@ export namespace verilator_utils
          */
         constexpr explicit femtosecond_t(double rep)
         {
-            using namespace ::std::string_view_literals;
             VU_CHECK(rep >= 0., "发生下溢"sv);
             VU_CHECK(rep < static_cast<double>(max), "发生上溢"sv);
             // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
@@ -136,7 +138,6 @@ export namespace verilator_utils
          */
         constexpr friend femtosecond_t operator+ (femtosecond_t lhs, femtosecond_t rhs)
         {
-            using namespace ::std::string_view_literals;
             auto rep{lhs.rep + rhs.rep};
             VU_CHECK(rep >= lhs.rep, "发生上溢"sv);
             return femtosecond_t{rep};
@@ -151,7 +152,6 @@ export namespace verilator_utils
          */
         constexpr friend femtosecond_t operator- (femtosecond_t lhs, femtosecond_t rhs)
         {
-            using namespace ::std::string_view_literals;
             auto rep{lhs.rep - rhs.rep};
             VU_CHECK(rep <= lhs.rep, "发生下溢"sv);
             return femtosecond_t{rep};
@@ -176,7 +176,6 @@ export namespace verilator_utils
          */
         constexpr friend femtosecond_t operator* (femtosecond_t lhs, double rhs)
         {
-            using namespace ::std::string_view_literals;
             VU_CHECK(rhs >= 0, "非法乘数: {}"sv, rhs);
             return femtosecond_t{check_mul_overflow(lhs.rep, rhs)};
         }
@@ -190,7 +189,6 @@ export namespace verilator_utils
          */
         constexpr friend femtosecond_t operator/ (femtosecond_t lhs, ::std::uint64_t rhs)
         {
-            using namespace ::std::string_view_literals;
             VU_CHECK(rhs != 0, "发生除0"sv);
             return femtosecond_t{lhs.rep / rhs};
         }
@@ -204,7 +202,6 @@ export namespace verilator_utils
          */
         constexpr friend femtosecond_t operator/ (femtosecond_t lhs, double rhs)
         {
-            using namespace ::std::string_view_literals;
             VU_CHECK(rhs > 0., "非法除数: {}"sv, rhs);
             auto rep{static_cast<double>(lhs.rep) / rhs};
             // static_cast<double>(max)为max + 1
@@ -335,22 +332,30 @@ export namespace verilator_utils::inline literals
 export namespace verilator_utils
 {
     /**
+     * @brief 判断类型type是否是VlWide
+     *
+     * @tparam type 要判断的类型
+     */
+    template <typename type>
+    concept is_vl_wide = ::VlIsVlWide<type>::value;
+
+    /**
      * @brief 检查类型是否为Verilator数据类型
      *
      * @tparam type 要检查的类型
      * @note VlUnpacked不在此列，使用unpacked array应当首先解引用
      */
     template <typename type>
-    concept is_verilator_data_type = ::std::same_as<type, ::CData> || ::std::same_as<type, ::SData> ||
-                                     ::std::same_as<type, ::IData> || ::std::same_as<type, ::QData> || ::VlIsVlWide<type>::value;
+    concept is_verilator_data_type =
+        ::verilator_utils::same_as_any<type, ::CData, ::SData, ::IData, ::QData> || ::verilator_utils::is_vl_wide<type>;
 
     /**
-     * @brief 检查类型是否为Verilator unpacked array类型
+     * @brief 检查类型是否为VlUnpacked类型
      *
      * @tparam type 要检查的类型
      */
     template <typename type>
-    concept is_verilator_unpacked_array_type = ::IsVlUnpacked<type>::value;
+    concept is_vl_unpacked_type = ::IsVlUnpacked<type>::value;
 
     /**
      * @brief 检查类型是否为verilator数据格式可转换到的C++基本数据类型
@@ -358,8 +363,7 @@ export namespace verilator_utils
      * @tparam type 要检查的类型
      */
     template <typename type>
-    concept is_cpp_underlying_type = ::std::same_as<type, ::std::int64_t> || ::std::same_as<type, ::std::uint64_t> ||
-                                     ::std::same_as<type, float> || ::std::same_as<type, double> || ::std::same_as<type, bool>;
+    concept is_cpp_underlying_type = ::verilator_utils::same_as_any<type, ::std::uint64_t, ::std::int64_t, float, double, bool>;
 
     template <typename type>
     struct verilator_unpacked_array_type_traits
@@ -392,7 +396,6 @@ namespace verilator_utils
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(this const auto& self, iter_t iter, double data)
             {
-                using namespace ::std::string_view_literals;
                 if(self.format_as_hex) { return ::std::format_to(iter, "{:a}"sv, data); }
                 return ::std::format_to(iter, "{}"sv, data);
             }
@@ -502,7 +505,7 @@ namespace verilator_utils
          * @return 宽度
          */
         template <::std::size_t n>
-        constexpr ::std::size_t vlwide_width(const ::VlWide<n>& value) noexcept
+        constexpr ::std::size_t vl_wide_width(const ::VlWide<n>& value) noexcept
         {
             constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
             constexpr static auto total_bits{n * word_width};
@@ -615,7 +618,6 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
-                using namespace ::std::string_view_literals;
                 VU_CHECK(width != 0, "数据宽度不能为0，实际为{}"sv, width);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
@@ -623,7 +625,7 @@ namespace verilator_utils
                 constexpr static ::std::size_t digit_width{4zu};
                 // 0x前缀长度
                 constexpr static auto prefix_size{2zu};
-                if constexpr(::VlIsVlWide<type>::value)
+                if constexpr(::verilator_utils::is_vl_wide<type>)
                 {
                     // 最高字中信号宽度
                     auto left_word_width{width % word_width};
@@ -699,13 +701,12 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
-                using namespace ::std::string_view_literals;
                 VU_CHECK(width != 0, "数据宽度不能为0，实际为{}"sv, width);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 // 0b前缀长度
                 constexpr static auto prefix_size{2zu};
-                if constexpr(::VlIsVlWide<type>::value)
+                if constexpr(::verilator_utils::is_vl_wide<type>)
                 {
                     // 最高字中信号宽度
                     auto left_word_width{width % word_width};
@@ -777,10 +778,7 @@ namespace verilator_utils
              */
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, ::std::int64_t data) const
-            {
-                using namespace ::std::string_view_literals;
-                return ::std::format_to(iter, "{}"sv, data);
-            }
+            { return ::std::format_to(iter, "{}"sv, data); }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -844,10 +842,7 @@ namespace verilator_utils
              */
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, ::std::uint64_t data) const
-            {
-                using namespace ::std::string_view_literals;
-                return ::std::format_to(iter, "{}"sv, data);
-            }
+            { return ::std::format_to(iter, "{}"sv, data); }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -896,7 +891,6 @@ namespace verilator_utils
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, float data) const
             {
-                using namespace ::std::string_view_literals;
                 if(format_as_hex) { return ::std::format_to(iter, "{:a}"sv, data); }
                 return ::std::format_to(iter, "{}"sv, data);
             }
@@ -1170,7 +1164,6 @@ namespace verilator_utils
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, ::std::uint64_t data) const
             {
-                using namespace ::std::string_view_literals;
                 return ::std::format_to(iter,
                                         "{}"sv,
                                         data < enum_string.size() ? enum_string[data]
@@ -1220,10 +1213,7 @@ namespace verilator_utils
              */
             template <typename iter_t>
             [[nodiscard]] iter_t format_to(iter_t iter, bool data) const
-            {
-                using namespace ::std::string_view_literals;
-                return ::std::format_to(iter, "{}"sv, data);
-            }
+            { return ::std::format_to(iter, "{}"sv, data); }
 
             /**
              * @brief 将打包储存在std::uint64_t中的数据转换为C++底层数据类型
@@ -1348,7 +1338,6 @@ namespace verilator_utils
              */
             constexpr ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
             {
-                using namespace ::std::string_view_literals;
                 VU_CHECK(!enum_string.empty(), "枚举列表不能为空"sv);
                 return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
             }
@@ -1369,7 +1358,6 @@ namespace verilator_utils
         constexpr void check_format(const ::verilator_utils::data_format::format& format, ::std::size_t width)
         {
             format.visit([width]<typename format_t>(const format_t& format) -> void {
-                using namespace ::std::string_view_literals;
                 if constexpr(::std::same_as<format_t, ::std::monostate>) { VU_CHECK(false, "必须设置数据类型"sv); }
                 else if constexpr(requires() {
                                       format.min_width();

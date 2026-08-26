@@ -72,7 +72,7 @@ namespace
      * 作为协程体中的局部对象使用：协程帧被销毁时，帧内局部对象的析构函数会执行。
      * 通过统计析构次数即可观察调度器在析构时是否回收了挂起在事件上的协程帧
      */
-    struct frame_destruction_counter // NOLINT(cppcoreguidelines-special-member-functions)
+    struct frame_destruction_counter  // NOLINT(cppcoreguidelines-special-member-functions)
     {
         ::std::size_t* count;
 
@@ -271,7 +271,6 @@ TEST_SUITE("verilator_utils/scheduler")
         }()};
         finish_task.resume();
         CHECK(finish_task.done());
-        CHECK(finish_task.get_promise().is_eval_finish_exception);
         CHECK_FALSE(finish_task.get_promise().with_unhandled_exception());
         CHECK_NOTHROW(finish_task.rethrow_exception());
     }
@@ -1118,7 +1117,7 @@ TEST_SUITE("verilator_utils/scheduler")
         signal.value = 1;
         scheduler.loop_once();
         CHECK(child.done());
-        CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::finial_suspend);
+        CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::final_suspend);
         CHECK(is_default_suspend_location(promise.suspend_location));
     }
 
@@ -1404,7 +1403,7 @@ TEST_SUITE("verilator_utils/scheduler")
             auto scheduler{fixture.make_scheduler()};
             ::verilator_utils::event event{};
 
-            auto make_waiter{[&]-> ::verilator_utils::task<void> {
+            auto make_waiter{[&] -> ::verilator_utils::task<void> {
                 frame_destruction_counter counter{&destroyed};
                 co_await event;
                 ++wake_count;
@@ -1416,7 +1415,7 @@ TEST_SUITE("verilator_utils/scheduler")
             CHECK_FALSE(second.done());
             CHECK_EQ(wake_count, 0u);
 
-            auto notifier{[&]-> ::verilator_utils::task<void> { co_await event.notify_all(); }};
+            auto notifier{[&] -> ::verilator_utils::task<void> { co_await event.notify_all(); }};
             ::verilator_utils::async_task notify{scheduler, notifier()};
             scheduler.loop_once();
             CHECK(notify.done());
