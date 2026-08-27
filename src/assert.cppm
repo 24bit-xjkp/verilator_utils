@@ -22,7 +22,7 @@ namespace
     using namespace ::std::string_view_literals;
 }
 
-export namespace verilator_utils::trace
+namespace verilator_utils::trace
 {
     using ::cpptrace::generate_trace;
     using ::cpptrace::stacktrace;
