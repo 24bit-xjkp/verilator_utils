@@ -128,6 +128,32 @@ namespace verilator_utils::detail
     template <typename awaiter_t>
     struct suspend_location_awaiter;
 
+    /**
+     * @brief 协程种类枚举
+     *
+     */
+    enum class coroutine_type_enum : ::std::uint8_t
+    {
+        /// 没有父协程
+        without_parent = 0,
+        /// 有父协程
+        with_parent = 1,
+        /// 同步协程
+        is_sync = 0,
+        /// 异步协程
+        is_async = 2,
+
+        /// 根协程
+        root_coroutine = without_parent | is_sync,
+        /// 同步子协程
+        sub_coroutine = with_parent | is_sync,
+        /// 异步子协程
+        async_coroutine = without_parent | is_async
+    };
+
+    constexpr bool operator& (coroutine_type_enum value, coroutine_type_enum mask) noexcept
+    { return (::std::to_underlying(value) & ::std::to_underlying(mask)) != 0; }
+
     // 导出promise_base和promise_with_return以支持在verilator_utils模块外扩展任务类型
 
     /**
@@ -154,6 +180,9 @@ namespace verilator_utils::detail
         /// - 为false表示同步协程，执行完毕后立即跳转到父协程
         /// - 为true表示异步协程
         bool is_async{};
+
+        /// 协程种类枚举
+        using coroutine_type_enum = ::verilator_utils::detail::coroutine_type_enum;
 
         /// - 无父的同步协程为根协程，生命周期由调度器管理
         /// - 有父的同步协程为同步子协程，生命周期由父协程的task对象管理
@@ -186,11 +215,19 @@ namespace verilator_utils::detail
         auto final_suspend() noexcept;
 
         /**
-         * @brief 判断该协程是不是由调度器直接管理的根协程
+         * @brief 判断协程的种类
          *
-         * @return 是否为根协程
+         * @return 协程种类枚举
          */
-        [[nodiscard]] bool is_root_coroutine() const { return !is_async && parent == nullptr; }
+        [[nodiscard]] coroutine_type_enum classify() const noexcept
+        {
+            using enum coroutine_type_enum;
+            if(this->is_async) { return async_coroutine; }
+            else
+            {
+                return parent == nullptr ? root_coroutine : sub_coroutine;
+            }
+        }
 
         /**
          * @brief 检查任务是否绑定到调度器
@@ -775,8 +812,8 @@ namespace verilator_utils::detail
         {
         }
 
-        coroutine_pair(::std::coroutine_handle<> handle, ::verilator_utils::detail::promise_base* promise) noexcept :
-            handle{handle}, promise{promise}
+        coroutine_pair(::std::coroutine_handle<> handle = nullptr,
+                       ::verilator_utils::detail::promise_base* promise = nullptr) noexcept : handle{handle}, promise{promise}
         {
         }
 
@@ -919,7 +956,7 @@ export namespace verilator_utils
         static void resume_coroutine(::verilator_utils::detail::coroutine_pair pair)
         {
             auto [handle, promise]{pair};
-            auto is_root{promise->is_root_coroutine()};
+            auto is_root{promise->classify() == ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine};
             handle.resume();
             // 协程为根协程时执行销毁和异常传播
             if(is_root && handle.done())
@@ -1350,7 +1387,8 @@ export namespace verilator_utils
                 if(promise.parent == nullptr) { return ::std::noop_coroutine(); }
                 else
                 {
-                    if(promise.parent_promise->is_root_coroutine())
+                    if(promise.parent_promise->classify() ==
+                       ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine)
                     {
                         // 父协程为根协程时需要调度器进行异常传播
                         // 因此将父协程放入调度器就绪队列
@@ -1378,3 +1416,31 @@ export namespace verilator_utils
         return subhandle.promise().get_result();
     }
 }  // namespace verilator_utils
+
+export namespace std
+{
+    template <>
+    struct formatter<::verilator_utils::detail::promise_base::coroutine_type_enum>
+    {
+        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_without_flags(
+                ctx,
+                "无效的verilator_utils::detail::promise_base::coroutine_type_enum格式符"sv);
+        }
+
+        template <typename iter_t, typename char_t>
+        static auto format(::verilator_utils::detail::promise_base::coroutine_type_enum value,
+                           ::std::basic_format_context<iter_t, char_t>& ctx)
+        {
+            using enum verilator_utils::detail::promise_base::coroutine_type_enum;
+            switch(value)
+            {
+                case root_coroutine: return ::std::format_to(ctx.out(), "root_coroutine"sv);
+                case sub_coroutine: return ::std::format_to(ctx.out(), "sub_coroutine"sv);
+                case async_coroutine: return ::std::format_to(ctx.out(), "async_coroutine"sv);
+                default: ::std::unreachable(); return ctx.out();
+            }
+        }
+    };
+}  // namespace std
