@@ -4,6 +4,7 @@ import verilator_utils.full;
 namespace
 {
     using namespace ::verilator_utils::verilator;
+    using namespace ::verilator_utils::literals;
 
     auto to_vector(::std::size_t n) noexcept { return ::std::views::take(n) | ::std::ranges::to<::std::vector<bool>>(); }
 
@@ -63,6 +64,73 @@ namespace
         [[nodiscard]] ::verilator_utils::eval_scheduler make_scheduler() noexcept
         { return ::verilator_utils::eval_scheduler{dut}; }
     };
+
+    /// 协程栈回溯测试辅助协程，用于构建根协程→子协程→孙协程的同步调用链
+
+    /// 根协程：仅执行一次协程栈回溯，不产生子任务
+    ::verilator_utils::task<void>
+        stacktrace_root_only(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured, int& expected_line)
+    {
+        const auto stacktrace_site{::std::source_location::current()};
+        captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(co_await ::verilator_utils::stacktrace());
+        expected_line = static_cast<int>(stacktrace_site.line()) + 1;
+    }
+
+    /// 孙协程：记录自身的协程柄并执行协程栈回溯
+    ::verilator_utils::task<void>
+        stacktrace_grandchild(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                              ::verilator_utils::task<void>::handle_t& self_handle,
+                              int& expected_line)
+    {
+        self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
+        const auto stacktrace_site{::std::source_location::current()};
+        captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(co_await ::verilator_utils::stacktrace());
+        expected_line = static_cast<int>(stacktrace_site.line()) + 1;
+    }
+
+    /// 子协程：记录自身的协程柄并等待孙协程
+    ::verilator_utils::task<void>
+        stacktrace_child(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                         ::verilator_utils::task<void>::handle_t& self_handle,
+                         ::verilator_utils::task<void>::handle_t& grandchild_handle,
+                         int& expected_line)
+    {
+        self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
+        co_await stacktrace_grandchild(captured, grandchild_handle, expected_line);
+    }
+
+    /// 根协程：记录自身的协程柄并等待子协程
+    ::verilator_utils::task<void>
+        stacktrace_root(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                        ::verilator_utils::task<void>::handle_t& child_handle,
+                        ::verilator_utils::task<void>::handle_t& grandchild_handle,
+                        int& expected_line)
+    {
+        co_await stacktrace_child(captured, child_handle, grandchild_handle, expected_line);
+    }
+
+    /// 异步子协程：记录自身的协程柄，执行协程栈回溯后挂起以保持父协程处于等待状态
+    ::verilator_utils::task<void>
+        stacktrace_async_child(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                               ::verilator_utils::task<void>::handle_t& self_handle,
+                               int& expected_line)
+    {
+        self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
+        const auto stacktrace_site{::std::source_location::current()};
+        captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(co_await ::verilator_utils::stacktrace());
+        expected_line = static_cast<int>(stacktrace_site.line()) + 1;
+        co_await ::verilator_utils::wait_time(1_ps);
+    }
+
+    /// 未被任何协程等待的异步协程：执行协程栈回溯后挂起
+    ::verilator_utils::task<void>
+        stacktrace_orphan_async(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured, int& expected_line)
+    {
+        const auto stacktrace_site{::std::source_location::current()};
+        captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(co_await ::verilator_utils::stacktrace());
+        expected_line = static_cast<int>(stacktrace_site.line()) + 1;
+        co_await ::verilator_utils::wait_time(1_ps);
+    }
 
 }  // namespace
 
@@ -476,6 +544,196 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::shift_register<::std::uint64_t> delay_line{1, 8, ::verilator_utils::data_format::hex};
 
         CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(delay_line))), ::std::format_error);
+    }
+
+    TEST_CASE("stacktrace_frame formatter renders coroutine role, function and location")
+    {
+        using frame_t = ::verilator_utils::coroutine_stacktrace::stacktrace_frame;
+        static_assert(::std::formattable<frame_t, char>);
+
+        const auto location{::std::source_location::current()};
+        const frame_t frame{::std::coroutine_handle<>{},
+                            location,
+                            ::verilator_utils::detail::promise_base::coroutine_type_enum::sub_coroutine};
+
+        const auto plain{::std::format("{}"sv, frame)};
+        CHECK(plain.contains("sub_coroutine"sv));
+        CHECK(plain.contains(location.function_name()));
+        CHECK(plain.contains(location.file_name()));
+        CHECK(plain.ends_with(::std::format(":{}:{}"sv, location.line(), location.column())));
+
+        const auto colored{::std::format("{:#}"sv, frame)};
+        CHECK(colored.contains("\033[36m"sv));
+        CHECK(colored.contains("\033[33m"sv));
+        CHECK(colored.ends_with("\033[0m"sv));
+        CHECK(colored.contains(location.function_name()));
+        CHECK(colored.contains(location.file_name()));
+    }
+
+    TEST_CASE("stacktrace_frame formatter renders a default frame deterministically")
+    {
+        using frame_t = ::verilator_utils::coroutine_stacktrace::stacktrace_frame;
+
+        const frame_t frame{};
+        CHECK_EQ(::std::format("{}"sv, frame), "0x0(root_coroutine):  at :0:0"sv);
+
+        // doctest的StringMaker会根据全局颜色配置决定是否输出ANSI转义序列，因此只校验内容而非精确字符串
+        const auto converted{::doctest::StringMaker<frame_t>::convert(frame)};
+        CHECK_NE(converted.size(), 0u);
+        CHECK(::std::string_view{converted.c_str()}.contains("root_coroutine"sv));
+    }
+
+    TEST_CASE("stacktrace_frame formatter rejects unsupported format specifiers")
+    {
+        using frame_t = ::verilator_utils::coroutine_stacktrace::stacktrace_frame;
+
+        frame_t frame{};
+
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(frame))), ::std::format_error);
+    }
+
+    TEST_CASE("stacktrace() from a running root task captures the call site as the only frame")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::shared_ptr<::verilator_utils::coroutine_stacktrace> captured{};
+        int expected_line{};
+
+        scheduler.add_task(stacktrace_root_only(captured, expected_line));
+        scheduler.loop_until_finish();
+
+        REQUIRE(captured);
+        REQUIRE_EQ(captured->frames.size(), 1u);
+        const auto& frame{captured->frames.front()};
+        CHECK_EQ(frame.type, ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine);
+        CHECK(::std::string_view{frame.location.file_name()}.ends_with("task.cpp"sv));
+        CHECK(::std::string_view{frame.location.function_name()}.contains("stacktrace_root_only"sv));
+        // 当前帧的位置被覆盖为调用stacktrace()的源代码位置
+        CHECK_EQ(static_cast<int>(frame.location.line()), expected_line);
+        CHECK_EQ(::std::format("{}"sv, frame.type), "root_coroutine"sv);
+    }
+
+    TEST_CASE("stacktrace() walks the full nested sync parent chain")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::shared_ptr<::verilator_utils::coroutine_stacktrace> captured{};
+        ::verilator_utils::task<void>::handle_t child_handle{};
+        ::verilator_utils::task<void>::handle_t grandchild_handle{};
+        int expected_line{};
+
+        auto root_task{stacktrace_root(captured, child_handle, grandchild_handle, expected_line)};
+        auto root_handle{root_task.get_handle()};
+        scheduler.add_task(::std::move(root_task));
+        scheduler.loop_until_finish();
+
+        REQUIRE(captured);
+        REQUIRE_EQ(captured->frames.size(), 3u);
+        using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        // 帧顺序：当前协程在最前，逐层回溯到根协程
+        CHECK_EQ(captured->frames[0].type, type_t::sub_coroutine);
+        CHECK_EQ(captured->frames[1].type, type_t::sub_coroutine);
+        CHECK_EQ(captured->frames[2].type, type_t::root_coroutine);
+        // 帧柄构成逐层向上的调用链
+        CHECK_EQ(captured->frames[0].handle.address(), grandchild_handle.address());
+        CHECK_EQ(captured->frames[1].handle.address(), child_handle.address());
+        CHECK_EQ(captured->frames[2].handle.address(), root_handle.address());
+        // 每帧的挂起位置对应各自函数中co_await的调用处
+        CHECK(::std::string_view{captured->frames[0].location.function_name()}.contains("stacktrace_grandchild"sv));
+        CHECK_EQ(static_cast<int>(captured->frames[0].location.line()), expected_line);
+        CHECK(::std::string_view{captured->frames[1].location.function_name()}.contains("stacktrace_child"sv));
+        CHECK_GT(static_cast<int>(captured->frames[1].location.line()), 0);
+        CHECK(::std::string_view{captured->frames[2].location.function_name()}.contains("stacktrace_root"sv));
+        CHECK_GT(static_cast<int>(captured->frames[2].location.line()), 0);
+        for(const auto& frame: captured->frames)
+        {
+            CHECK(::std::string_view{frame.location.file_name()}.ends_with("task.cpp"sv));
+        }
+    }
+
+    TEST_CASE("stacktrace() exposes an awaited async task as a sub coroutine above its root parent")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::shared_ptr<::verilator_utils::coroutine_stacktrace> captured{};
+        ::verilator_utils::task<void>::handle_t async_child_handle{};
+        int expected_line{};
+
+        auto root{[&](this auto) -> ::verilator_utils::task<void> {
+            auto&& scheduler_ref{co_await ::verilator_utils::get_scheduler()};
+            ::verilator_utils::async_task child{scheduler_ref,
+                                                stacktrace_async_child(captured, async_child_handle, expected_line)};
+            co_await child;
+        }()};
+        scheduler.add_task(::std::move(root));
+        scheduler.loop_until_finish();
+
+        REQUIRE(captured);
+        REQUIRE_EQ(captured->frames.size(), 2u);
+        using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        // 异步子协程被父协程等待后变为带父协程的子协程
+        CHECK_EQ(captured->frames[0].type, type_t::sub_coroutine);
+        CHECK_EQ(captured->frames[0].handle.address(), async_child_handle.address());
+        CHECK_EQ(static_cast<int>(captured->frames[0].location.line()), expected_line);
+        CHECK(::std::string_view{captured->frames[0].location.function_name()}.contains("stacktrace_async_child"sv));
+        // 父协程为根协程，挂起位置为等待子协程的co_await调用处
+        CHECK_EQ(captured->frames[1].type, type_t::root_coroutine);
+        CHECK_GT(static_cast<int>(captured->frames[1].location.line()), 0);
+        CHECK(::std::string_view{captured->frames[1].location.file_name()}.ends_with("task.cpp"sv));
+    }
+
+    TEST_CASE("stacktrace() classifies an unawaited async task as an async coroutine")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::shared_ptr<::verilator_utils::coroutine_stacktrace> captured{};
+        int expected_line{};
+
+        ::verilator_utils::async_task child{scheduler, stacktrace_orphan_async(captured, expected_line)};
+        scheduler.loop_until_finish();
+
+        REQUIRE(captured);
+        REQUIRE_EQ(captured->frames.size(), 1u);
+        // 未被等待的异步协程没有父协程，单独构成一帧
+        CHECK_EQ(captured->frames[0].type,
+                 ::verilator_utils::detail::promise_base::coroutine_type_enum::async_coroutine);
+        CHECK_EQ(static_cast<int>(captured->frames[0].location.line()), expected_line);
+        CHECK(::std::string_view{captured->frames[0].location.function_name()}.contains("stacktrace_orphan_async"sv));
+        CHECK(child.done());
+    }
+
+    TEST_CASE("coroutine_stacktrace formatter renders every frame with its index")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::shared_ptr<::verilator_utils::coroutine_stacktrace> captured{};
+        int expected_line{};
+
+        scheduler.add_task(stacktrace_root_only(captured, expected_line));
+        scheduler.loop_until_finish();
+        REQUIRE(captured);
+
+        static_assert(::std::formattable<::verilator_utils::coroutine_stacktrace, char>);
+        const auto rendered{::std::format("{}"sv, *captured)};
+        CHECK(rendered.starts_with("Coroutine Stacktrace:\n[0] "sv));
+        CHECK(rendered.contains("root_coroutine"sv));
+        CHECK(rendered.contains("stacktrace_root_only"sv));
+        CHECK(rendered.ends_with('\n'));
+        CHECK_FALSE(rendered.contains("\033["sv));
+
+        const auto colored{::std::format("{:#}"sv, *captured)};
+        CHECK(colored.contains("\033[36m"sv));
+        CHECK(colored.contains("\033[33m"sv));
+        CHECK(colored.contains("stacktrace_root_only"sv));
+    }
+
+    TEST_CASE("coroutine_type_enum formatter rejects unsupported format specifiers")
+    {
+        const auto type{::verilator_utils::detail::promise_base::coroutine_type_enum::sub_coroutine};
+        CHECK_EQ(::std::format("{}"sv, type), "sub_coroutine"sv);
+        CHECK_EQ(::std::format("{}"sv, ::verilator_utils::detail::promise_base::coroutine_type_enum::async_coroutine),
+                 "async_coroutine"sv);
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(type))), ::std::format_error);
     }
 
     TEST_CASE("mailbox get and peek wait until a value is available")
