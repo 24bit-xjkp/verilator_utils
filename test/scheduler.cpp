@@ -1415,15 +1415,12 @@ TEST_SUITE("verilator_utils/scheduler")
             CHECK_FALSE(second.done());
             CHECK_EQ(wake_count, 0u);
 
-            auto notifier{[&] -> ::verilator_utils::task<void> { co_await event.notify_all(); }};
-            ::verilator_utils::async_task notify{scheduler, notifier()};
+            event.notify_all();
             scheduler.loop_once();
-            CHECK(notify.done());
             CHECK(first.done());
             CHECK(second.done());
             CHECK_EQ(wake_count, 2zu);
 
-            notify.get_promise().rethrow_exception();
             first.get_promise().rethrow_exception();
             second.get_promise().rethrow_exception();
         }
@@ -1451,15 +1448,12 @@ TEST_SUITE("verilator_utils/scheduler")
             CHECK_FALSE(first.done());
             CHECK_FALSE(second.done());
 
-            auto notifier{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_one(); }};
-            ::verilator_utils::async_task notify{scheduler, notifier()};
+            event.notify_one();
             scheduler.loop_once();
-            CHECK(notify.done());
             CHECK(first.done());
             CHECK_FALSE(second.done());
             CHECK_EQ(wake_order, ::std::vector<int>{1});
 
-            notify.get_promise().rethrow_exception();
             first.get_promise().rethrow_exception();
         }
         // 第二个等待者仍由挂起队列跟踪，留待析构调度器时回收
@@ -1490,11 +1484,9 @@ TEST_SUITE("verilator_utils/scheduler")
 
             for(::std::size_t i{1}; i != 4; ++i)
             {
-                auto notifier{[&](this auto) -> ::verilator_utils::task<void> { co_await event.notify_all(); }};
-                ::verilator_utils::async_task notify{scheduler, notifier()};
+                event.notify_all();
                 scheduler.loop_once();
                 CHECK_EQ(wake_count, i);
-                notify.get_promise().rethrow_exception();
             }
             CHECK(task.done());
             task.get_promise().rethrow_exception();

@@ -219,9 +219,7 @@ namespace verilator_utils::detail
          * @param eval_stage 目标评估阶段
          */
         explicit eval_stage_awaiter(scheduler_t::eval_stage_enum eval_stage) : eval_stage{eval_stage}
-        {
-            VU_CHECK(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv);
-        }
+        { VU_CHECK(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv); }
 
         /**
          * @brief 根据协程柄初始化字段
@@ -1383,53 +1381,11 @@ export namespace verilator_utils
         using wait_queue_t = ::std::vector<pair_t>;
         /// 等待队列
         wait_queue_t wait_queue{};
-
-        /**
-         * @brief 实现唤醒所有等待协程的可等待体
-         *
-         */
-        struct notify_all_awaiter : ::verilator_utils::detail::no_suspend_awaiter
-        {
-            wait_queue_t& queue;
-            ::verilator_utils::eval_scheduler* scheduler{};
-
-            template <::verilator_utils::is_coroutine_promise promise_type>
-            void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-            { scheduler = handle.promise().check_scheduler(); }
-
-            void await_resume()
-            {
-                ::std::ranges::for_each(queue, [this](const pair_t& pair) {
-                    scheduler->register_ready(pair);
-                    scheduler->remove_suspend(pair);
-                });
-                queue.clear();
-            }
-        };
-
-        /**
-         * @brief 实现唤醒一个等待协程的可等待体
-         *
-         */
-        struct notify_one_awaiter : ::verilator_utils::detail::no_suspend_awaiter
-        {
-            wait_queue_t& queue;
-            ::verilator_utils::eval_scheduler* scheduler{};
-
-            template <::verilator_utils::is_coroutine_promise promise_type>
-            void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-            { scheduler = handle.promise().check_scheduler(); }
-
-            void await_resume()
-            {
-                if(!queue.empty())
-                {
-                    scheduler->register_ready(queue.front());
-                    scheduler->remove_suspend(queue.front());
-                    queue.erase(queue.begin());
-                }
-            }
-        };
+        ::verilator_utils::eval_scheduler* scheduler{};
+        // 延迟回收以接近平均O(1)的复杂度
+        constexpr static auto erase_watermark{4096zu / sizeof(pair_t)};
+        constexpr static auto shrink_watermark{erase_watermark * 4zu};
+        ::std::size_t head_index{};
 
         /**
          * @brief 实现挂起功能的可等待体
@@ -1437,16 +1393,27 @@ export namespace verilator_utils
          */
         struct suspend_awaiter : ::std::suspend_always
         {
-            wait_queue_t& queue;
+            event& self;
 
             template <::verilator_utils::is_coroutine_promise promise_type>
             void await_suspend(::std::coroutine_handle<promise_type> handle)
             {
-                ::verilator_utils::eval_scheduler* scheduler{handle.promise().check_scheduler()};
-                queue.emplace_back(handle);
-                scheduler->register_suspend(handle);
+                auto old_scheduler{::std::exchange(self.scheduler, handle.promise().check_scheduler())};
+                VU_CHECK(old_scheduler == nullptr || old_scheduler == self.scheduler,
+                         "等待同一event对象的协程必须绑定相同的调度器对象"sv);
+                self.wait_queue.emplace_back(handle);
+                self.scheduler->register_suspend(handle);
             }
         };
+
+        /**
+         * @brief 在空闲容量超出阈值时回收内存
+         *
+         */
+        void do_shrink()
+        {
+            if(wait_queue.capacity() - wait_queue.size() >= shrink_watermark) [[unlikely]] { wait_queue.shrink_to_fit(); }
+        }
 
     public:
         event() noexcept = default;
@@ -1459,22 +1426,54 @@ export namespace verilator_utils
         /**
          * @brief 唤醒所有等待此事件的协程
          *
-         * @return 可等待体
          */
-        [[nodiscard]] notify_all_awaiter notify_all() noexcept
+        void notify_all()
         {
-            return notify_all_awaiter{.queue{wait_queue}};
+            if(head_index < wait_queue.size())
+            {
+                VU_CHECK(scheduler != nullptr, "event未绑定调度器，但等待队列不为空"sv);
+                ::std::ranges::for_each(wait_queue | ::std::views::drop(head_index), [this](const pair_t& pair) {
+                    scheduler->register_ready(pair);
+                    scheduler->remove_suspend(pair);
+                });
+                wait_queue.clear();
+                head_index = 0;
+                do_shrink();
+            }
         }
 
         /**
-         * @brief 唤醒一个等待此事件的协程
+         * @brief 按FIFO顺序唤醒一个等待此事件的协程
          *
          * 可避免惊群效应
-         * @return 可等待体
          */
-        [[nodiscard]] notify_one_awaiter notify_one() noexcept
+        void notify_one()
         {
-            return notify_one_awaiter{.queue{wait_queue}};
+            if(head_index < wait_queue.size())
+            {
+                VU_CHECK(scheduler != nullptr, "event未绑定调度器，但等待队列不为空"sv);
+                auto iter{wait_queue.begin() + static_cast<::std::ptrdiff_t>(head_index++)};
+                scheduler->register_ready(*iter);
+                scheduler->remove_suspend(*iter);
+                if(head_index == erase_watermark) [[unlikely]]
+                {
+                    wait_queue.erase(wait_queue.begin(), ++iter);
+                    head_index = 0;
+                    do_shrink();
+                }
+            }
+        }
+
+        /**
+         * @brief 回收等待队列中的空闲空间
+         *
+         */
+        void shrink_to_fit()
+        {
+            auto iter{wait_queue.begin() + static_cast<::std::ptrdiff_t>(head_index)};
+            wait_queue.erase(wait_queue.begin(), iter);
+            head_index = 0;
+            wait_queue.shrink_to_fit();
         }
 
         /**
@@ -1485,7 +1484,7 @@ export namespace verilator_utils
          */
         [[nodiscard]] friend suspend_awaiter operator co_await(event& self) noexcept
         {
-            return suspend_awaiter{.queue{self.wait_queue}};
+            return suspend_awaiter{.self{self}};
         }
     };
 
@@ -1502,13 +1501,133 @@ export namespace verilator_utils
         using const_reference = const value_type&;
 
     private:
-        constexpr static auto do_pop{[](::std::vector<type>* queue) static noexcept { queue->erase(queue->begin()); }};
-        using do_pop_t = ::std::unique_ptr<::std::vector<type>, decltype(do_pop)>;
         friend struct ::std::formatter<mailbox>;
         ::std::size_t max_count{};
-        ::std::vector<type> queue{};
+        using wrapper = ::std::optional<type>;
+        ::std::vector<wrapper> buffer{};
+        // put函数在该事件上等待
         ::verilator_utils::event write_event{};
+        // get和peek函数在该事件上等待
         ::verilator_utils::event read_event{};
+        // 延迟回收以接近平均O(1)的复杂度
+        constexpr static auto erase_watermark{::std::max(4096zu / sizeof(type), 4zu)};
+        constexpr static auto shrink_watermark{erase_watermark * 4zu};
+        // 有限容量实现为环形缓冲区，无限容量实现为延迟回收的动态数组
+        ::std::size_t head_index{};  // 总是小于max_count
+        ::std::size_t tail_index{};  // 可能大于max_count，使用前需要取模
+
+        [[nodiscard]] bool infty_capicity() const noexcept { return max_count == 0; }
+
+        [[nodiscard]] bool full() const noexcept { return head_index + max_count == tail_index; }
+
+        [[nodiscard]] bool empty() const noexcept { return num() == 0; }
+
+        /**
+         * @brief 向缓冲区末尾添加一个元素
+         *
+         * @tparam args_t 参数类型列表
+         * @param args 参数列表
+         */
+        template <typename... args_t>
+        void emplace_back(args_t&&... args)
+        {
+            if(infty_capicity()) { buffer.emplace_back(::std::forward<args_t>(args)...); }
+            else
+            {
+                buffer[tail_index++ % max_count].emplace(::std::forward<args_t>(args)...);
+            }
+            read_event.notify_one();
+        }
+
+        /**
+         * @brief 从缓冲区获取首个元素
+         *
+         * @return 首个元素引用
+         */
+        const_reference peek_front()
+        {
+            // peek操作没有真正取走首个元素，因此转发read_event以唤醒其他等待的协程
+            read_event.notify_one();
+            return buffer[head_index].value();
+        }
+
+        /**
+         * @brief 从缓冲区获取首个元素，然后删除该元素
+         *
+         * @return 首个元素
+         */
+        type get_front()
+        {
+            auto iter{buffer.begin() + static_cast<::std::ptrdiff_t>(head_index++)};
+            type front{::std::move(iter->value())};
+            iter->reset();
+            if(infty_capicity())
+            {
+                if(head_index == erase_watermark) [[unlikely]]
+                {
+                    buffer.erase(buffer.begin(), ++iter);
+                    head_index = 0;
+                    if(buffer.capacity() - buffer.size() >= shrink_watermark) [[unlikely]] { buffer.shrink_to_fit(); }
+                }
+            }
+            else
+            {
+                // 对索引进行回绕
+                if(head_index == max_count)
+                {
+                    head_index = 0;
+                    tail_index -= max_count;
+                }
+            }
+            write_event.notify_one();
+            return front;
+        }
+
+        auto as_range_infty_capicity(this auto&& self) { return self.buffer | ::std::views::drop(self.head_index); }
+
+        auto as_range(this auto&& self)
+        {
+            struct range
+            {
+                decltype(::std::addressof(self)) ptr;
+
+                struct iterator
+                {
+                    decltype(::std::addressof(self)) ptr;
+                    ::std::size_t index;
+                    using difference_type [[maybe_unused]] = ::std::ptrdiff_t;
+                    using value_type [[maybe_unused]] = wrapper;
+
+                    iterator& operator++ () noexcept
+                    {
+                        ++index;
+                        return *this;
+                    }
+
+                    iterator operator++ (int) noexcept
+                    {
+                        auto temp{*this};
+                        ++*this;
+                        return temp;
+                    }
+
+                    auto&& operator* () const noexcept { return ptr->buffer[index % ptr->max_count]; }
+                };
+
+                struct sentinel
+                {
+                    ::std::size_t tail_index;
+
+                    bool operator== (const iterator& iter) const { return tail_index == iter.index; }
+                };
+
+                iterator begin() noexcept { return iterator{ptr, ptr->head_index}; }
+
+                sentinel end() noexcept { return sentinel{ptr->tail_index}; }
+            };
+
+            return range{::std::addressof(self)};
+        }
 
     public:
         /**
@@ -1516,23 +1635,32 @@ export namespace verilator_utils
          *
          * @param max_count 邮箱最大容量，为0表示无限容量
          */
-        explicit mailbox(::std::size_t max_count = 0) : max_count{max_count}
+        explicit mailbox(::std::size_t max_count = 0) : max_count{max_count}, tail_index{infty_capicity() ? -1zu : 0zu}
         {
-            if(max_count != 0) { queue.reserve(max_count); }
+            if(max_count != 0) { buffer.resize(max_count); }
         }
 
         mailbox(const mailbox&) noexcept = delete;
         mailbox& operator= (const mailbox&) noexcept = delete;
         mailbox(mailbox&&) noexcept = delete;
         mailbox& operator= (mailbox&&) noexcept = delete;
-        ~mailbox() noexcept = default;
+
+        ~mailbox() noexcept
+        {
+            constexpr static auto do_destroy{[](wrapper& ref) static noexcept { ref.reset(); }};
+            if(infty_capicity()) { ::std::ranges::for_each(as_range_infty_capicity(), do_destroy); }
+            else
+            {
+                ::std::ranges::for_each(as_range(), do_destroy);
+            }
+        }
 
         /**
          * @brief 获取邮箱内元素数量
          *
          * @return 元素数量
          */
-        [[nodiscard]] ::std::size_t num() const noexcept { return queue.size(); }
+        [[nodiscard]] ::std::size_t num() const noexcept { return (infty_capicity() ? buffer.size() : tail_index) - head_index; }
 
         /**
          * @brief 向邮箱末尾放入元素，容量不足时会阻塞
@@ -1545,9 +1673,8 @@ export namespace verilator_utils
         [[nodiscard]] ::verilator_utils::task<void> put(args_t&&... args)
             requires (::std::constructible_from<value_type, args_t...>)
         {
-            while(max_count != 0 && queue.size() == max_count) { co_await write_event; }
-            queue.emplace_back(::std::forward<args_t>(args)...);
-            co_await read_event.notify_one();
+            while(full()) { co_await write_event; }
+            emplace_back(::std::forward<args_t>(args)...);
         }
 
         /**
@@ -1555,22 +1682,15 @@ export namespace verilator_utils
          *
          * @tparam args_t 参数类型列表
          * @param args 参数列表
-         * @return 子任务，配合co_await使用
+         * @return 是否成功放入元素
          */
         template <typename... args_t>
-        [[nodiscard]] ::verilator_utils::task<bool> try_put(args_t&&... args)
+        [[nodiscard]] bool try_put(args_t&&... args)
             requires (::std::constructible_from<value_type, args_t...>)
         {
-            if(max_count == 0 || queue.size() < max_count)
-            {
-                queue.emplace_back(::std::forward<args_t>(args)...);
-                co_await read_event.notify_one();
-                co_return true;
-            }
-            else
-            {
-                co_return false;
-            }
+            if(full()) { return false; }
+            emplace_back(::std::forward<args_t>(args)...);
+            return true;
         }
 
         /**
@@ -1580,41 +1700,27 @@ export namespace verilator_utils
          */
         [[nodiscard]] ::verilator_utils::task<value_type> get()
         {
-            while(queue.empty()) { co_await read_event; }
-            co_await write_event.notify_one();
-            do_pop_t _{::std::addressof(queue)};
-            co_return ::std::move(queue.front());
+            while(empty()) { co_await read_event; }
+            co_return get_front();
         }
 
         /**
          * @brief 尝试从邮箱获取首个元素，然后删除该元素，不会阻塞
          *
-         * @return 子任务，返回值成功获取时包含元素，否则为空
+         * @return std::optional 成功获取时包含元素，否则为空
          */
-        [[nodiscard]] ::verilator_utils::task<::std::optional<value_type>> try_get()
-        {
-            if(!queue.empty())
-            {
-                co_await write_event.notify_one();
-                do_pop_t _{::std::addressof(queue)};
-                co_return ::std::optional<value_type>{::std::move(queue.front())};
-            }
-            else
-            {
-                co_return ::std::nullopt;
-            }
-        }
+        [[nodiscard]] ::std::optional<value_type> try_get()
+        { return empty() ? ::std::nullopt : ::std::optional<value_type>{get_front()}; }
 
         /**
          * @brief 从邮箱获取首个元素，不会删除元素，邮箱为空时会阻塞
          *
          * @return 子任务，配合co_await使用
          */
-        [[nodiscard]] ::verilator_utils::task<reference> peek()
+        [[nodiscard]] ::verilator_utils::task<const_reference> peek()
         {
-            while(queue.empty()) { co_await read_event; }
-            co_await read_event.notify_one();
-            co_return queue.front();
+            while(empty()) { co_await read_event; }
+            co_return peek_front();
         }
 
         /**
@@ -1622,11 +1728,8 @@ export namespace verilator_utils
          *
          * @return std::optional 成功获取时包含元素引用，否则为空
          */
-        auto try_peek(this auto&& self) noexcept
-        {
-            using optional_t = ::std::optional<decltype(self.queue.front())>;
-            return self.queue.empty() ? ::std::nullopt : optional_t{self.queue.front()};
-        }
+        [[nodiscard]] ::std::optional<const_reference> try_peek() const
+        { return empty() ? ::std::nullopt : ::std::optional<const_reference>{buffer[head_index].value()}; }
     };
 
     /**
@@ -1654,13 +1757,13 @@ export namespace verilator_utils
          * @param update 要增加的量
          * @return 子任务，配合co_await使用
          */
-        [[nodiscard]] ::verilator_utils::task<void> put(::std::size_t update = 1)
+        void put(::std::size_t update = 1)
         {
             count += update;
-            if(update == 1) [[likely]] { co_await event.notify_one(); }
+            if(update == 1) [[likely]] { event.notify_one(); }
             else
             {
-                co_await event.notify_all();
+                event.notify_all();
             }
         }
 
@@ -1820,13 +1923,34 @@ export namespace std
         template <typename iter_t, typename char_t>
         auto format(const ::verilator_utils::mailbox<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx) const
         {
+            constexpr static auto transform{::std::views::transform([](auto&& ref) static noexcept { return ref.value(); })};
             if(with_detail)
             {
-                return ::std::format_to(ctx.out(), "{{max_count: {}, value: {}}}"sv, value.max_count, value.queue);
+                if(value.infty_capicity())
+                {
+                    return ::std::format_to(ctx.out(),
+                                            "{{max_count: {}, value: {}}}"sv,
+                                            value.max_count,
+                                            value.as_range_infty_capicity() | transform);
+                }
+                else
+                {
+                    return ::std::format_to(ctx.out(),
+                                            "{{max_count: {}, value: {}}}"sv,
+                                            value.max_count,
+                                            value.as_range() | transform);
+                }
             }
             else
             {
-                return ::std::format_to(ctx.out(), "{}"sv, value.queue);
+                if(value.infty_capicity())
+                {
+                    return ::std::format_to(ctx.out(), "{}"sv, value.as_range_infty_capicity() | transform);
+                }
+                else
+                {
+                    return ::std::format_to(ctx.out(), "{}"sv, value.as_range() | transform);
+                }
             }
         }
     };
