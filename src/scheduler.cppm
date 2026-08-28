@@ -426,7 +426,7 @@ namespace verilator_utils::detail
         void destroy_return_value() noexcept { ::std::destroy_at(::std::addressof(buffer.value)); }
     };
 
-    export template <typename return_t>
+    template <typename return_t>
         requires (::std::is_reference_v<return_t>)
     struct promise_with_return<return_t>
     {
@@ -464,7 +464,7 @@ namespace verilator_utils::detail
      * @brief 协程返回空值的特化
      *
      */
-    export template <>
+    template <>
     struct promise_with_return<void>
     {
         using return_type = void;
