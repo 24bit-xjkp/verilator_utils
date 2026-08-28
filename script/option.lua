@@ -49,7 +49,7 @@ option("with_main", function ()
     set_description("Enable main function support.")
 end)
 
-option("64bit_platform", function ()
+option("64bit platform", function ()
     set_showmenu(false)
     set_description("Whether the target platform is a 64bit platform.")
 

@@ -1,11 +1,5 @@
 set_policy("build.c++.modules", true)
-if get_config("use_sanitizer") then
-    set_policy("build.sanitizer.address", true)
-    set_policy("build.sanitizer.undefined", true)
-end
-if get_config("use_lto") then
-    set_policy("build.optimization.lto", true)
-end
+add_rules("enable_sanitizer", "enable_lto")
 
 local sanitizer_envs = { "ASAN_OPTIONS=check_initialization_order=1" }
 

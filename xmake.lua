@@ -22,15 +22,9 @@ set_policy("build.c++.modules.hide_dependencies", true)
 set_defaultmode("release")
 
 add_options("use_std_harden")
+add_rules("verilator_include")
 if get_config("trace_support_fst") then
     add_requires("zlib", "lz4")
 end
-
-rule("verilator_include")
-    after_load(function (target)
-        target:add("includedirs", path.join(target:pkgenvs()["VERILATOR_ROOT"], "include"), {public = true})
-    end)
-rule_end()
-add_rules("verilator_include")
 
 includes("*/xmake.lua")
