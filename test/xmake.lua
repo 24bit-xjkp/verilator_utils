@@ -7,6 +7,8 @@ if get_config("use_lto") then
     set_policy("build.optimization.lto", true)
 end
 
+local sanitizer_envs = { "ASAN_OPTIONS=check_initialization_order=1" }
+
 target("unit_test")
     set_group("unit_test")
     add_deps("verilator_utils_main")
@@ -15,7 +17,7 @@ target("unit_test")
     add_files(regex)
     for _, file in ipairs(os.files(regex)) do
         local name = path.basename(file)
-        add_tests(name, {runargs = {"-ts=verilator_utils/" .. name, "-fc"}})
+        add_tests(name, { runargs = { "-ts=verilator_utils/" .. name, "-fc" }, runenvs = sanitizer_envs })
     end
     after_load(function (target)
         local verilator_root = target:pkgenvs()["VERILATOR_ROOT"];
@@ -31,7 +33,7 @@ for name, _ in pairs(rtl_verilator_target) do
         add_packages("zlib", "lz4")
         set_default(false)
         add_files(format("rtl_%s*.cpp", name))
-        add_tests("rtl", {runargs = {"+verilator+rand+reset+2", "-fc"}})
+        add_tests("rtl", {runargs = {"+verilator+rand+reset+2", "-fc"}, runenvs = sanitizer_envs})
         on_load(function (target)
             target:set("targetdir", path.join(target:targetdir(), name))
         end)
