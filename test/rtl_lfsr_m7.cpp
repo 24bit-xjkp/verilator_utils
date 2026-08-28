@@ -35,6 +35,8 @@ TEST_SUITE("lfsr_m7")
         }
     };
 
+    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
+
     TEST_CASE("lfsr_m7")
     {
         constexpr static auto initial_value_table{
@@ -45,7 +47,7 @@ TEST_SUITE("lfsr_m7")
             }(),
         };
 
-        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        dut_context_t ctx{option};
         port_t port{ctx.get_dut()};
 
         format_wrapper lfsr_feedback{

@@ -49,6 +49,27 @@ export namespace verilator_utils
 
 export namespace verilator_utils
 {
+    /**
+     * @brief DUT上下文配置参数
+     *
+     */
+    struct dut_context_option
+    {
+        /// 是否启用覆盖率记录
+        bool coverage{};
+        /// 时间单位，默认值为ns，会覆盖dut内设置
+        ::verilator_utils::verilator_time_unit time_unit{::verilator_utils::verilator_time_unit::ns};
+        /// 时间精度，默认值为ps，会覆盖dut内设置
+        ::verilator_utils::verilator_time_unit time_precision{::verilator_utils::verilator_time_unit::ps};
+        /// 生成文件的基本名称，不带有后缀名，默认为doctest的测试用例名称
+        ::std::string_view base_name{};
+        /// 跟踪级别，默认值为0
+        int trace_level{};
+        /// 命令行参数数量，默认为传递给程序的命令行参数数量，不进行过滤
+        ::std::optional<int> argc{};
+        /// 命令行参数数组，默认为传递给程序的命令行参数数组，不进行过滤
+        ::std::optional<const char**> argv{};
+    };
 
     /**
      * @brief DUT上下文类型
@@ -95,34 +116,23 @@ export namespace verilator_utils
         /**
          * @brief 构造一个DUT上下文对象
          *
-         * @param coverage 是否启用覆盖率记录
-         * @param time_unit 时间单位，默认值为ns，会覆盖dut内设置
-         * @param time_precision 时间精度，默认值为ps，会覆盖dut内设置
-         * @param base_name 生成文件的基本名称，不带有后缀名，默认为doctest的测试用例名称
-         * @param trace_level 跟踪级别，默认值为0
-         * @param argc 命令行参数数量，默认为detail::argc
-         * @param argv 命令行参数数组，默认为detail::argv
+         * @param option 配置选项
          * @note 记录文件会在initial_eval时才打开
          */
-        explicit dut_context(bool coverage,
-                             ::verilator_utils::verilator_time_unit time_unit = ::verilator_utils::verilator_time_unit::ns,
-                             ::verilator_utils::verilator_time_unit time_precision = ::verilator_utils::verilator_time_unit::ps,
-                             ::std::string_view base_name = ::std::string_view{},
-                             int trace_level = 0,
-                             int argc = ::verilator_utils::detail::dut_context_default_args::argc,
-                             const char** argv = ::verilator_utils::detail::dut_context_default_args::argv) : coverage{coverage}
+        explicit dut_context(::verilator_utils::dut_context_option option = {}) : coverage{option.coverage}
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
             context = ::std::make_unique<::VerilatedContext>();
-            context->commandArgs(argc, argv);
+            context->commandArgs(option.argc.value_or(::verilator_utils::detail::dut_context_default_args::argc),
+                                 option.argv.value_or(::verilator_utils::detail::dut_context_default_args::argv));
             dut = ::std::make_unique<dut_t>(context.get(),
                                             current_test.m_test_suite == nullptr ? "TOP" : current_test.m_test_suite);
             // 覆盖dut内的timescale设置
-            context->timeprecision(::std::to_underlying(time_precision));
-            context->timeunit(::std::to_underlying(time_unit));
+            context->timeprecision(::std::to_underlying(option.time_precision));
+            context->timeunit(::std::to_underlying(option.time_unit));
             scheduler = ::std::make_unique<::verilator_utils::eval_scheduler>(*dut);
-            file_base_name = base_name.empty() ? current_test.m_name : base_name;
+            file_base_name = option.base_name.empty() ? current_test.m_name : option.base_name;
 
             if constexpr(use_tracer)
             {
@@ -130,7 +140,7 @@ export namespace verilator_utils
                 if constexpr(::std::same_as<::VerilatedVcdC, tracer_t>) { tracer = ::std::make_unique<::VerilatedVcdC>(); }
                 else if constexpr(::std::same_as<::VerilatedFstC, tracer_t>) { tracer = ::std::make_unique<::VerilatedFstC>(); }
                 else if constexpr(::std::same_as<::VerilatedSaifC, tracer_t>) { tracer = ::std::make_unique<::VerilatedSaifC>(); }
-                dut->trace(tracer.get(), trace_level);
+                dut->trace(tracer.get(), option.trace_level);
             }
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }

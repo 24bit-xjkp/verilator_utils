@@ -34,9 +34,11 @@ TEST_SUITE("dual_ram")
         }
     };
 
+    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
+
     TEST_CASE("dual_ram")
     {
-        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        dut_context_t ctx{option};
         port_t port{ctx.get_dut()};
         using pair_t = std::pair<std::uint8_t, std::uint8_t>;
         mailbox<std::uint8_t> queue{};
@@ -138,7 +140,7 @@ TEST_SUITE("dual_ram")
 
     TEST_CASE("context random seed management")
     {
-        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        dut_context_t ctx{option};
 
         CHECK_EQ(ctx.get_seed(), static_cast<std::size_t>(ctx.get_context().randSeed()));
 

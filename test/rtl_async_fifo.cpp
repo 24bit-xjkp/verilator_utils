@@ -189,10 +189,11 @@ TEST_SUITE("async_fifo")
     constexpr auto slow_period{26_ns};
     constexpr auto fast_period{14_ns};
     constexpr auto rst_period{2_ns * 7zu * 13zu};
+    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
 
     TEST_CASE("write_slow_read_fast")
     {
-        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        dut_context_t ctx{option};
         port_t port{ctx.get_dut()};
 
         ctx.add_task(generate_async_reset(port.rst, rst_period));
@@ -204,7 +205,7 @@ TEST_SUITE("async_fifo")
 
     TEST_CASE("write_fast_read_slow")
     {
-        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        dut_context_t ctx{option};
         port_t port{ctx.get_dut()};
 
         ctx.add_task(generate_async_reset(port.rst, rst_period));

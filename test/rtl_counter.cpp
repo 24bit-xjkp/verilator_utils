@@ -26,9 +26,11 @@ TEST_SUITE("counter")
         }
     };
 
+    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
+
     TEST_CASE("counter")
     {
-        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ns};
+        dut_context_t ctx{option};
         port_t port{ctx.get_dut()};
 
         ctx.add_task(generate_clock(port.clk, 2_ns));

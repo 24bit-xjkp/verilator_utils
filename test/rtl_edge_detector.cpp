@@ -26,9 +26,11 @@ TEST_SUITE("edge_detector")
         }
     };
 
+    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ps_10};
+
     TEST_CASE("edge_detector")
     {
-        dut_context_t ctx{true, verilator_time_unit::ns, verilator_time_unit::ps_10};
+        dut_context_t ctx{option};
         port_t port{ctx.get_dut()};
 
         constexpr static auto period{1_ns};
