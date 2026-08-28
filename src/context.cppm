@@ -147,8 +147,9 @@ export namespace verilator_utils
 
         dut_context(const dut_context&) = delete;
         dut_context& operator= (const dut_context&) = delete;
-        dut_context(dut_context&&) noexcept = default;
-        dut_context& operator= (dut_context&&) noexcept = default;
+        // random_seed_logger 注册到 doctest 的上下文作用域栈中，移动会破坏其LIFO要求，因此禁止移动
+        dut_context(dut_context&&) noexcept = delete;
+        dut_context& operator= (dut_context&&) noexcept = delete;
 
         ~dut_context() noexcept
         {
