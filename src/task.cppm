@@ -1037,15 +1037,6 @@ export namespace verilator_utils
         async_task(async_task&& other) noexcept : subhandle{::std::exchange(other.subhandle, nullptr)} {}
 
         /**
-         * @brief 销毁绑定的协程柄
-         *
-         */
-        void destroy()
-        {
-            if(subhandle) { ::std::exchange(subhandle, nullptr).destroy(); }
-        }
-
-        /**
          * @brief 获取任务的协程句柄
          *
          * @return 任务的协程句柄
@@ -1164,6 +1155,15 @@ export namespace verilator_utils
     private:
         /// 子任务的协程柄
         handle_t subhandle;
+
+        /**
+         * @brief 销毁绑定的协程柄
+         *
+         */
+        void destroy()
+        {
+            if(subhandle) { ::std::exchange(subhandle, nullptr).destroy(); }
+        }
     };
 
     /**

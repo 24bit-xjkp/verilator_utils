@@ -142,7 +142,9 @@ export namespace verilator_utils
 
         ~dut_context() noexcept
         {
-            if(dut) { dut->final(); }
+            // 移动后的对象无需清理
+            if(context == nullptr) { return; }
+            dut->final();
             if(coverage && scheduler->get_eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
             {
                 context->coverageFilename(::std::format("{}.dat"sv, file_base_name));

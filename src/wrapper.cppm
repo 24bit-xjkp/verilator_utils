@@ -1149,7 +1149,7 @@ export namespace verilator_utils
                 value_type temp{};
                 if constexpr(::verilator_utils::is_vl_wide<other_type>)
                 {
-                    ::std::ranges::copy_n(aligned_value.data(), temp.size(), temp.data());
+                    ::std::ranges::copy_n(aligned_value.data(), aligned_value.size(), temp.data());
                 }
                 else
                 {

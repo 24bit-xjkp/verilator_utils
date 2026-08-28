@@ -1086,13 +1086,15 @@ export namespace verilator_utils
 
         eval_scheduler(const eval_scheduler&) = delete;
         eval_scheduler& operator= (const eval_scheduler&) = delete;
-        eval_scheduler(eval_scheduler&&) noexcept = default;
-        eval_scheduler& operator= (eval_scheduler&&) noexcept = default;
+        // 任务会持有调度器指针，移动调度器会导致指针失效
+        eval_scheduler(eval_scheduler&&) noexcept = delete;
+        eval_scheduler& operator= (eval_scheduler&&) noexcept = delete;
 
         /**
-         * @brief 检查调度器是否为空
+         * @brief 检查直接由调度器管理的队列是否为空
          *
-         * @return 调度器是否为空
+         * 不考虑在调度器外挂起的协程
+         * @return 队列是否为空
          */
         [[nodiscard]] bool empty() const noexcept { return wait_queue.empty() && event_queue.empty() && ready_queue.empty(); }
 
@@ -1317,7 +1319,10 @@ export namespace verilator_utils
             VU_CHECK(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
             auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
             VU_CHECK(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
-            wait_queue.emplace(time_to_wait_in_time_precision + dut->contextp()->time(), pair);
+            auto current_time{dut->contextp()->time()};
+            auto target_time{time_to_wait_in_time_precision + current_time};
+            VU_CHECK(target_time > current_time, "Verilator仿真计时器溢出"sv);
+            wait_queue.emplace(target_time, pair);
         }
 
         /**
