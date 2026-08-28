@@ -20,8 +20,8 @@ export namespace verilator_utils
         /// 协程栈帧
         struct stacktrace_frame
         {
-            /// 协程柄
-            ::std::coroutine_handle<> handle{};
+            /// 指向协程帧的指针
+            void* coroutine_frame_ptr{};
             /// 协程挂起位置
             ::std::source_location location{};
             /// 协程类型
@@ -52,7 +52,7 @@ export namespace verilator_utils
             auto [handle, promise]{pair};
             while(promise != nullptr)
             {
-                co_yield stacktrace_frame{handle, promise->suspend_location, promise->classify()};
+                co_yield stacktrace_frame{handle.address(), promise->suspend_location, promise->classify()};
                 handle = promise->parent;
                 promise = promise->parent_promise;
             }
@@ -1155,15 +1155,6 @@ export namespace verilator_utils
     private:
         /// 子任务的协程柄
         handle_t subhandle;
-
-        /**
-         * @brief 销毁绑定的协程柄
-         *
-         */
-        void destroy()
-        {
-            if(subhandle) { ::std::exchange(subhandle, nullptr).destroy(); }
-        }
     };
 
     /**
@@ -1481,9 +1472,12 @@ export namespace verilator_utils
             template <::verilator_utils::is_coroutine_promise promise_type>
             void await_suspend(::std::coroutine_handle<promise_type> handle)
             {
-                auto old_scheduler{::std::exchange(self.scheduler, handle.promise().check_scheduler())};
-                VU_CHECK(old_scheduler == nullptr || old_scheduler == self.scheduler,
-                         "等待同一event对象的协程必须绑定相同的调度器对象"sv);
+                auto new_scheduler{handle.promise().check_scheduler()};
+                if(self.scheduler == nullptr) { self.scheduler = new_scheduler; }
+                else
+                {
+                    VU_CHECK(self.scheduler == new_scheduler, "等待同一event对象的协程必须绑定相同的调度器对象"sv);
+                }
                 self.wait_queue.emplace_back(handle);
                 self.scheduler->register_suspend(handle);
             }
@@ -1801,7 +1795,7 @@ export namespace verilator_utils
          *
          * @return 子任务，配合co_await使用
          */
-        [[nodiscard]] ::verilator_utils::task<const_reference> peek()
+        [[nodiscard]] ::verilator_utils::task<value_type> peek()
         {
             while(empty()) { co_await read_event; }
             co_return peek_front();
@@ -1810,10 +1804,10 @@ export namespace verilator_utils
         /**
          * @brief 从邮箱获取首个元素，不会删除元素和阻塞
          *
-         * @return std::optional 成功获取时包含元素引用，否则为空
+         * @return std::optional 成功获取时包含元素，否则为空
          */
-        [[nodiscard]] ::std::optional<const_reference> try_peek() const
-        { return empty() ? ::std::nullopt : ::std::optional<const_reference>{buffer[head_index].value()}; }
+        [[nodiscard]] ::std::optional<value_type> try_peek() const
+        { return empty() ? ::std::nullopt : ::std::optional<value_type>{buffer[head_index].value()}; }
     };
 
     /**
@@ -2098,7 +2092,7 @@ export namespace std
                 return ::std::format_to(ctx.out(),
                                         "{}{}({}){}: {}{}{} at {}{}:{}:{}{}"sv,
                                         ::verilator_utils::detail::assertion_color::cyan,
-                                        value.handle.address(),
+                                        value.coroutine_frame_ptr,
                                         value.type,
                                         ::verilator_utils::detail::assertion_color::reset,
                                         ::verilator_utils::detail::assertion_color::yellow,
@@ -2112,7 +2106,7 @@ export namespace std
             }
             return ::std::format_to(ctx.out(),
                                     "{}({}): {} at {}:{}:{}"sv,
-                                    value.handle.address(),
+                                    value.coroutine_frame_ptr,
                                     value.type,
                                     value.location.function_name(),
                                     value.location.file_name(),

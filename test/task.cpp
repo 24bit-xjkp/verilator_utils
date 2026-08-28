@@ -68,8 +68,8 @@ namespace
     /// 协程栈回溯测试辅助协程，用于构建根协程→子协程→孙协程的同步调用链
 
     /// 根协程：仅执行一次协程栈回溯，不产生子任务
-    ::verilator_utils::task<void>
-        stacktrace_root_only(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured, int& expected_line)
+    ::verilator_utils::task<void> stacktrace_root_only(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                                                       int& expected_line)
     {
         const auto stacktrace_site{::std::source_location::current()};
         captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(co_await ::verilator_utils::stacktrace());
@@ -77,10 +77,9 @@ namespace
     }
 
     /// 孙协程：记录自身的协程柄并执行协程栈回溯
-    ::verilator_utils::task<void>
-        stacktrace_grandchild(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
-                              ::verilator_utils::task<void>::handle_t& self_handle,
-                              int& expected_line)
+    ::verilator_utils::task<void> stacktrace_grandchild(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                                                        ::verilator_utils::task<void>::handle_t& self_handle,
+                                                        int& expected_line)
     {
         self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
         const auto stacktrace_site{::std::source_location::current()};
@@ -89,31 +88,26 @@ namespace
     }
 
     /// 子协程：记录自身的协程柄并等待孙协程
-    ::verilator_utils::task<void>
-        stacktrace_child(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
-                         ::verilator_utils::task<void>::handle_t& self_handle,
-                         ::verilator_utils::task<void>::handle_t& grandchild_handle,
-                         int& expected_line)
+    ::verilator_utils::task<void> stacktrace_child(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                                                   ::verilator_utils::task<void>::handle_t& self_handle,
+                                                   ::verilator_utils::task<void>::handle_t& grandchild_handle,
+                                                   int& expected_line)
     {
         self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
         co_await stacktrace_grandchild(captured, grandchild_handle, expected_line);
     }
 
     /// 根协程：记录自身的协程柄并等待子协程
-    ::verilator_utils::task<void>
-        stacktrace_root(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
-                        ::verilator_utils::task<void>::handle_t& child_handle,
-                        ::verilator_utils::task<void>::handle_t& grandchild_handle,
-                        int& expected_line)
-    {
-        co_await stacktrace_child(captured, child_handle, grandchild_handle, expected_line);
-    }
+    ::verilator_utils::task<void> stacktrace_root(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                                                  ::verilator_utils::task<void>::handle_t& child_handle,
+                                                  ::verilator_utils::task<void>::handle_t& grandchild_handle,
+                                                  int& expected_line)
+    { co_await stacktrace_child(captured, child_handle, grandchild_handle, expected_line); }
 
     /// 异步子协程：记录自身的协程柄，执行协程栈回溯后挂起以保持父协程处于等待状态
-    ::verilator_utils::task<void>
-        stacktrace_async_child(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
-                               ::verilator_utils::task<void>::handle_t& self_handle,
-                               int& expected_line)
+    ::verilator_utils::task<void> stacktrace_async_child(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                                                         ::verilator_utils::task<void>::handle_t& self_handle,
+                                                         int& expected_line)
     {
         self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
         const auto stacktrace_site{::std::source_location::current()};
@@ -123,8 +117,8 @@ namespace
     }
 
     /// 未被任何协程等待的异步协程：执行协程栈回溯后挂起
-    ::verilator_utils::task<void>
-        stacktrace_orphan_async(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured, int& expected_line)
+    ::verilator_utils::task<void> stacktrace_orphan_async(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& captured,
+                                                          int& expected_line)
     {
         const auto stacktrace_site{::std::source_location::current()};
         captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(co_await ::verilator_utils::stacktrace());
@@ -552,9 +546,7 @@ TEST_SUITE("verilator_utils/task")
         static_assert(::std::formattable<frame_t, char>);
 
         const auto location{::std::source_location::current()};
-        const frame_t frame{::std::coroutine_handle<>{},
-                            location,
-                            ::verilator_utils::detail::promise_base::coroutine_type_enum::sub_coroutine};
+        const frame_t frame{nullptr, location, ::verilator_utils::detail::promise_base::coroutine_type_enum::sub_coroutine};
 
         const auto plain{::std::format("{}"sv, frame)};
         CHECK(plain.contains("sub_coroutine"sv));
@@ -635,9 +627,9 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(captured->frames[1].type, type_t::sub_coroutine);
         CHECK_EQ(captured->frames[2].type, type_t::root_coroutine);
         // 帧柄构成逐层向上的调用链
-        CHECK_EQ(captured->frames[0].handle.address(), grandchild_handle.address());
-        CHECK_EQ(captured->frames[1].handle.address(), child_handle.address());
-        CHECK_EQ(captured->frames[2].handle.address(), root_handle.address());
+        CHECK_EQ(captured->frames[0].coroutine_frame_ptr, grandchild_handle.address());
+        CHECK_EQ(captured->frames[1].coroutine_frame_ptr, child_handle.address());
+        CHECK_EQ(captured->frames[2].coroutine_frame_ptr, root_handle.address());
         // 每帧的挂起位置对应各自函数中co_await的调用处
         CHECK(::std::string_view{captured->frames[0].location.function_name()}.contains("stacktrace_grandchild"sv));
         CHECK_EQ(static_cast<int>(captured->frames[0].location.line()), expected_line);
@@ -673,7 +665,7 @@ TEST_SUITE("verilator_utils/task")
         using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
         // 异步子协程被父协程等待后变为带父协程的子协程
         CHECK_EQ(captured->frames[0].type, type_t::sub_coroutine);
-        CHECK_EQ(captured->frames[0].handle.address(), async_child_handle.address());
+        CHECK_EQ(captured->frames[0].coroutine_frame_ptr, async_child_handle.address());
         CHECK_EQ(static_cast<int>(captured->frames[0].location.line()), expected_line);
         CHECK(::std::string_view{captured->frames[0].location.function_name()}.contains("stacktrace_async_child"sv));
         // 父协程为根协程，挂起位置为等待子协程的co_await调用处
@@ -695,8 +687,7 @@ TEST_SUITE("verilator_utils/task")
         REQUIRE(captured);
         REQUIRE_EQ(captured->frames.size(), 1u);
         // 未被等待的异步协程没有父协程，单独构成一帧
-        CHECK_EQ(captured->frames[0].type,
-                 ::verilator_utils::detail::promise_base::coroutine_type_enum::async_coroutine);
+        CHECK_EQ(captured->frames[0].type, ::verilator_utils::detail::promise_base::coroutine_type_enum::async_coroutine);
         CHECK_EQ(static_cast<int>(captured->frames[0].location.line()), expected_line);
         CHECK(::std::string_view{captured->frames[0].location.function_name()}.contains("stacktrace_orphan_async"sv));
         CHECK(child.done());
@@ -773,11 +764,10 @@ TEST_SUITE("verilator_utils/task")
         auto scheduler{fixture.make_scheduler()};
         ::verilator_utils::mailbox<int> mailbox{};
         const auto& const_mailbox{mailbox};
-        const int* peeked{};
+        int peeked{};
 
         // 阻塞式peek需要修改事件等待队列，仅支持非const邮箱；
-        // peek与try_peek均返回只读引用，const邮箱通过非阻塞的try_peek提供只读引用访问
-        static_assert(::std::same_as<decltype(const_mailbox.try_peek()), ::std::optional<const int&>>);
+        static_assert(::std::same_as<decltype(const_mailbox.try_peek()), ::std::optional<int>>);
         CHECK_FALSE(const_mailbox.try_peek().has_value());
         CHECK_EQ(const_mailbox.num(), 0u);
 
@@ -785,20 +775,17 @@ TEST_SUITE("verilator_utils/task")
         put_succeeded = mailbox.try_put(29);
         CHECK(put_succeeded);
 
-        // 通过非const阻塞式peek获取队首元素的地址，用于验证const引用的身份
-        auto peeker_task{[&](this auto) -> ::verilator_utils::task<void> {
-            const int& reference{co_await mailbox.peek()};
-            peeked = ::std::addressof(reference);
-        }()};
+        // 通过非const阻塞式peek获取队首元素，用于验证元素的身份
+        auto peeker_task{[&](this auto) -> ::verilator_utils::task<void> { peeked = co_await mailbox.peek(); }()};
         ::verilator_utils::async_task peeker{scheduler, ::std::move(peeker_task)};
         scheduler.loop_once();
         CHECK(peeker.done());
 
-        // const mailbox的try_peek返回指向同一元素的const引用，且不删除元素
+        // const mailbox的try_peek返回同一元素，且不删除元素
         auto nonblocking_peek{const_mailbox.try_peek()};
         REQUIRE(nonblocking_peek.has_value());
         CHECK_EQ(*nonblocking_peek, 29);
-        CHECK_EQ(peeked, ::std::addressof(*nonblocking_peek));
+        CHECK_EQ(peeked, *nonblocking_peek);
         CHECK_EQ(const_mailbox.num(), 1u);
         peeker.get_promise().rethrow_exception();
     }
