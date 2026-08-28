@@ -1838,10 +1838,22 @@ export namespace verilator_utils
         void put(::std::size_t update = 1)
         {
             count += update;
-            if(update == 1) [[likely]] { event.notify_one(); }
-            else
+            while(!empty() && count >= suspend_queue[head_index])
             {
-                event.notify_all();
+                auto begin{suspend_queue.begin()};
+                auto iter{begin + static_cast<::std::ptrdiff_t>(head_index)};
+                event.notify_one();
+                // 在此处更新内部计数器使得结果立即对外部可见，避免虚假唤醒
+                count -= *iter;
+                if(++head_index == erase_watermark) [[unlikely]]
+                {
+                    head_index = 0;
+                    suspend_queue.erase(begin, iter + 1);
+                    if(suspend_queue.capacity() - suspend_queue.size() >= shrink_watermark) [[unlikely]]
+                    {
+                        suspend_queue.shrink_to_fit();
+                    }
+                }
             }
         }
 
@@ -1853,16 +1865,13 @@ export namespace verilator_utils
          */
         [[nodiscard]] ::verilator_utils::task<void> get(::std::size_t update = 1)
         {
-            if(count >= update)
+            if(count >= update && empty())
             {
                 count -= update;
                 co_return;
             }
-
-            auto my_ticket{next_ticket++};
-            while(my_ticket != ticket || count < update) { co_await event; }
-            count -= update;
-            ++ticket;
+            suspend_queue.emplace_back(update);
+            co_await event;
         }
 
         /**
@@ -1873,7 +1882,7 @@ export namespace verilator_utils
          */
         bool try_get(::std::size_t update = 1) noexcept
         {
-            if(count >= update)
+            if(count >= update && empty())
             {
                 count -= update;
                 return true;
@@ -1886,9 +1895,13 @@ export namespace verilator_utils
 
     private:
         ::std::size_t count{};
-        ::std::size_t ticket{};
-        ::std::size_t next_ticket{};
+        constexpr static auto erase_watermark{4096zu / sizeof(::std::size_t)};
+        constexpr static auto shrink_watermark{erase_watermark * 4zu};
+        ::std::vector<::std::size_t> suspend_queue{};
+        ::std::size_t head_index{};
         ::verilator_utils::event event{};
+
+        bool empty() noexcept { return suspend_queue.size() == head_index; }
     };
 
     /**

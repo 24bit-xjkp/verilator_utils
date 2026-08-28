@@ -902,6 +902,354 @@ TEST_SUITE("verilator_utils/task")
         second.get_promise().rethrow_exception();
     }
 
+    TEST_CASE("semaphore get returns immediately when the count already suffices")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{3};
+        bool acquired{};
+
+        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await semaphore.get(2);
+            acquired = true;
+        }()};
+        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+
+        scheduler.loop_once();
+        CHECK(waiter.done());
+        CHECK(acquired);
+        CHECK(semaphore.try_get());
+        CHECK_FALSE(semaphore.try_get());
+        waiter.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("semaphore reserves permits for queued waiters before waking them")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        ::std::vector<int> acquisition_order;
+
+        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+            co_await semaphore.get();
+            acquisition_order.push_back(id);
+        }};
+        auto first_task{make_waiter(1)};
+        auto second_task{make_waiter(2)};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+
+        // 放入的许可立即预留给队首等待者：外部观察者（如同伴协程）在等待者恢复前无法抢走，
+        // 因此这里 try_get 必须失败（旧实现中许可尚未预留，try_get 会成功）
+        semaphore.put();
+        CHECK_FALSE(semaphore.try_get());
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+        CHECK(acquisition_order.empty());
+
+        scheduler.loop_once();
+        CHECK(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_EQ(acquisition_order, ::std::vector<int>{1});
+        CHECK_FALSE(semaphore.try_get());
+
+        // 下一个许可同样预留给新的队首等待者
+        semaphore.put();
+        scheduler.loop_once();
+        CHECK(second.done());
+        CHECK_EQ(acquisition_order, (::std::vector<int>{1, 2}));
+        CHECK_FALSE(semaphore.try_get());
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("semaphore grants multiple queued waiters from a single put in FIFO order")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        ::std::vector<int> acquisition_order;
+
+        auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
+            co_await semaphore.get(update);
+            acquisition_order.push_back(id);
+        }};
+        auto first_task{make_waiter(1, 1)};
+        auto second_task{make_waiter(2, 2)};
+        auto third_task{make_waiter(3, 3)};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_FALSE(third.done());
+
+        // 一次放入5个许可：按FIFO满足前两个等待者（1+2），剩余2个不足以满足第三个
+        semaphore.put(5);
+        scheduler.loop_once();
+        CHECK(first.done());
+        CHECK(second.done());
+        CHECK_FALSE(third.done());
+        CHECK_EQ(acquisition_order, ::std::vector<int>{1, 2});
+        // 严格FIFO：队列非空时，即使计数足以满足获取，try_get也必须失败
+        CHECK_FALSE(semaphore.try_get(3));
+        CHECK_FALSE(semaphore.try_get(2));
+
+        // 补足最后一个等待者所需的许可
+        semaphore.put(1);
+        scheduler.loop_once();
+        CHECK(third.done());
+        CHECK_EQ(acquisition_order, (::std::vector<int>{1, 2, 3}));
+        CHECK_FALSE(semaphore.try_get());
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+        third.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("semaphore keeps FIFO order when the head waiter needs more permits than are available")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        ::std::vector<int> acquisition_order;
+
+        auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
+            co_await semaphore.get(update);
+            acquisition_order.push_back(id);
+        }};
+        auto first_task{make_waiter(1, 3)};
+        auto second_task{make_waiter(2, 1)};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+
+        // 队首等待者需要3个许可：放入2个后仍不足，排在后面的等待者不能插队
+        semaphore.put(2);
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+        CHECK(acquisition_order.empty());
+        // 严格FIFO：等待队列非空时，任何非阻塞获取都不得拿走许可，即使计数足以满足
+        CHECK_FALSE(semaphore.try_get(3));
+        CHECK_FALSE(semaphore.try_get(2));
+
+        // 补足队首等待者所需的许可（仅满足队首），后续等待者仍然等待
+        semaphore.put(1);
+        scheduler.loop_once();
+        CHECK(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_EQ(acquisition_order, ::std::vector<int>{1});
+        CHECK_FALSE(semaphore.try_get());
+
+        // 队首许可全部发放后，后续等待者才获得许可
+        semaphore.put();
+        scheduler.loop_once();
+        CHECK(second.done());
+        CHECK_EQ(acquisition_order, (::std::vector<int>{1, 2}));
+        CHECK_FALSE(semaphore.try_get());
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("semaphore get enqueues behind queued waiters even when the count suffices")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        ::std::vector<int> acquisition_order;
+
+        auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
+            co_await semaphore.get(update);
+            acquisition_order.push_back(id);
+        }};
+        auto first_task{make_waiter(1, 5)};
+        auto second_task{make_waiter(2, 1)};
+        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+
+        // 队首需要5个许可：放入4个后队首仍不满足，此时新来的get(1)计数已足够，
+        // 但严格FIFO要求它排到队尾而不是立即获得许可
+        semaphore.put(4);
+        scheduler.loop_once();
+        CHECK_FALSE(first.done());
+        CHECK_FALSE(second.done());
+        CHECK(acquisition_order.empty());
+        CHECK_FALSE(semaphore.try_get());
+
+        // 补足队首的许可：队首获得许可后计数耗尽，排队的get(1)继续等待
+        semaphore.put(1);
+        scheduler.loop_once();
+        CHECK(first.done());
+        CHECK_FALSE(second.done());
+        CHECK_EQ(acquisition_order, ::std::vector<int>{1});
+        CHECK_FALSE(semaphore.try_get());
+
+        // 新的许可到达后才轮到排队的get(1)
+        semaphore.put();
+        scheduler.loop_once();
+        CHECK(second.done());
+        CHECK_EQ(acquisition_order, (::std::vector<int>{1, 2}));
+        CHECK_FALSE(semaphore.try_get());
+        first.get_promise().rethrow_exception();
+        second.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("semaphore restores nonblocking acquisition once the queue drains")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+
+        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.get(); }()};
+        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+
+        // 放入2个许可：1个发放给队首等待者，剩余1个保留在计数中，
+        // 队列已逻辑清空（物理条目要等到回收水位才被擦除），非阻塞获取立即恢复
+        semaphore.put(2);
+        CHECK(semaphore.try_get());
+        CHECK_FALSE(semaphore.try_get());
+        scheduler.loop_once();
+        CHECK(waiter.done());
+
+        // 队列清空后，计数充足的get走快速路径，一次调度即完成
+        bool acquired{};
+        auto fast_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await semaphore.get();
+            acquired = true;
+        }()};
+        semaphore.put();
+        ::verilator_utils::async_task fast{scheduler, ::std::move(fast_task)};
+        scheduler.loop_once();
+        CHECK(fast.done());
+        CHECK(acquired);
+        CHECK_FALSE(semaphore.try_get());
+        waiter.get_promise().rethrow_exception();
+        fast.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("semaphore waiters accumulate permits across multiple puts")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        bool acquired{};
+
+        auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> {
+            co_await semaphore.get(5);
+            acquired = true;
+        }()};
+        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+        CHECK_FALSE(acquired);
+
+        // 放入0个许可不得发放任何等待者
+        semaphore.put(0);
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+        CHECK_FALSE(acquired);
+
+        semaphore.put(2);
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+        CHECK_FALSE(acquired);
+
+        semaphore.put(2);
+        scheduler.loop_once();
+        CHECK_FALSE(waiter.done());
+        CHECK_FALSE(acquired);
+
+        // 累计许可达到请求量后一次性发放
+        semaphore.put();
+        scheduler.loop_once();
+        CHECK(waiter.done());
+        CHECK(acquired);
+        CHECK_FALSE(semaphore.try_get());
+        waiter.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("semaphore grants a large queue of waiters without losing or duplicating permits")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        // 超过semaphore内部suspend_queue的回收水位线，强制触发前缀回收路径
+        constexpr static ::std::size_t waiter_count{4096zu / sizeof(::std::size_t) + 8zu};
+        constexpr static auto iota_range{::std::views::iota(0zu, waiter_count)};
+        ::std::vector<::std::size_t> acquisition_order;
+        acquisition_order.reserve(waiter_count);
+
+        auto waiter{[&](this auto, ::std::size_t id) -> ::verilator_utils::task<void> {
+            co_await semaphore.get();
+            acquisition_order.push_back(id);
+        }};
+
+        ::std::vector<::verilator_utils::async_task> tasks;
+        tasks.reserve(waiter_count);
+        for(auto i: iota_range) { tasks.emplace_back(scheduler, waiter(i)); }
+
+        scheduler.loop_once();
+        CHECK_EQ(acquisition_order.size(), 0u);
+
+        // 一次发放所有许可，跨过回收边界后仍按原FIFO顺序完成
+        semaphore.put(waiter_count);
+        scheduler.loop_once();
+
+        REQUIRE_EQ(acquisition_order.size(), waiter_count);
+        auto expected{iota_range | ::std::ranges::to<::std::vector>()};
+        CHECK_EQ(acquisition_order, expected);
+        CHECK_FALSE(semaphore.try_get());
+        for(auto& task: tasks) { task.get_promise().rethrow_exception(); }
+    }
+
+    TEST_CASE("semaphore reclaims queue storage for very large waiter queues")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        // 等待者数量足够多，使前缀回收后的空闲容量达到收缩阈值，触发shrink_to_fit
+        constexpr static ::std::size_t waiter_count{6000};
+        ::std::size_t completed{};
+
+        auto waiter{[&](this auto, ::std::size_t update) -> ::verilator_utils::task<void> {
+            co_await semaphore.get(update);
+            ++completed;
+        }};
+
+        ::std::vector<::verilator_utils::async_task> tasks;
+        tasks.reserve(waiter_count);
+        tasks.emplace_back(scheduler, waiter(2));
+        for(::std::size_t i{1}; i != waiter_count; ++i) { tasks.emplace_back(scheduler, waiter(1)); }
+
+        scheduler.loop_once();
+        CHECK_EQ(completed, 0u);
+
+        // 总需求量恰好为waiter_count+1，发放后不留余量，验证计数守恒
+        semaphore.put(waiter_count + 1);
+        scheduler.loop_once();
+
+        CHECK_EQ(completed, waiter_count);
+        CHECK_FALSE(semaphore.try_get());
+        for(auto& task: tasks) { task.get_promise().rethrow_exception(); }
+    }
+
     TEST_CASE("mailbox put rechecks capacity when a peer producer fills the freed slot")
     {
         scheduler_fixture fixture{};
@@ -1058,66 +1406,6 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(mailbox.num(), 0u);
         getter.get_promise().rethrow_exception();
         peeker.get_promise().rethrow_exception();
-    }
-
-    TEST_CASE("semaphore get rechecks availability when a peer consumes the permits first")
-    {
-        scheduler_fixture fixture{};
-        auto scheduler{fixture.make_scheduler()};
-        ::verilator_utils::semaphore semaphore{};
-        ::std::vector<int> acquisition_order;
-        bool drained{};
-
-        auto first_task{[&](this auto) -> ::verilator_utils::task<void> {
-            co_await semaphore.get();
-            acquisition_order.push_back(1);
-        }()};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-
-        auto second_task{[&](this auto) -> ::verilator_utils::task<void> {
-            co_await semaphore.get();
-            acquisition_order.push_back(2);
-        }()};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
-
-        scheduler.loop_once();
-        CHECK_FALSE(first.done());
-        CHECK_FALSE(second.done());
-
-        // 放入许可后在同一个协程内先消耗掉它：被唤醒的第一个等待者在恢复执行前
-        // 发现许可已被同伴消耗，必须重新检查可用性而不是透支计数器
-        semaphore.put();
-        drained = semaphore.try_get();
-        scheduler.loop_once();
-        CHECK(drained);
-        CHECK_FALSE(first.done());
-        CHECK_FALSE(second.done());
-        CHECK(acquisition_order.empty());
-        CHECK_FALSE(semaphore.try_get());
-
-        // 下一个许可唤醒排在队首的等待者，但其票号尚未轮到自己，必须继续等待
-        semaphore.put();
-        scheduler.loop_once();
-        CHECK_FALSE(first.done());
-        CHECK_FALSE(second.done());
-
-        // 票号轮到的等待者获得许可，保持先来先得顺序
-        semaphore.put();
-        scheduler.loop_once();
-        CHECK(first.done());
-        CHECK_FALSE(second.done());
-        CHECK_EQ(acquisition_order, ::std::vector<int>{1});
-
-        // 最后一个等待者在票号轮到时获得许可
-        semaphore.put();
-        scheduler.loop_once();
-        CHECK(second.done());
-        CHECK_EQ(acquisition_order, (::std::vector<int>{1, 2}));
-        // 统计：共放入4个许可，1个被排水者消耗、2个被等待者获得，恰好剩余1个
-        CHECK(semaphore.try_get(1));
-        CHECK_FALSE(semaphore.try_get());
-        first.get_promise().rethrow_exception();
-        second.get_promise().rethrow_exception();
     }
 
     TEST_CASE("concurrent mailbox producers and consumers converge without exceeding capacity")
