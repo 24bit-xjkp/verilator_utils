@@ -37,7 +37,7 @@ export namespace verilator_utils
          * @param pair 协程状态对
          */
         explicit coroutine_stacktrace(::verilator_utils::detail::coroutine_pair pair) :
-            frames{backtrace(pair) | ::std::ranges::to<::std::vector>()}
+            frames{::std::ranges::to<::std::vector>(backtrace(pair))}
         {
         }
 
@@ -967,7 +967,7 @@ export namespace verilator_utils
             [[nodiscard]] auto await_resume() const
             {
                 if(scheduler != nullptr) { scheduler->throw_if_finish(); }
-                return clk_list | ::std::views::transform([](const clock_trigger& clk) { return clk.triggered; });
+                return ::std::views::transform(clk_list, [](const clock_trigger& clk) { return clk.triggered; });
             }
         };
 
@@ -1515,10 +1515,11 @@ export namespace verilator_utils
             if(head_index < wait_queue.size())
             {
                 VU_CHECK(scheduler != nullptr, "event未绑定调度器，但等待队列不为空"sv);
-                ::std::ranges::for_each(wait_queue | ::std::views::drop(head_index), [this](const pair_t& pair) {
-                    scheduler->register_ready(pair);
-                    scheduler->remove_suspend(pair);
-                });
+                ::std::ranges::for_each(::std::views::drop(wait_queue, static_cast<::std::ptrdiff_t>(head_index)),
+                                        [this](const pair_t& pair) {
+                                            scheduler->register_ready(pair);
+                                            scheduler->remove_suspend(pair);
+                                        });
                 wait_queue.clear();
                 head_index = 0;
                 do_shrink();
