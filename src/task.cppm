@@ -1006,6 +1006,7 @@ export namespace verilator_utils
         /**
          * @brief 将同步任务转化为异步任务，并将任务添加到调度器就绪队列
          *
+         * @note 异步任务绑定调度器引用，其生命周期不应长于调度器
          * @note 任务必须处于initial_suspend状态，且不能有父任务
          * @param scheduler 调度器引用
          * @param task 同步任务对象
@@ -1833,7 +1834,6 @@ export namespace verilator_utils
          * @brief 增加内部计数器
          *
          * @param update 要增加的量
-         * @return 子任务，配合co_await使用
          */
         void put(::std::size_t update = 1)
         {
@@ -1871,7 +1871,16 @@ export namespace verilator_utils
                 co_return;
             }
             suspend_queue.emplace_back(update);
-            co_await event;
+            try
+            {
+                co_await event;
+            }
+            catch(...)
+            {
+                // 在抛出异常时清理suspend_queue以避免破坏和event队列的对齐
+                suspend_queue.pop_back();
+                throw;
+            }
         }
 
         /**
