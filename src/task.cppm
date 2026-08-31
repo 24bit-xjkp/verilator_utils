@@ -778,7 +778,7 @@ export namespace verilator_utils
      * @param clk 时钟信号切片
      * @param period 时钟周期
      * @param delay 时钟发生延迟
-     * @param duty_ratio 占空比
+     * @param duty_ratio 占空比，取值范围为(0, 1)
      * @return 生成时钟信号的任务
      */
     [[nodiscard]] ::verilator_utils::task<void> generate_clock(::verilator_utils::bit_slice<::CData>& clk,
@@ -786,6 +786,7 @@ export namespace verilator_utils
                                                                ::verilator_utils::femtosecond_t delay = 0_fs,
                                                                double duty_ratio = 0.5)
     {
+        VU_CHECK(duty_ratio > 0. && duty_ratio < 1., "时钟占空比{}超出取值范围(0, 1)"sv, duty_ratio);
         clk = 0;
         if(delay != 0_fs) { co_await ::verilator_utils::wait_time(delay); }
         auto positive_duration{period * duty_ratio};
