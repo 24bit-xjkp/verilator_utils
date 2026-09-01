@@ -114,7 +114,7 @@ module async_fifo #(
     );
 
     always_comb begin
-        localparam logic [addr_width:0] mask = 4'b11 << (addr_width - 1);
+        localparam logic [addr_width:0] mask = 'b11 << (addr_width - 1);
         full         = i_gray_cnt == (o_synced_gray_cnt ^ mask);
         empty        = o_gray_cnt == i_synced_gray_cnt;
 

@@ -74,6 +74,7 @@ TEST_SUITE("async_fifo")
             shift_register<std::uint64_t> i_delay_line{1, index_width, hex};
             shift_register<std::uint64_t> o_delay_line{1, index_width, hex};
 
+            co_await wait_reset_finish(port.rst);
             while(true)
             {
                 auto triggered{co_await clk};
@@ -213,5 +214,77 @@ TEST_SUITE("async_fifo")
         ctx.add_task(generate_clock(port.o_clk, slow_period));
         ctx.add_task(do_verify(port));
         ctx.loop_until_finish(5_us);
+    }
+
+    using dist_t = std::uniform_int_distribution<std::size_t>;
+    task<void> do_verify_random(dut_context_t & ctx, port_t & port, dist_t i_dist, dist_t o_dist)
+    {
+        auto seed{ctx.get_seed()};
+        std::mt19937_64 engin{seed};
+        reference_module ref{port};
+        co_await add_task(ref.eval());
+        auto pool{co_await get_spawn_pool()};
+        constexpr auto iters{port_t::depth * 500zu};
+        auto i{0zu};
+
+        const auto do_write_random{[&] -> task<void> {
+            co_await wait_reset_finish(port.rst);
+            CData cnt{};
+            for(; i != iters; ++i)
+            {
+                co_await wait_stimulate(port.i_clk);
+                auto i_valid{i_dist(engin) == 1};
+                port.i_valid = i_valid;
+                port.i_data = (cnt += i_valid);
+
+                co_await verify_at(port.i_clk, [&] { CHECK_EQ(port.i_ready, ref.i_ready()); });
+            }
+        }};
+        pool.add_task(do_write_random());
+
+        const auto do_read_random{[&] -> task<void> {
+            co_await wait_reset_finish(port.rst);
+            while(i != iters)
+            {
+                co_await wait_stimulate(port.o_clk);
+                auto o_ready{o_dist(engin) == 1};
+                port.o_ready = o_ready;
+
+                co_await verify_at(port.o_clk, [&] {
+                    CHECK_EQ(port.o_valid, ref.o_valid());
+                    if(port.o_valid == 1 && o_ready == 1) { CHECK_EQ(port.o_data, ref.o_data()); }
+                });
+            }
+        }};
+        pool.add_task(do_read_random());
+
+        co_await pool.join_all();
+        co_await wait_verify(port.i_clk);
+        co_await wait_verify(port.o_clk);
+        co_await eval_finish();
+    }
+
+    TEST_CASE("write_slow_read_fast_random")
+    {
+        dut_context_t ctx{option};
+        port_t port{ctx.get_dut()};
+
+        ctx.add_task(generate_async_reset(port.rst, rst_period));
+        ctx.add_task(generate_clock(port.i_clk, slow_period));
+        ctx.add_task(generate_clock(port.o_clk, fast_period));
+        ctx.add_task(do_verify_random(ctx, port, dist_t{0, 1}, dist_t{0, 3}));
+        ctx.loop_until_finish(110_us);
+    }
+
+    TEST_CASE("write_fast_read_slow_random")
+    {
+        dut_context_t ctx{option};
+        port_t port{ctx.get_dut()};
+
+        ctx.add_task(generate_async_reset(port.rst, rst_period));
+        ctx.add_task(generate_clock(port.i_clk, fast_period));
+        ctx.add_task(generate_clock(port.o_clk, slow_period));
+        ctx.add_task(do_verify_random(ctx, port, dist_t{0, 3}, dist_t{0, 1}));
+        ctx.loop_until_finish(110_us);
     }
 }
