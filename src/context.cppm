@@ -47,6 +47,36 @@ export namespace verilator_utils
     }  // namespace detail
 }  // namespace verilator_utils
 
+namespace verilator_utils::detail
+{
+    template <::verilator_utils::is_verilator_tracer tracer_t>
+    struct dut_context_tracer
+    {
+        ::std::unique_ptr<tracer_t> tracer{};
+
+        void init() { tracer = ::std::make_unique<tracer_t>(); }
+
+        void open(::std::string_view base_name)
+        {
+            constexpr ::std::string_view format_string{[] static consteval noexcept {
+                if constexpr(::std::same_as<tracer_t, ::VerilatedVcdC>) { return "{}.vcd"sv; }
+                else if constexpr(::std::same_as<tracer_t, ::VerilatedFstC>) { return "{}.fst"sv; }
+                else if constexpr(::std::same_as<tracer_t, ::VerilatedSaifC>) { return "{}.saif"sv; }
+            }()};
+            tracer->open(::std::format(format_string, base_name).data());
+        }
+
+        tracer_t* get() const noexcept { return tracer.get(); }
+
+        void dump(::std::uint64_t time) { tracer->dump(time); }
+    };
+
+    template <>
+    struct dut_context_tracer<void>
+    {
+    };
+}  // namespace verilator_utils::detail
+
 export namespace verilator_utils
 {
     /**
@@ -85,11 +115,9 @@ export namespace verilator_utils
         ::std::unique_ptr<dut_t> dut{};
         ::std::unique_ptr<::verilator_utils::eval_scheduler> scheduler{};
         constexpr static auto use_tracer{!::std::is_void_v<tracer_t>};
-        // 若不使用波形记录器，则使用std::size_t占位
-        using actual_tracer_t = ::std::conditional_t<use_tracer, tracer_t, ::std::size_t>;
-        ::std::unique_ptr<actual_tracer_t> tracer{};
+        [[no_unique_address]] ::verilator_utils::detail::dut_context_tracer<tracer_t> tracer{};
         bool coverage{};
-        ::std::string file_base_name{};
+        ::std::string base_name{};
 
         /**
          * @brief 在doctest断言失败时记录随机种子
@@ -132,14 +160,13 @@ export namespace verilator_utils
             context->timeprecision(::std::to_underlying(option.time_precision));
             context->timeunit(::std::to_underlying(option.time_unit));
             scheduler = ::std::make_unique<::verilator_utils::eval_scheduler>(*dut);
-            file_base_name = option.base_name.empty() ? current_test.m_name : option.base_name;
+            base_name = option.base_name.empty() ? current_test.m_name : option.base_name;
 
             if constexpr(use_tracer)
             {
+                static_assert(dut_t::traceCapable, "Verilator生成代码时未开启trace支持");
                 context->traceEverOn(true);
-                if constexpr(::std::same_as<::VerilatedVcdC, tracer_t>) { tracer = ::std::make_unique<::VerilatedVcdC>(); }
-                else if constexpr(::std::same_as<::VerilatedFstC, tracer_t>) { tracer = ::std::make_unique<::VerilatedFstC>(); }
-                else if constexpr(::std::same_as<::VerilatedSaifC, tracer_t>) { tracer = ::std::make_unique<::VerilatedSaifC>(); }
+                tracer.init();
                 dut->trace(tracer.get(), option.trace_level);
             }
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
@@ -156,7 +183,7 @@ export namespace verilator_utils
             dut->final();
             if(coverage && scheduler->get_eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
             {
-                context->coverageFilename(::std::format("{}.dat"sv, file_base_name));
+                context->coverageFilename(::std::format("{}.dat"sv, base_name));
                 context->coveragep()->write();
             }
         }
@@ -168,7 +195,7 @@ export namespace verilator_utils
         void loop_once()
         {
             scheduler->loop_once();
-            if constexpr(use_tracer) { tracer->dump(context->time()); }
+            if constexpr(use_tracer) { tracer.dump(context->time()); }
         }
 
         /**
@@ -178,21 +205,12 @@ export namespace verilator_utils
          */
         void initial_eval()
         {
-            if constexpr(::std::same_as<tracer_t, ::VerilatedVcdC>)
-            {
-                tracer->open(::std::format("{}.vcd"sv, file_base_name).data());
-            }
-            else if constexpr(::std::same_as<tracer_t, ::VerilatedFstC>)
-            {
-                tracer->open(::std::format("{}.fst"sv, file_base_name).data());
-            }
-            else if constexpr(::std::same_as<tracer_t, ::VerilatedSaifC>)
-            {
-                tracer->open(::std::format("{}.saif"sv, file_base_name).data());
-            }
-
             scheduler->initial_eval();
-            if constexpr(use_tracer) { tracer->dump(context->time()); }
+            if constexpr(use_tracer)
+            {
+                tracer.open(base_name);
+                tracer.dump(context->time());
+            }
         }
 
         /**
@@ -200,7 +218,7 @@ export namespace verilator_utils
          *
          * @return 文件基本名称
          */
-        [[nodiscard]] ::std::string_view get_base_name() const noexcept { return file_base_name; }
+        [[nodiscard]] ::std::string_view get_base_name() const noexcept { return base_name; }
 
         /**
          * @brief 设置生成文件的基本名称，不带后缀名
@@ -212,7 +230,7 @@ export namespace verilator_utils
         {
             VU_CHECK(scheduler->get_eval_stage() == ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin,
                      "必须在initial_eval之前设置文件基本名称"sv);
-            file_base_name = base_name;
+            this->base_name = base_name;
         }
 
         /**
@@ -244,7 +262,7 @@ export namespace verilator_utils
          */
         auto&& get_tracer(this auto&& self) noexcept
             requires (use_tracer)
-        { return *self.tracer; }
+        { return *self.tracer.get(); }
 
         /**
          * @brief 获取VerilatorContext的随机种子
