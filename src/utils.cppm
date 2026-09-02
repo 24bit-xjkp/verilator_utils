@@ -216,8 +216,6 @@ export namespace verilator_utils
 
 export namespace verilator_utils::inline literals
 {
-    // NOLINTBEGIN(google-runtime-float)
-
     /**
      * @brief 飞秒时间字面值运算符
      *
@@ -325,8 +323,6 @@ export namespace verilator_utils::inline literals
      */
     consteval ::verilator_utils::femtosecond_t operator""_s (long double rep)
     { return ::verilator_utils::femtosecond_t{static_cast<double>(rep * 1e15)}; }
-
-    // NOLINTEND(google-runtime-float)
 }  // namespace verilator_utils::inline literals
 
 export namespace verilator_utils

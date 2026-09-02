@@ -10,6 +10,7 @@ Checks: >
   -modernize-use-designated-initializers,
   google-readability-casting,
   google-runtime-*,
+  -google-runtime-float,
   readability-*,
   -readability-non-const-parameter,
   -readability-function-cognitive-complexity,

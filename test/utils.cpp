@@ -154,10 +154,8 @@ TEST_SUITE("verilator_utils/utils")
     TEST_CASE("femtosecond operations are usable in constant evaluation")
     {
         static_assert(static_cast<::std::uint64_t>(1_s) == 1'000'000'000'000'000ull);
-        // NOLINTBEGIN(google-runtime-float)
         static_assert(static_cast<::std::uint64_t>(1.5_s) == 1'500'000'000'000'000ull);
         static_assert(static_cast<::std::uint64_t>(1.5_fs) == 2u);
-        // NOLINTEND(google-runtime-float)
         static_assert(1_s == 1'000_ms);
         static_assert(1_s == 1'000'000'000'000_ps);
         constexpr auto sum{1_s + 2_s};
