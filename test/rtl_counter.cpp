@@ -8,7 +8,7 @@ TEST_SUITE("counter")
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_counter_verilator;
-    using dut_context_t = dut_context<dut_t, VerilatedFstC>;
+    using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
     namespace views = std::views;
 
     struct port_t

@@ -10,7 +10,7 @@ TEST_SUITE("lfsr_m7")
     using namespace std::literals;
     namespace views = std::views;
     using dut_t = unit_test_rtl_lfsr_m7_verilator;
-    using dut_context_t = dut_context<dut_t, VerilatedFstC>;
+    using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
 
     enum class lfsr_feedback_t : std::uint64_t
     {

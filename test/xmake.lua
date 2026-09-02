@@ -24,9 +24,12 @@ for name, _ in pairs(rtl_verilator_target) do
     target("unit_test_rtl_"..name)
         set_group("unit_test_rtl")
         add_deps(format("unit_test_rtl_%s_verilator", name), "verilator_utils_main")
-        add_packages("zlib", "lz4")
+        if get_config("trace_support_fst") then
+            add_packages("zlib", "lz4")
+        end
         set_default(false)
         add_files(format("rtl_%s*.cpp", name))
+        add_defines("VERILATOR_TRACER=" .. (get_config("trace_support_fst") and "VerilatedFstC" or "VerilatedVcdC"))
         add_tests("rtl", {runargs = {"+verilator+rand+reset+2", "-fc"}, runenvs = sanitizer_envs})
         on_load(function (target)
             target:set("targetdir", path.join(target:targetdir(), name))

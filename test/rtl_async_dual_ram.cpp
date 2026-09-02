@@ -10,7 +10,7 @@ TEST_SUITE("dual_ram")
     namespace views = std::views;
     namespace ranges = std::ranges;
     using dut_t = unit_test_rtl_async_dual_ram_verilator;
-    using dut_context_t = dut_context<dut_t, VerilatedFstC>;
+    using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
 
     struct port_t
     {

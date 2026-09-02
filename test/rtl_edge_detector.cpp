@@ -6,18 +6,18 @@ import verilator_utils.full;
 
 TEST_SUITE("edge_detector")
 {
-    using namespace ::verilator_utils;
-    using dut_t = ::unit_test_rtl_edge_detector_verilator;
-    using dut_context_t = dut_context<dut_t, ::VerilatedFstC>;
+    using namespace verilator_utils;
+    using dut_t = unit_test_rtl_edge_detector_verilator;
+    using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
 
     struct port_t
     {
-        bit_slice<::CData> clk;
-        bit_slice<::CData> rst;
-        bit_slice<::CData> signal;
-        bit_slice<::CData> rising;
-        bit_slice<::CData> falling;
-        bit_slice<::CData> both;
+        bit_slice<CData> clk;
+        bit_slice<CData> rst;
+        bit_slice<CData> signal;
+        bit_slice<CData> rising;
+        bit_slice<CData> falling;
+        bit_slice<CData> both;
 
         inline explicit port_t(dut_t& dut) :
             clk{dut.clk}, rst{dut.rst}, signal{dut.signal}, rising{dut.rising, boolean}, falling{dut.falling, boolean},

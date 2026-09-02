@@ -1,6 +1,6 @@
 local verilator_options = {
     "-Wall",
-    "--trace-fst",
+    get_config("trace_support_fst") and "--trace-fst" or "--trace-vcd",
     {"--x-assign", "unique"},
     {"--x-initial", "unique"},
     "--coverage",

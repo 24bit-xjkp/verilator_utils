@@ -9,7 +9,7 @@ TEST_SUITE("sequence_detector")
     using namespace verilator_utils;
     namespace views = std::views;
     using dut_t = unit_test_rtl_sequence_detector_verilator;
-    using dut_context_t = dut_context<dut_t, VerilatedFstC>;
+    using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
 
     struct port_t
     {

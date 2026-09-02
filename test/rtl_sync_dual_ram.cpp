@@ -8,7 +8,7 @@ TEST_SUITE("sync_dual_ram")
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_sync_dual_ram_verilator;
-    using dut_context_t = dut_context<dut_t, VerilatedFstC>;
+    using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
     namespace views = std::views;
     namespace ranges = std::ranges;
 

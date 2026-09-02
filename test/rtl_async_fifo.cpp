@@ -8,7 +8,7 @@ TEST_SUITE("async_fifo")
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_async_fifo_verilator;
-    using dut_context_t = dut_context<dut_t, VerilatedFstC>;
+    using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
 
     struct port_t
     {
