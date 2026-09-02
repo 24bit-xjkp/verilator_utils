@@ -23,6 +23,7 @@ rtl_verilator_target = {
 
 for name, opt in pairs(rtl_verilator_target) do
     target(format("unit_test_rtl_%s_verilator", name))
+        set_enabled(get_config("enable_test"))
         add_rules("verilator.shared")
         add_files(name..".sv")
         set_default(false)

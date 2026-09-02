@@ -58,3 +58,8 @@ option("64bit platform", function ()
         assert(option:enabled(), "Only 64bit platform is supported.")
     end)
 end)
+
+option("enable_test", function ()
+    set_default(true)
+    set_description("Enable unit test for the project.")
+end)

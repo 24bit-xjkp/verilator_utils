@@ -4,6 +4,7 @@ add_rules("enable_sanitizer", "enable_lto")
 local sanitizer_envs = { "ASAN_OPTIONS=check_initialization_order=1" }
 
 target("unit_test")
+    set_enabled(get_config("enable_test"))
     set_group("unit_test")
     add_deps("verilator_utils_main")
     set_default(false)
@@ -22,6 +23,7 @@ target_end()
 
 for name, _ in pairs(rtl_verilator_target) do
     target("unit_test_rtl_"..name)
+        set_enabled(get_config("enable_test"))
         set_group("unit_test_rtl")
         add_deps(format("unit_test_rtl_%s_verilator", name), "verilator_utils_main")
         if get_config("trace_support_fst") then
