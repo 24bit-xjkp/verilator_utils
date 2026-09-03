@@ -1,3 +1,4 @@
+---@diagnostic disable-next-line
 package("clean_std_heads", function ()
     set_homepage("https://github.com/YexuanXiao/convert-cpp-std-headers-to-std-module")
     set_description("A library for helping to convert #include standard library headers to import std;")
@@ -15,6 +16,7 @@ package("clean_std_heads", function ()
     end)
 end)
 
+---@diagnostic disable-next-line
 package("doctest_module", function ()
     set_homepage("https://github.com/24bit-xjkp/doctest_module")
     set_description("Use doctest framework as C++20 module.")
