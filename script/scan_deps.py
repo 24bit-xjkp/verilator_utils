@@ -19,15 +19,16 @@ script_path = script_path.resolve()
 assert script_path.is_file() and script_path.suffix == ".py", f"{script_path}不是一个Python脚本"
 
 dependencies = depfinder.parse_file(script_path)[2]
-script_dir = script_path.parent
-if script_dir not in sys.path:
+# 注册搜索路径以查找import导入的脚本
+if (script_dir := script_path.parent) not in sys.path:
     sys.path.insert(0, str(script_dir))
 deps: set[str] = set()
 for module in dependencies.required_modules:
     spec = importlib.util.find_spec(module)
-    if spec and spec.origin and (source_path := Path(spec.origin)).is_relative_to(project_root):
+    # 过滤非本项目的依赖和.venv中的第三方包依赖
+    if spec and (source_path := Path(spec.origin or "")).is_relative_to(project_root) and ".venv" not in source_path.parts:
         if source_path.name == "__init__.py":
-            deps |= set(str(dep.relative_to(project_root)) for dep in source_path.glob("*.py"))
+            deps |= set(str(dep.relative_to(project_root)) for dep in source_path.parent.glob("*.py"))
         else:
             deps.add(str(source_path.relative_to(project_root)))
 deps.add(str(script_path.relative_to(project_root)))
