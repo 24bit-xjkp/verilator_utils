@@ -15,9 +15,12 @@ target("unit_test")
         add_tests(name, { runargs = { "-ts=verilator_utils/" .. name, "-fc" }, runenvs = sanitizer_envs })
     end
     after_load(function (target)
-        local verilator_root = target:pkgenvs()["VERILATOR_ROOT"];
-        target:add("files", path.join(verilator_root, "include", "verilated.cpp"), {warnings = "none"})
-        target:add("files", path.join(verilator_root, "include", "verilated_threads.cpp"), {warnings = "none"})
+        -- 在未安装verilator的环境下首次config时避免访问空表
+        local verilator_root = (target:pkgenvs() or {})["VERILATOR_ROOT"]
+        if verilator_root then
+            target:add("files", path.join(verilator_root, "include", "verilated.cpp"), {warnings = "none"})
+            target:add("files", path.join(verilator_root, "include", "verilated_threads.cpp"), {warnings = "none"})
+        end
     end)
 target_end()
 
@@ -29,6 +32,7 @@ for name, _ in pairs(rtl_verilator_target) do
         if get_config("trace_support_fst") then
             add_packages("zlib", "lz4")
         end
+        add_packages("cnpy")
         set_default(false)
         add_files(format("rtl_%s*.cpp", name))
         add_defines("VERILATOR_TRACER=" .. (get_config("trace_support_fst") and "VerilatedFstC" or "VerilatedVcdC"))
