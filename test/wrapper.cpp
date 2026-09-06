@@ -1,12 +1,8 @@
 #include <doctest_macros.hpp>
-import verilator_utils.full;
-using namespace ::verilator_utils::verilator;
+import unit_test;
 
 TEST_SUITE("verilator_utils/wrapper")
 {
-    using namespace ::verilator_utils::verilator;
-    using namespace ::std::string_view_literals;
-
     TEST_CASE("slice concepts identify wrapper types")
     {
         static_assert(::verilator_utils::is_bit_slice<::verilator_utils::bit_slice<::CData>>);

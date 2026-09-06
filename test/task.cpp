@@ -1,11 +1,8 @@
 #include <doctest_macros.hpp>
-import verilator_utils.full;
+import unit_test;
 
 namespace
 {
-    using namespace ::verilator_utils::verilator;
-    using namespace ::verilator_utils::literals;
-
     auto to_vector(::std::size_t n) noexcept { return ::std::views::take(n) | ::std::ranges::to<::std::vector<bool>>(); }
 
     struct signal_state
@@ -33,27 +30,10 @@ namespace
         ~lifecycle_counter() { --live_count; }
     };
 
-    struct fake_dut final : ::VerilatedModel
-    {
-        explicit fake_dut(::VerilatedContext& context) : ::VerilatedModel{context} {}
-
-        void eval() {}
-
-        [[nodiscard]] const char* hierName() const final { return "fake_dut"; }
-
-        [[nodiscard]] const char* modelName() const final { return "fake_dut"; }
-
-        [[nodiscard]] unsigned threads() const final { return 1u; }
-
-        void prepareClone() const { contextp()->prepareClone(); }
-
-        void atClone() const { contextp()->threadPoolpOnClone(); }
-    };
-
     struct scheduler_fixture
     {
         ::VerilatedContext context{};
-        fake_dut dut{context};
+        ::fake_dut dut{context};
 
         scheduler_fixture()
         {

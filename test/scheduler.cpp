@@ -1,32 +1,12 @@
 #include <doctest_macros.hpp>
-import verilator_utils.full;
+import unit_test;
 
 namespace
 {
-    using namespace ::verilator_utils::verilator;
-    using namespace ::std::string_view_literals;
-
-    struct fake_dut final : ::VerilatedModel
-    {
-        explicit fake_dut(::VerilatedContext& context) : ::VerilatedModel{context} {}
-
-        void eval() {}
-
-        [[nodiscard]] const char* hierName() const final { return "fake_dut"; }
-
-        [[nodiscard]] const char* modelName() const final { return "fake_dut"; }
-
-        [[nodiscard]] unsigned threads() const final { return 1u; }
-
-        void prepareClone() const { contextp()->prepareClone(); }
-
-        void atClone() const { contextp()->threadPoolpOnClone(); }
-    };
-
     struct scheduler_fixture
     {
         ::VerilatedContext context{};
-        fake_dut dut{context};
+        ::fake_dut dut{context};
 
         explicit scheduler_fixture(::std::int32_t time_unit = -9, ::std::int32_t time_precision = -12)
         {
@@ -586,12 +566,12 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler_fixture fixture{};
         bool seen_on_dut_eval{};
 
-        struct observing_dut final : ::VerilatedModel
+        struct observing_dut final : ::fake_dut
         {
             explicit observing_dut(::VerilatedContext& context,
                                    ::verilator_utils::eval_scheduler* scheduler,
                                    bool* seen_on_dut_eval) :
-                ::VerilatedModel{context}, scheduler{scheduler}, seen_on_dut_eval{seen_on_dut_eval}
+                ::fake_dut{context}, scheduler{scheduler}, seen_on_dut_eval{seen_on_dut_eval}
             {
             }
 

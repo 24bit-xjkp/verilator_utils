@@ -8,8 +8,8 @@ target("unit_test")
     set_group("unit_test")
     add_deps("verilator_utils_main")
     set_default(false)
-    local regex = "*.cpp|rtl_*.cpp|main.cpp"
-    add_files(regex)
+    local regex = "*.cpp|rtl_*.cpp|common.cpp"
+    add_files(regex, "common.cpp")
     for _, file in ipairs(os.files(regex)) do
         local name = path.basename(file)
         add_tests(name, { runargs = { "-ts=verilator_utils/" .. name, "-fc" }, runenvs = sanitizer_envs })

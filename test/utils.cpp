@@ -1,13 +1,8 @@
 #include <doctest_macros.hpp>
-import verilator_utils.full;
-using namespace ::verilator_utils::verilator;
+import unit_test;
 
 TEST_SUITE("verilator_utils/utils")
 {
-    using namespace ::verilator_utils;
-    using namespace ::verilator_utils::verilator;
-    using namespace ::std::string_view_literals;
-
     TEST_CASE("femtosecond literals convert to femtoseconds")
     {
         CHECK_EQ(static_cast<::std::uint64_t>(0_fs), 0u);
