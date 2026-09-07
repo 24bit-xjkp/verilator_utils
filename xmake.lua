@@ -1,10 +1,14 @@
 set_project("verilator_utils")
+-- 3.1.0修复了Verilator与C++模块共同使用时的编译顺序问题
+set_xmakever("3.1.0")
+set_version("0.1.0")
 set_languages("c++latest")
 set_warnings("allextra")
 includes("script/*.lua")
 add_rules("mode.debug", "mode.release", "mode.releasedbg")
 set_allowedmodes("debug", "release", "releasedbg")
-add_requires("verilator")
+-- Verilator v5.050修复了clang编译问题
+add_requires("verilator >=5.050")
 add_packages("verilator")
 local config = {
     debug = is_mode("debug"),
