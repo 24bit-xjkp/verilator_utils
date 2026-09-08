@@ -850,6 +850,17 @@ export namespace verilator_utils
             ::verilator_utils::data_format::check_format(data_format, width);
         }
 
+        /**
+         * @brief 构造一个向量切片对象
+         *
+         * @param data 数据引用
+         * @param packed_format 打包的数据格式
+         */
+        explicit vector_slice(value_type& data, ::verilator_utils::packed_format packed_format) :
+            vector_slice{data, packed_format.first, packed_format.second}
+        {
+        }
+
         vector_slice(const vector_slice&) = default;
         vector_slice(vector_slice&&) = default;
         vector_slice& operator= (vector_slice&&) = default;
