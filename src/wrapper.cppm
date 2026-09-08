@@ -1236,7 +1236,7 @@ export namespace verilator_utils
          * @param format 数据类型
          * @return 新切片对象
          */
-        vector_slice convert(::verilator_utils::data_format::format format)
+        [[nodiscard]] vector_slice convert(::verilator_utils::data_format::format format) const
         {
             ::verilator_utils::data_format::check_format(data_format, width());
             return vector_slice{data, left_bound, right_bound, format};
@@ -1291,6 +1291,16 @@ export namespace verilator_utils
                     }
                 });
         }
+
+        /**
+         * @brief 转化为C++基础数据类型
+         *
+         * @tparam underlying_type C++基础数据类型
+         * @return C++基础数据类型
+         */
+        template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, float, double, bool> underlying_type>
+        [[nodiscard]] underlying_type to_underlying() const
+        { return ::std::get<underlying_type>(to_underlying()); }
 
         /**
          * @brief 检查向量切片的值是否有效
