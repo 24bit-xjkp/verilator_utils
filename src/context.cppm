@@ -279,6 +279,14 @@ export namespace verilator_utils
         }
 
         /**
+         * @brief 获取当前可执行文件所在路径
+         *
+         * @return 可执行文件所在路径
+         */
+        [[nodiscard]] ::std::filesystem::path get_binary_path() const
+        { return ::std::filesystem::canonical(::verilator_utils::detail::dut_context_default_args::argv[0]); }
+
+        /**
          * @brief 判断当前上下文中覆盖率记录是否启用
          *
          * @return 覆盖率记录是否启用
