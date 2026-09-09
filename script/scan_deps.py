@@ -20,7 +20,7 @@ assert script_path.is_file() and script_path.suffix == ".py", f"{script_path}不
 
 dependencies = depfinder.parse_file(script_path)[2]
 # 注册搜索路径以查找import导入的脚本
-if (script_dir := script_path.parent) not in sys.path:
+if str(script_dir := script_path.parent) not in sys.path:
     sys.path.insert(0, str(script_dir))
 deps: set[str] = set()
 for module in dependencies.required_modules:
