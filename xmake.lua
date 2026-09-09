@@ -11,7 +11,6 @@ set_allowedmodes("debug", "release", "releasedbg")
 add_requires("verilator >=5.050")
 add_packages("verilator")
 local config = {
-    debug = is_mode("debug"),
     configs = {
         shared = is_kind("shared"),
         asan = get_config("use_sanitizer"),
@@ -29,6 +28,10 @@ add_options("use_std_harden")
 add_rules("verilator_include")
 if get_config("trace_support_fst") then
     add_requires("zlib", "lz4")
+end
+if get_config("enable_test") then
+    add_requires("libnpy-matajoh", config)
+    add_requireconfs("libnpy-matajoh", { configs = { cxxflags = get_std_harden_options() } })
 end
 
 includes("*/xmake.lua")

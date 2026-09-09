@@ -1,3 +1,4 @@
+local gen_src_dir = path.join(os.projectdir(), get_config("builddir"), ".gens", "system_verilog")
 local verilator_options = {
     "-Wall",
     get_config("trace_support_fst") and "--trace-fst" or "--trace-vcd",
@@ -12,15 +13,17 @@ add_toolchains("@verilator")
 
 -- top: 设置顶层模块名
 -- python: 设置python脚本，期待一个数组，元素格式为{file = "xxx.py", args(optional) = {...}}或"xxx.py"
+-- gen_src: 设置由脚本生成的源文件列表，文件路径相对于gen_src_dir
 rtl_verilator_target = {
-    ["edge_detector"] = {},
-    ["lfsr_m7"] = {top = "lfsr_m7_wrapper"},
-    ["counter"] = {},
-    ["sequence_detector"] = {},
-    ["async_dual_ram"] = {},
-    ["async_fifo"] = {},
-    ["sync_dual_ram"] = {top = "sync_dual_ram_wrapper"},
-    ["sync_fifo"] = {},
+    edge_detector = {},
+    lfsr_m7 = {top = "lfsr_m7_wrapper"},
+    counter = {},
+    sequence_detector = {},
+    async_dual_ram = {},
+    async_fifo = {},
+    sync_dual_ram = {top = "sync_dual_ram_wrapper"},
+    sync_fifo = {},
+    cic_filter = {python = {"cic_filter.py"}, gen_src = {"cic_filter_param.sv"}},
 }
 
 for name, opt in pairs(rtl_verilator_target) do
@@ -35,7 +38,7 @@ for name, opt in pairs(rtl_verilator_target) do
             set_policy("build.fence", true)
             on_load(function (target)
                 assert(table.is_array(opt.python), "python应当是一个数组")
-                local additional_args = {"-o", path.join(target:targetdir(), name)}
+                local additional_args = {"-o", path.join(target:targetdir(), name), "-g", gen_src_dir}
                 local files = {}
                 local python_args = {}
                 for _, python in ipairs(opt.python) do
@@ -64,6 +67,9 @@ for name, opt in pairs(rtl_verilator_target) do
         set_enabled(get_config("enable_test"))
         add_rules("verilator.shared")
         add_files(name..".sv")
+        for _, file in ipairs(opt.gen_src or {}) do
+            add_files(path.join(gen_src_dir, file))
+        end
         set_default(false)
         local top_module = opt.top or name
         add_values("verilator.flags", table.join(verilator_options, {"--top", top_module}))

@@ -38,8 +38,9 @@ rule("python", function ()
         import("core.project.depend")
 
         local python = assert(find_tool("python"), "python not found!").program
-        ---@type python_args_t
         local python_args = target:values("python.args") or {}
+        ---@type python_args_t
+        python_args = table.is_array(python_args) and python_args or {python_args}
         ---@type table<string, string[]>
         local python_args_map = {}
         ---@diagnostic disable-next-line
