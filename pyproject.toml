@@ -4,4 +4,58 @@ version = "0.1.0"
 readme = "README.md"
 authors = [{ name = "24bit-xjkp", email = "2283572185@qq.com" }]
 requires-python = ">=3.12"
-dependencies = ["depfinder>=2.10.0"]
+dependencies = ["colorama>=0.4.6", "depfinder>=2.10.0", "matplotlib>=3.11.1", "scipy>=1.18.1"]
+
+[project.optional-dependencies]
+# 通过xmake构建verilator所需的python包
+build-verilator = ["pip>=26.2.1", "setuptools>=84.0.0", "wheel>=0.48.0"]
+complete = ["argcomplete>=3.7.2"]
+
+[dependency-groups]
+dev = [
+    "black>=26.5.1",
+    "ipykernel>=7.3.0",
+    "isort>=9.0.1",
+    "mypy>=2.3.1",
+    "pytest>=9.1.1",
+    "scipy-stubs>=1.18.1.0",
+    "types-colorama>=0.4.15",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.7,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "rtl"
+module-name = "verilator_utils_rtl"
+
+[tool.mypy]
+files = ["script/*.py", "rtl/**/*.py"]
+
+[[tool.mypy.overrides]]
+module = "depfinder.*"
+ignore_missing_imports = true
+strict = true
+
+[tool.black]
+line-length = 140
+skip-string-normalization = false
+target-version = ["py314"]
+include = "(\\.pyi?)$"
+exclude = '''
+/(
+    \.git
+  | \.mypy_cache
+  | \.vscode
+  | \.VSCodeCounter
+  | \.xmake
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 140
