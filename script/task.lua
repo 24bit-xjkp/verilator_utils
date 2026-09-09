@@ -10,6 +10,7 @@ task("verible_file_list", function ()
 
     on_run(function ()
         import("core.base.option")
+        import("core.project.config")
         local project_dir = os.projectdir()
         local output_dir = path.join(project_dir, option.get("output_dir"))
         if not os.exists(output_dir) then
@@ -18,11 +19,20 @@ task("verible_file_list", function ()
 
         local file_list = {}
         for _, filepath in ipairs(os.files(path.join(project_dir, "rtl", "*.sv"))) do
-            table.insert(file_list, path.relative(filepath, project_dir))
+            table.insert(file_list, filepath)
+        end
+
+        local build_dir = config.builddir()
+        local gen_file_list = {}
+        for _, filepath in ipairs(os.files(path.join(build_dir, ".gens", "system_verilog", "*.sv"))) do
+            table.insert(file_list, filepath)
+            table.insert(gen_file_list, filepath)
         end
 
         local output_file = path.join(output_dir, "verible.filelist")
         io.writefile(output_file, table.concat(file_list, "\n"))
+        local output_file = path.join(output_dir, "verible_gen.filelist")
+        io.writefile(output_file, table.concat(gen_file_list, "\n"))
         cprint("${color.success}generate verible.filelist ok!")
     end)
 end)
