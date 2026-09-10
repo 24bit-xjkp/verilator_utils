@@ -1,7 +1,6 @@
 #include <doctest_macros.hpp>
 #include <assert_macros.hpp>
-import verilator_utils.full;
-using namespace ::verilator_utils::verilator;
+import unit_test;
 
 TEST_SUITE("verilator_utils/assert")
 {
