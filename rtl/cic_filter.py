@@ -166,6 +166,7 @@ class sim_env:
         """
         if output_dir is None:
             output_dir = config.data_output_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
         data_path = output_dir / "cic_filter.npz"
         np.savez(data_path, x=self.q_x, y=self.q_y)
 
