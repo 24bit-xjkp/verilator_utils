@@ -25,10 +25,8 @@ rule("enable_lto", function ()
     end)
 end)
 
----@class python_arg_t
----@field public file string
----@field public args string[]?
----@alias python_args_t python_arg_t[]
+-- 通过python.args.file_path为位于file_path的脚本添加命令行参数
+-- file_path是脚本文件相对于项目根目录的相对路径
 rule("python", function ()
     set_extensions(".py")
 
@@ -38,19 +36,6 @@ rule("python", function ()
         import("core.project.depend")
 
         local python = assert(find_tool("python"), "python not found!").program
-        local python_args = target:values("python.args") or {}
-        ---@type python_args_t
-        python_args = table.is_array(python_args) and python_args or {python_args}
-        ---@type table<string, string[]>
-        local python_args_map = {}
-        ---@diagnostic disable-next-line
-        for _, python_arg in ipairs(python_args) do
-            assert(type(python_arg) == "table" and table.is_dictionary(python_arg), "python.args的元素必须是表")
-            local file_path = python_arg.file
-            file_path = path.is_absolute(file_path) and file_path or path.join(target:scriptdir(), file_path)
-            file_path = path.relative(path.normalize(file_path), os.projectdir())
-            python_args_map[file_path] = python_arg.args or {}
-        end
         local autogen_dir = path.join(target:autogendir(), "rules", "python")
         local scan_deps = path.join("script", "scan_deps.py")
         local group_name = target:name() .. "/python"
@@ -59,7 +44,7 @@ rule("python", function ()
             for _, sourcefile in ipairs(sourcebatch.sourcefiles) do
                 local job_name = target:name() .. "/" .. sourcefile
                 jobgraph:add(job_name, function (_, _, jobopt)
-                    local args = python_args_map[sourcefile] or {}
+                    local args = target:values("python.args." .. sourcefile) or {}
                     local depvalues = { python, args }
                     local dependfile = path.join(autogen_dir, sourcefile .. ".d")
                     local scan_deps_file = path.join(autogen_dir, sourcefile .. "_scan_deps.d")

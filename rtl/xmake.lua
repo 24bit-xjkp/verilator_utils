@@ -39,8 +39,7 @@ for name, opt in pairs(rtl_verilator_target) do
             on_load(function (target)
                 assert(table.is_array(opt.python), "python应当是一个数组")
                 local additional_args = {"-o", path.join(target:targetdir(), name), "-g", gen_src_dir}
-                local files = {}
-                local python_args = {}
+                local prefix = path.relative(target:scriptdir(), os.projectdir())
                 for _, python in ipairs(opt.python) do
                     local file
                     local args
@@ -53,12 +52,10 @@ for name, opt in pairs(rtl_verilator_target) do
                     else
                         raise("不支持的元素类型，python数组的元素应当为字符串或字典")
                     end
-                    files = table.append(files, path.join(target:scriptdir(), file))
-                    args = table.join(additional_args, args)
-                    python_args = table.append(python_args, {file = file, args = args})
+                    local file_path = path.join(prefix, file)
+                    target:add("files", file_path)
+                    target:add("values", "python.args." .. file_path, table.join(additional_args, args))
                 end
-                target:add("files", files)
-                target:add("values", "python.args", python_args)
             end)
         target_end()
     end
