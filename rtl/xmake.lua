@@ -43,7 +43,11 @@ for name, opt in pairs(rtl_verilator_target) do
             set_default(false)
             set_policy("build.fence", true)
             on_load(function (target)
-                local additional_args = {"-o", path.join(target:targetdir(), name), "-g", target_gen_src_dir}
+                local additional_args = {
+                    "-o", path.join(target:targetdir(), name),
+                    "-g", target_gen_src_dir,
+                    get_config("visualize") and "--visualize" or "--no-visualize"
+                }
                 local prefix = path.relative(target:scriptdir(), os.projectdir())
                 for _, python in ipairs(table.wrap(opt.python)) do
                     local file
