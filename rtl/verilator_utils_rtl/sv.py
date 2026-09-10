@@ -49,8 +49,10 @@ class system_verilog_context:
     def enter_context(self) -> Generator[None, Any, None]:
         """进入一个上下文，调整层级计数"""
         self.__indent += 1
-        yield
-        self.__indent -= 1
+        try:
+            yield
+        finally:
+            self.__indent -= 1
 
     class vector_type(IntEnum):
         logic = auto()
@@ -70,7 +72,9 @@ class system_verilog_context:
                     sign_str = "-" if x < 0 else ""
                     width_str = "" if width is None or self is self.none else f"{width}'"
                     base_str = {self.none: "", self.dec: "d", self.bin: "b", self.hex: "h"}[self]
-                    return f"{sign_str}{width_str}{base_str}{abs(x):{base_str}}"
+                    # SystemVerilog的十六进制字面量基数字符为'h'，对应python内建格式码为'x'
+                    py_format_code = {self.none: "", self.dec: "d", self.bin: "b", self.hex: "x"}[self]
+                    return f"{sign_str}{width_str}{base_str}{abs(x):{py_format_code}}"
                 case str():
                     assert width is None, "字符串不能设置宽度"
                     assert self is self.none, "字符串只支持none格式"

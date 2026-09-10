@@ -18,9 +18,13 @@ dev = [
     "isort>=9.0.1",
     "mypy>=2.3.1",
     "pytest>=9.1.1",
+    "pytest-xdist>=3.8.0",
     "scipy-stubs>=1.18.1.0",
     "types-colorama>=0.4.15",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["test/verilator_utils_rtl"]
 
 [build-system]
 requires = ["uv_build>=0.11.7,<0.13.0"]
@@ -31,7 +35,7 @@ module-root = "rtl"
 module-name = "verilator_utils_rtl"
 
 [tool.mypy]
-files = ["script/*.py", "rtl/**/*.py"]
+files = ["script/*.py", "rtl/**/*.py", "test/**/*.py"]
 
 [[tool.mypy.overrides]]
 module = "depfinder.*"
