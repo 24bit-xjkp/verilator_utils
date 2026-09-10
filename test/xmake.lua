@@ -40,5 +40,10 @@ for name, _ in pairs(rtl_verilator_target) do
         on_load(function (target)
             target:set("targetdir", path.join(target:targetdir(), name))
         end)
+
+        -- 由该测试目标统一清理生成和测试过程中产生的文件
+        after_clean(function (target)
+            os.rm(target:targetdir(), {async = true, detach = true})
+        end)
     target_end()
 end

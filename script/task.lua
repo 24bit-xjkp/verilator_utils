@@ -24,7 +24,7 @@ task("verible_file_list", function ()
 
         local build_dir = config.builddir()
         local gen_file_list = {}
-        for _, filepath in ipairs(os.files(path.join(build_dir, ".gens", "system_verilog", "*.sv"))) do
+        for _, filepath in ipairs(os.files(path.join(build_dir, ".gens", "system_verilog", "**.sv"))) do
             table.insert(file_list, filepath)
             table.insert(gen_file_list, filepath)
         end
