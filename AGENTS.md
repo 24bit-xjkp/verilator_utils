@@ -39,6 +39,7 @@ source .venv/bin/activate                        # 推荐：先激活虚拟环�
 ```
 
 xmake 的目标注册、命令与配置项细节由专门的 xmake skill 提供。
+gcc 工具链目前在编译带有复杂模块的代码时会产生编译器内部错误（ICE），使用 clang 工具链进行构建和测试。
 
 ## 基本代码约定
 
