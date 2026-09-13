@@ -58,6 +58,43 @@ namespace
 
         ~frame_destruction_counter() noexcept { ++*count; }
     };
+
+    /// 非std::exception派生的异常类型，用于验证join_all_exception对未知异常的描述
+    struct non_standard_error
+    {
+    };
+
+    /**
+     * @brief 将异常指针转换为"类型: 消息"形式的字符串
+     *
+     * 用于校验join_all收集的异常是否保持了原始类型与消息
+     *
+     * @param exception_ptr 异常指针
+     * @return "类型: 消息"形式的字符串
+     */
+    [[nodiscard]] ::std::string describe_exception(const ::std::exception_ptr& exception_ptr)
+    {
+        try
+        {
+            ::std::rethrow_exception(exception_ptr);
+        }
+        catch(const ::std::runtime_error& exception)
+        {
+            return ::std::format("runtime_error: {}", exception.what());
+        }
+        catch(const ::std::logic_error& exception)
+        {
+            return ::std::format("logic_error: {}", exception.what());
+        }
+        catch(const ::std::exception& exception)
+        {
+            return ::std::format("exception: {}", exception.what());
+        }
+        catch(...)
+        {
+            return "non-standard";
+        }
+    }
 }  // namespace
 
 TEST_SUITE("verilator_utils/scheduler")
@@ -919,9 +956,18 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         bool joined{};
+        bool successful_child_completed{};
         ::std::size_t exception_count{};
+        ::std::vector<::std::string> descriptions;
+        ::std::string message;
 
-        const auto successful_child{[] -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }};
+        // 成功任务最后完成，用于验证join_all会等待所有子任务而不只是失败的任务
+        const auto successful_child{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_time(3_ps);
+                successful_child_completed = true;
+            },
+        };
         const auto first_failing_child{
             [] -> ::verilator_utils::task<void> {
                 co_await ::verilator_utils::wait_time(2_ps);
@@ -930,7 +976,7 @@ TEST_SUITE("verilator_utils/scheduler")
         };
         const auto second_failing_child{
             [] -> ::verilator_utils::task<void> {
-                co_await ::verilator_utils::wait_time(3_ps);
+                co_await ::verilator_utils::wait_time(1_ps);
                 throw ::std::logic_error{"second failure"};
             },
         };
@@ -945,17 +991,127 @@ TEST_SUITE("verilator_utils/scheduler")
                 {
                     co_await pool.join_all();
                 }
-                catch(const ::std::vector<::std::exception_ptr>& exceptions)
+                catch(const ::verilator_utils::spawn_pool::join_all_exception& exception)
                 {
-                    exception_count = exceptions.size();
+                    message = exception.what();
+                    exception_count = exception.exceptions().size();
+                    for(const auto& exception_ptr: exception.exceptions())
+                    {
+                        descriptions.emplace_back(::describe_exception(exception_ptr));
+                    }
                 }
                 joined = pool.empty();
             },
         };
         scheduler.add_task(parent());
         scheduler.loop_until_finish();
+        CHECK(successful_child_completed);
         CHECK(joined);
+        // 异常按子任务加入任务池的顺序收集，与子任务的完成顺序无关
         CHECK_EQ(exception_count, 2u);
+        CHECK_EQ(descriptions, (::std::vector<::std::string>{"runtime_error: first failure", "logic_error: second failure"}));
+        // what()按"序号: 消息"逐行列出所有异常
+        CHECK_EQ(message, "1: first failure\n2: second failure\n"sv);
+    }
+
+    TEST_CASE("spawn_pool join_all exception is catchable as std::exception")
+    {
+        static_assert(::std::derived_from<::verilator_utils::spawn_pool::join_all_exception, ::std::exception>);
+
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool caught_as_join_all{};
+        ::std::size_t exception_count{};
+        ::std::string message;
+
+        const auto failing_child{
+            [] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_time(1_ps);
+                throw ::std::runtime_error{"single failure"};
+            },
+        };
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task(failing_child());
+                try
+                {
+                    co_await pool.join_all();
+                }
+                catch(const ::std::exception& exception)
+                {
+                    message = exception.what();
+                    try
+                    {
+                        // 重新抛出以验证通过基类捕获不会切掉派生类型
+                        throw;
+                    }
+                    catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
+                    {
+                        caught_as_join_all = true;
+                        exception_count = join_all_exception.exceptions().size();
+                    }
+                }
+            },
+        };
+        scheduler.add_task(parent());
+        scheduler.loop_until_finish();
+        CHECK(caught_as_join_all);
+        CHECK_EQ(exception_count, 1u);
+        CHECK_EQ(message, "1: single failure\n"sv);
+    }
+
+    TEST_CASE("spawn_pool join_all describes non-standard exceptions as unknown")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool non_standard_rethrown{};
+        ::std::size_t exception_count{};
+        ::std::vector<::std::string> descriptions;
+        ::std::string message;
+
+        const auto failing_child{
+            [] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_time(1_ps);
+                throw ::non_standard_error{};
+            },
+        };
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                pool.add_task(failing_child());
+                try
+                {
+                    co_await pool.join_all();
+                }
+                catch(const ::verilator_utils::spawn_pool::join_all_exception& exception)
+                {
+                    message = exception.what();
+                    exception_count = exception.exceptions().size();
+                    for(const auto& exception_ptr: exception.exceptions())
+                    {
+                        descriptions.emplace_back(::describe_exception(exception_ptr));
+                        try
+                        {
+                            ::std::rethrow_exception(exception_ptr);
+                        }
+                        catch(const ::non_standard_error&)
+                        {
+                            non_standard_rethrown = true;
+                        }
+                    }
+                }
+            },
+        };
+        scheduler.add_task(parent());
+        scheduler.loop_until_finish();
+        // 非std::exception异常仍保留原始类型，但无法提取消息
+        CHECK(non_standard_rethrown);
+        CHECK_EQ(exception_count, 1u);
+        CHECK_EQ(descriptions, (::std::vector<::std::string>{"non-standard"}));
+        CHECK_EQ(message, "1: unknown\n"sv);
     }
 
     TEST_CASE("spawn_pool join_any removes the completed child regardless of position")

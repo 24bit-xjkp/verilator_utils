@@ -1,6 +1,7 @@
 module;
 #include <assert_macros.hpp>
 #include <doctest_macros.hpp>
+#include <utility>
 export module verilator_utils:task;
 import :scheduler;
 
@@ -1165,6 +1166,51 @@ export namespace verilator_utils
      */
     struct spawn_pool
     {
+        /**
+         * @brief join_all操作抛出的异常类型
+         *
+         */
+        struct join_all_exception : ::std::exception
+        {
+        private:
+            using exceptions_t = ::std::vector<::std::exception_ptr>;
+            exceptions_t exceptions_{};
+            ::std::string message{};
+
+        public:
+            explicit join_all_exception(exceptions_t exceptions) : ::std::exception{}, exceptions_{std::move(exceptions)}
+            {
+                constexpr static auto message_transform{[](const ::std::exception_ptr& exception_ptr) static {
+                    try
+                    {
+                        ::std::rethrow_exception(exception_ptr);
+                    }
+                    catch(const ::std::exception& exception)
+                    {
+                        return ::std::string_view{exception.what()};
+                    }
+                    catch(...)
+                    {
+                        return "unknown"sv;
+                    }
+                }};
+                auto out{::std::back_inserter(message)};
+                for(auto [i, msg]: ::std::views::enumerate(::std::views::transform(exceptions_, message_transform)))
+                {
+                    out = ::std::format_to(out, "{}: {}\n", i + 1, msg);
+                }
+            }
+
+            [[nodiscard]] const char* what() const noexcept override { return message.c_str(); }
+
+            /**
+             * @brief 获取所有的异常集合
+             *
+             * @return 异常集合引用
+             */
+            [[nodiscard]] const exceptions_t& exceptions() const noexcept { return exceptions_; }
+        };
+
     private:
         using pool_t = ::std::vector<::verilator_utils::async_task>;
         /// 任务池
@@ -1192,10 +1238,7 @@ export namespace verilator_utils
                 }
             }
             pool.clear();
-            if(!exceptions.empty())
-            {
-                throw exceptions;  // NOLINT(misc-throw-by-value-catch-by-reference,cert-err09-cpp,cert-err61-cpp)
-            }
+            if(!exceptions.empty()) { throw join_all_exception{::std::move(exceptions)}; }
         }
 
     public:
