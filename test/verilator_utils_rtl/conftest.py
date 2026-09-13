@@ -1,22 +1,18 @@
 """pytest公共配置
 
-在导入任何matplotlib模块之前配置无界面后端与缓存目录，
-并在每个测试结束后恢复basic_config等全局状态，保证测试相互隔离。
+配置无界面后端，并在每个测试结束后恢复basic_config等全局状态，保证测试相互隔离。
 """
 
-import os
-import tempfile
 from collections.abc import Generator
-from pathlib import Path
 
-import matplotlib.pyplot as plt
+import matplotlib
 import pytest
 from verilator_utils_rtl.common import basic_config, find_tool, is_in_notebook
 
-# 本机主目录可能不可写，matplotlib需要一个可写的配置目录
-os.environ.setdefault("MPLCONFIGDIR", str(Path(tempfile.gettempdir()) / "verilator_utils_matplotlib"))
-# 无界面环境统一使用Agg后端
-os.environ.setdefault("MPLBACKEND", "Agg")
+# 无界面环境统一使用Agg后端，必须在导入pyplot之前完成切换
+matplotlib.use("Agg")
+
+import matplotlib.pyplot as plt
 
 # basic_config中以类属性保存、且测试会修改的运行配置
 _CONFIG_ATTRS: tuple[str, ...] = (

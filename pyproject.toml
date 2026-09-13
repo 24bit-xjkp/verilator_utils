@@ -36,6 +36,9 @@ module-name = "verilator_utils_rtl"
 
 [tool.mypy]
 files = ["script/*.py", "rtl/**/*.py", "test/**/*.py"]
+# 只允许带具体错误码的 # type: ignore[code]：裸忽略与码值不匹配/已失效的忽略都报错
+enable_error_code = ["ignore-without-code"]
+warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = "depfinder.*"
