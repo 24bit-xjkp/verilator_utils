@@ -304,6 +304,243 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK(boolean_value == ::verilator_utils::format_wrapper<bool>{true, 1, ::verilator_utils::data_format::boolean});
     }
 
+    TEST_CASE("approx stores tolerances and rejects invalid ones")
+    {
+        static_assert(::std::same_as<::verilator_utils::approx<::std::uint64_t>::value_type, ::std::uint64_t>);
+
+        // 构造函数与访问器一致地保存误差范围
+        ::verilator_utils::approx<::std::uint64_t> unsigned_tolerance{4zu, 0.25};
+        CHECK_EQ(unsigned_tolerance.get_atol(), 4zu);
+        CHECK_EQ(unsigned_tolerance.get_rtol(), 0.25);
+
+        ::verilator_utils::approx<::std::int64_t> signed_tolerance{4z, 0.5};
+        CHECK_EQ(signed_tolerance.get_atol(), 4z);
+        CHECK_EQ(signed_tolerance.get_rtol(), 0.5);
+
+        constexpr ::verilator_utils::approx<double> real_tolerance{0.5, 0.125};
+        static_assert(real_tolerance.get_atol() == 0.5);
+        static_assert(real_tolerance.get_rtol() == 0.125);
+
+        // 误差范围可以修改，修改立即参与比较
+        signed_tolerance.set_atol(0z);
+        signed_tolerance.set_rtol(0.0);
+        CHECK_EQ(signed_tolerance.get_atol(), 0z);
+        CHECK_EQ(signed_tolerance.get_rtol(), 0.0);
+        CHECK(signed_tolerance(10z) == 10z);
+        CHECK_FALSE(signed_tolerance(10z) == 11z);
+        signed_tolerance.set_atol(1z);
+        CHECK(signed_tolerance(10z) == 11z);
+
+        // 越界的误差范围被断言拒绝
+        CHECK_THROWS_AS((::verilator_utils::approx<::std::int64_t>{-1z, 0.5}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::approx<::std::int64_t>{0z, -0.5}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::approx<::std::int64_t>{0z, 1.5}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::approx<double>{::std::numeric_limits<double>::quiet_NaN(), 0.5}),
+                        ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::approx<double>{0.0, ::std::numeric_limits<double>::quiet_NaN()}),
+                        ::verilator_utils::assertion_error);
+
+        ::verilator_utils::approx<double> mutable_tolerance{1.0, 0.5};
+        CHECK_THROWS_AS(mutable_tolerance.set_atol(-1.0), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(mutable_tolerance.set_rtol(-0.1), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(mutable_tolerance.set_rtol(1.1), ::verilator_utils::assertion_error);
+
+        // 边界值0和1合法
+        CHECK_EQ(::verilator_utils::approx<::std::uint64_t>{0zu, 0.0}.get_rtol(), 0.0);
+        CHECK_EQ(::verilator_utils::approx<::std::uint64_t>{0zu, 1.0}.get_rtol(), 1.0);
+
+        // 未携带自定义消息的断言失败使用默认消息
+        CHECK_THROWS_WITH_AS((::verilator_utils::approx<::std::int64_t>{-1z, 0.5}),
+                             ::doctest::Contains{"断言失败"},
+                             ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("approx compares unsigned values with absolute and relative tolerance")
+    {
+        // 只配置绝对误差：差值不大于绝对误差即相等
+        constexpr ::verilator_utils::approx<::std::uint64_t> absolute{4zu, 0.0};
+        static_assert(absolute(10zu) == 10zu);
+        static_assert(absolute(10zu) == 14zu);     // 差值恰好等于绝对误差
+        static_assert(!(absolute(10zu) == 15zu));  // 超出绝对误差且未配置相对误差
+        static_assert(absolute(14zu) == 10zu);     // 交换操作数结论不变
+        static_assert(absolute(0zu) == 4zu);
+        static_assert(!(absolute(0zu) == 5zu));
+
+        // 只配置相对误差：基准取两个操作数中绝对值较大者
+        constexpr ::verilator_utils::approx<::std::uint64_t> relative{0zu, 0.5};
+        static_assert(relative(100zu) == 100zu);
+        static_assert(relative(100zu) == 50zu);  // 差值恰好为较大值的50%
+        static_assert(!(relative(100zu) == 49zu));
+        static_assert(relative(0zu) == 0zu);
+        static_assert(!(relative(0zu) == 1zu));                                             // 基准与差值相同时相对误差不足以覆盖
+        static_assert(::verilator_utils::approx<::std::uint64_t>{0zu, 1.0}(100zu) == 0zu);  // 相对误差为1时容忍100%误差
+
+        // 绝对误差与相对误差取范围更大者
+        constexpr ::verilator_utils::approx<::std::uint64_t> combined{10zu, 0.01};
+        static_assert(combined(20zu) == 25zu);  // 小值由绝对误差覆盖
+        static_assert(!(combined(20zu) == 31zu));
+        static_assert(combined(1'000'000zu) == 1'005'000zu);  // 大值由相对误差覆盖
+        static_assert(!(combined(1'000'000zu) == 1'020'000zu));
+
+        // 无符号差值不经过减法回绕
+        constexpr ::verilator_utils::approx<::std::uint64_t> exact{1zu, 0.0};
+        static_assert(exact(::std::numeric_limits<::std::uint64_t>::max()) ==
+                      ::std::numeric_limits<::std::uint64_t>::max() - 1zu);
+        static_assert(!(exact(::std::numeric_limits<::std::uint64_t>::max()) == 0zu));
+
+        // 运行时路径与常量求值路径结论一致
+        CHECK(absolute(10zu) == 14zu);
+        CHECK_FALSE(absolute(10zu) == 15zu);
+    }
+
+    TEST_CASE("approx compares signed values with absolute and relative tolerance")
+    {
+        // 绝对误差比较的是差值的绝对值而非有符号结果
+        constexpr ::verilator_utils::approx<::std::int64_t> absolute{2z, 0.0};
+        static_assert(absolute(-5z) == -5z);
+        static_assert(absolute(-5z) == -3z);
+        static_assert(absolute(-5z) == -7z);  // 差值方向不影响比较结果
+        static_assert(!(absolute(-5z) == -8z));
+        static_assert(!(absolute(-5z) == 5z));  // 跨越零点时差值被放大
+
+        // 相对误差以绝对值较大者为基准
+        constexpr ::verilator_utils::approx<::std::int64_t> relative{0z, 0.5};
+        static_assert(relative(-100z) == -100z);
+        static_assert(relative(-100z) == -50z);  // 差值恰好为较大值的50%
+        static_assert(relative(-100z) == -150z);
+        static_assert(!(relative(-100z) == -49z));
+        static_assert(::verilator_utils::approx<::std::int64_t>{0z, 1.0}(-100z) == 0z);  // 跨符号的100%误差
+
+        // 零误差时只有完全相等才成立
+        constexpr ::verilator_utils::approx<::std::int64_t> exact{0z, 0.0};
+        static_assert(exact(0z) == 0z);
+        static_assert(!(exact(0z) == 1z));
+        static_assert(!(exact(0z) == -1z));
+
+        // 极值处的差值超出int64表示范围，不能因有符号溢出而误判为相等
+        constexpr static auto minimum{::std::numeric_limits<::std::int64_t>::min()};
+        constexpr static auto maximum{::std::numeric_limits<::std::int64_t>::max()};
+        static_assert(!(exact(minimum) == maximum));
+        static_assert(!(exact(maximum) == minimum));
+        static_assert(
+            !(::verilator_utils::approx<::std::int64_t>{maximum, 0.0}(minimum) == maximum));       // 最大合法绝对误差也不足以覆盖
+        static_assert(!(::verilator_utils::approx<::std::int64_t>{0z, 1.0}(minimum) == maximum));  // 100%相对误差也不足以覆盖
+
+        // 极值附近的差值仍然正确；运行时执行以便sanitizer捕获有符号溢出
+        constexpr ::verilator_utils::approx<::std::int64_t> unit{1z, 0.0};
+        static_assert(unit(minimum) == minimum + 1z);
+        static_assert(unit(maximum) == maximum - 1z);
+        CHECK_FALSE(exact(minimum) == maximum);
+        CHECK_FALSE(exact(maximum) == minimum);
+        CHECK(unit(minimum) == minimum + 1z);
+        CHECK(unit(maximum) == maximum - 1z);
+    }
+
+    TEST_CASE("approx compares floating point values with absolute and relative tolerance")
+    {
+        // 浮点舍入误差由绝对误差覆盖
+        constexpr ::verilator_utils::approx<double> rounded{1e-9, 0.0};
+        static_assert(rounded(0.1 + 0.2) == 0.3);
+        static_assert(!(::verilator_utils::approx<double>{1e-18, 0.0}(0.1 + 0.2) == 0.3));
+
+        // 相对误差随数值量级放大
+        constexpr ::verilator_utils::approx<double> relative{0.0, 1e-6};
+        static_assert(relative(1.0) == 1.000'000'5);
+        static_assert(!(relative(1.0) == 1.000'002));
+        static_assert(relative(1'000'000.0) == 1'000'000.5);
+        static_assert(!(relative(1'000'000.0) == 1'000'002.0));
+
+        // 相对误差以绝对值较大者为基准，符号参与绝对值计算
+        constexpr ::verilator_utils::approx<double> symmetric{0.0, 0.5};
+        static_assert(symmetric(1.0) == 0.5);  // 差值恰好为较大值的50%
+        static_assert(!(symmetric(1.0) == 0.4));
+        static_assert(symmetric(-1.0) == -0.5);
+        static_assert(!(symmetric(1.0) == -0.5));
+        static_assert(::verilator_utils::approx<double>{1e-9, 0.0}(-0.0) == 0.0);  // 有符号零
+
+        // NaN不满足任何误差范围，且不能在常量求值中构造NaN，只能运行时检查
+        constexpr auto nan{::std::numeric_limits<double>::quiet_NaN()};
+        CHECK_FALSE(symmetric(nan) == nan);
+        CHECK_FALSE(symmetric(1.0) == nan);
+        CHECK_FALSE(symmetric(nan) == 1.0);
+        CHECK_EQ(symmetric(nan) <=> nan, ::std::partial_ordering::unordered);
+
+        // 相同无穷大必须相等，此前的实现因inf-inf产生NaN而误判为不等
+        constexpr auto infinity{::std::numeric_limits<double>::infinity()};
+        constexpr ::verilator_utils::approx<double> exact{0.0, 0.0};
+        static_assert(exact(infinity) == infinity);
+        static_assert(exact(-infinity) == -infinity);
+        static_assert((exact(infinity) <=> infinity) == ::std::partial_ordering::equivalent);
+
+        // 异号无穷大与有限值不能判等，该路径包含NaN算术因此只能运行时检查
+        CHECK_FALSE(exact(infinity) == -infinity);
+        CHECK_FALSE(exact(1.0) == infinity);
+        CHECK_FALSE(exact(infinity) == 1.0);
+    }
+
+    TEST_CASE("approx comparison supports three way comparison")
+    {
+        constexpr ::verilator_utils::approx<::std::uint64_t> unsigned_tolerance{4zu, 0.0};
+        static_assert(::std::same_as<decltype(unsigned_tolerance(10zu) <=> 11zu), ::std::strong_ordering>);
+        static_assert((unsigned_tolerance(10zu) <=> 11zu) == ::std::strong_ordering::equivalent);  // 容差内视为等价
+        static_assert((unsigned_tolerance(10zu) <=> 14zu) == ::std::strong_ordering::equivalent);
+        static_assert((unsigned_tolerance(10zu) <=> 15zu) == ::std::strong_ordering::less);
+        static_assert((unsigned_tolerance(10zu) <=> 5zu) == ::std::strong_ordering::greater);
+        static_assert((15zu <=> unsigned_tolerance(10zu)) == ::std::strong_ordering::greater);  // 反向比较
+
+        constexpr ::verilator_utils::approx<double> real_tolerance{1e-9, 0.0};
+        static_assert(::std::same_as<decltype(real_tolerance(1.0) <=> 2.0), ::std::partial_ordering>);
+        static_assert((real_tolerance(0.1 + 0.2) <=> 0.3) == ::std::partial_ordering::equivalent);
+        static_assert((real_tolerance(1.0) <=> 2.0) == ::std::partial_ordering::less);
+        static_assert((real_tolerance(2.0) <=> 1.0) == ::std::partial_ordering::greater);
+
+        // 三路比较与相等比较一致：容差内既不小于也不大于
+        static_assert(unsigned_tolerance(10zu) == 14zu);
+        static_assert(unsigned_tolerance(10zu) <= 14zu);
+        static_assert(unsigned_tolerance(10zu) >= 14zu);
+        static_assert(!(unsigned_tolerance(10zu) < 14zu));
+        static_assert(!(unsigned_tolerance(10zu) > 14zu));
+        static_assert(unsigned_tolerance(10zu) < 15zu);
+        static_assert(unsigned_tolerance(10zu) > 5zu);
+    }
+
+    TEST_CASE("approx and its comparison objects support formatting")
+    {
+        ::verilator_utils::approx<::std::uint64_t> unsigned_tolerance{4zu, 0.25};
+        CHECK_EQ(::std::format("{}"sv, unsigned_tolerance), "{atol: 4, rtol: 0.25}"sv);
+        CHECK_EQ(::doctest::StringMaker<decltype(unsigned_tolerance)>::convert(unsigned_tolerance), "{atol: 4, rtol: 0.25}");
+
+        auto unsigned_comparison{unsigned_tolerance(10zu)};
+        CHECK_EQ(unsigned_comparison.value, 10zu);
+        CHECK_EQ(unsigned_comparison.atol, 4zu);
+        CHECK_EQ(unsigned_comparison.rtol, 0.25);
+        CHECK_EQ(::std::format("{}"sv, unsigned_comparison), "10"sv);
+        CHECK_EQ(::std::format("{:#}"sv, unsigned_comparison), "{value: 10, atol: 4, rtol: 0.25}"sv);
+        CHECK_EQ(::doctest::StringMaker<decltype(unsigned_comparison)>::convert(unsigned_comparison), "10");
+
+        ::verilator_utils::approx<::std::int64_t> signed_tolerance{4z, 0.5};
+        CHECK_EQ(::std::format("{}"sv, signed_tolerance), "{atol: 4, rtol: 0.5}"sv);
+        auto signed_comparison{signed_tolerance(-10z)};
+        CHECK_EQ(::std::format("{}"sv, signed_comparison), "-10"sv);
+        CHECK_EQ(::std::format("{:#}"sv, signed_comparison), "{value: -10, atol: 4, rtol: 0.5}"sv);
+
+        ::verilator_utils::approx<double> real_tolerance{0.5, 0.125};
+        CHECK_EQ(::std::format("{}"sv, real_tolerance), "{atol: 0.5, rtol: 0.125}"sv);
+        auto real_comparison{real_tolerance(1.5)};
+        CHECK_EQ(::std::format("{}"sv, real_comparison), "1.5"sv);
+        CHECK_EQ(::std::format("{:#}"sv, real_comparison), "{value: 1.5, atol: 0.5, rtol: 0.125}"sv);
+
+        // 与doctest断言直接配合使用时，容差对象自身作为比较的右操作数
+        CHECK_EQ(unsigned_tolerance(10zu), 11zu);
+        CHECK_EQ(real_tolerance(1.5), 1.6);
+
+        // 不支持的格式符被拒绝
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(unsigned_tolerance))),
+                        ::std::format_error);
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(unsigned_comparison))),
+                        ::std::format_error);
+    }
+
     TEST_CASE("bit slice reads writes and formats a single bit")
     {
         ::CData data{0b1010'1010u};

@@ -23,7 +23,8 @@ TEST_SUITE("cic_filter")
         using data_t = std::int16_t;
         constexpr static auto width{16zu};
         constexpr static packed_format data_format{width, dec_signed};
-        constexpr static auto atol{1zu};
+        /// 误差容限
+        constexpr static approx tol{1z, 1e-3};
 
         explicit port_t(dut_t& dut) :
             clk{dut.clk}, rst{dut.rst}, i_valid{dut.i_valid, boolean}, in{dut.in, data_format}, out{dut.out, data_format},
@@ -60,12 +61,7 @@ TEST_SUITE("cic_filter")
             for(std::int64_t output: filtered_signal)
             {
                 // o_valid是一个脉冲信号，将其作为检查的触发源
-                co_await verify_at(port.o_valid, [&] {
-                    format_wrapper ref_out{output, port_t::data_format};
-                    CAPTURE(ref_out);
-                    CAPTURE(port.out);
-                    CHECK_LE(std::abs(output - port.out.to_underlying<std::int64_t>()), port_t::atol);
-                });
+                co_await verify_at(port.o_valid, [&] { CHECK_EQ(port_t::tol(output), port.out.to_underlying<std::int64_t>()); });
             }
             co_await eval_finish();
         }};

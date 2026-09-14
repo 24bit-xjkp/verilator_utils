@@ -172,6 +172,46 @@ ctx.loop_until_finish();
 - 对编译期契约使用 `static_assert`（concept、类型别名、模块 API 形状）。
 - 生成随机场景时记录种子（`VerilatedContext::randSeed()`），使失败可复现；不要依赖真实 sleep 或未指定顺序。
 
+### 异常断言：`CHECK_THROWS_WITH_AS` 与 `doctest::Contains`
+
+三个宏的层次（`WARN_*` / `REQUIRE_*` 前缀版本语义相同，只影响失败后的行为）：
+
+| 宏 | 校验内容 |
+| --- | --- |
+| `CHECK_THROWS_AS(expr, ex)` | 仅异常类型 |
+| `CHECK_THROWS_WITH_AS(expr, with, ex)` | 类型 + `what()` 文本 |
+| `CHECK_THROWS_WITH_AS_MESSAGE(expr, with, ex, info...)` | 同上，并附加 INFO 上下文 |
+
+`with` 参数的支持形式与匹配语义：
+
+| 写法 | 是否可用 | 匹配语义 |
+| --- | --- | --- |
+| `"text"`（裸字面量） | 可用 | **完全相等** |
+| `::std::string` 变量 / `::doctest::String{...}` | 可用 | 完全相等 |
+| `::doctest::Contains{"text"}` | 可用 | **子串匹配**（内部即 `strstr`） |
+| `"text"sv`（`std::string_view`） | **编译失败** | `String` 只接受带 `c_str()` 的类型，`string_view` 没有 |
+
+```cpp
+// 只校验异常类型与消息文本（文本按子串匹配）
+CHECK_THROWS_WITH_AS((::verilator_utils::approx<::std::int64_t>{-1z, 0.5}),
+                     ::doctest::Contains{"断言失败"},
+                     ::verilator_utils::assertion_error);
+
+// 需要附加 INFO 上下文时改用 _MESSAGE 变体，第 4 个参数必须非空
+CHECK_THROWS_WITH_AS_MESSAGE((::verilator_utils::approx<::std::int64_t>{-1z, 0.5}),
+                             ::doctest::Contains{"断言失败"},
+                             ::verilator_utils::assertion_error,
+                             "负的绝对误差应当被拒绝");
+```
+
+- **对 `verilator_utils::assertion_error` 断言消息时用 `Contains`，不要用整串比较**：`what()` 由 `compose_assertion_message` 生成，格式为 `At <file>:<line>:<col>: <func>: <message>\n<trace>`（开启着色时还会插入 ANSI 转义），自定义消息只是其中一个片段。
+- `doctest::Contains` 的构造函数是 `explicit Contains(const String&)`，不能隐式转换：必须显式构造 `::doctest::Contains{"文本"}`；把裸字面量当 `Contains` 参数传会因缺少隐式转换而编译失败。
+- `Contains` 也能当普通断言的匹配器使用，但只与 `::doctest::String` 重载了比较运算符：`CHECK(::std::string{...} == ::doctest::Contains{"片段"})` 可用（`const char*`、`::std::string` 都可以），`"..."sv` 会因 `std::string_view` 无法转成 `String` 而编译失败——先用 `::std::string{view}` 转换。
+- `CHECK_THROWS_WITH_AS_MESSAGE` 的 INFO 参数**必须非空**：空 `__VA_ARGS__` 会让 `DOCTEST_INFO` 展开成 `mb_name *;` 而编译失败。只校验异常类型与文本时用三参数的 `CHECK_THROWS_WITH_AS`。
+- 表达式含逗号（花括号初始化、多参数模板）必须整体加一层括号，否则逗号会被当作宏参数分隔符：`CHECK_THROWS_WITH_AS((::verilator_utils::approx<::std::int64_t>{-1z, 0.5}), ...)`。
+- `--no-throw` / `-nt` 会让所有异常断言直接跳过（视为通过），因此带该选项的运行结果不能作为异常行为的证据。
+- 常量求值语境抛的是 `constexpr_assertion_error` 而非 `assertion_error`，所以异常断言只适用于运行时路径；编译期契约仍用 `static_assert`。
+
 ## 项目风格
 
 - 全局名字使用 `::` 前缀（`::std::size_t`、`::verilator_utils::eval_scheduler`、`::CData`）。
