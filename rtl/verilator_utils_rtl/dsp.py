@@ -455,7 +455,7 @@ def linear2dB(linear: int | float, ref: int | float | None = ..., square: bool =
 
     Args:
         linear (int | float | ndarray): 线性值
-        ref (int | float | None, optional): 参考值，为None时以1为参考
+        ref (int | float | None, optional): 参考值，为None时以1为参考，为0时返回与linear同号的无穷大
         square (bool, optional): 计算时是否对线性值平方
 
     Returns:
@@ -469,11 +469,12 @@ def linear2dB(linear: ndarray, ref: int | float | ndarray | None = ..., square: 
 
     Args:
         linear (ndarray): 线性值
-        ref (int | float | None, optional): 参考值，为None时以np.max(linear)为参考
+        ref (int | float | ndarray | None, optional): 参考值，为None时以np.max(linear)为参考，
+            为0的元素返回与linear同号的无穷大
         square (bool, optional): 计算时是否对线性值平方
 
     Returns:
-        float: dB数
+        NDArray[np.float64]: dB数数组
     """
 
 
@@ -484,8 +485,20 @@ def linear2dB(linear: int | float | ndarray, ref: int | float | ndarray | None =
             assert not isinstance(ref, ndarray), "不支持以ndarray为参考值"
             if ref is None:
                 ref = 1.0
+            if ref == 0:
+                # 0不能作除数，按linear的符号取极限值
+                return math.copysign(math.inf, linear)
             return factor * math.log10(linear / ref)
         case ndarray():
             if ref is None:
                 ref = np.max(linear)
-            return factor * np.log10((linear / ref).astype(np.float64))
+            ref_array: NDArray[np.float64] = np.asarray(ref, dtype=np.float64)
+            zero_ref: NDArray[np.bool_] = ref_array == 0
+            if not np.any(zero_ref):
+                return factor * np.log10(linear / ref_array)
+            # 参考值为0的位置用1.0占位，避免除零警告，结果随即被zero_ref掩码覆盖
+            inf_dB: NDArray[np.float64] = np.copysign(np.inf, linear)
+            ratio = np.where(zero_ref, 1.0, linear) / np.where(zero_ref, 1.0, ref_array)
+            return np.where(zero_ref, inf_dB, factor * np.log10(ratio))
+        case _:
+            raise f"不支持的类型: {type(linear)}"
