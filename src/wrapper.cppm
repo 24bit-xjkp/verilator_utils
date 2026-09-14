@@ -102,6 +102,53 @@ namespace verilator_utils::detail
             return lhs <=> rhs;
         }
     }
+
+    /**
+     * @brief 近似比较
+     *
+     * 取绝对误差和相对误差中范围更大的一个进行比较
+     * @tparam type 数据类型
+     */
+    template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, double> type>
+    struct approx_compare
+    {
+        /// 绝对误差
+        type atol;
+        /// 要比较的数据
+        type value;
+        /// 相对误差
+        double rtol;
+
+        constexpr friend bool operator== (const approx_compare& lhs, type rhs) noexcept
+        {
+            if(lhs.value == rhs) { return true; }
+
+            using diff_t = ::std::conditional_t<::std::integral<type>, ::std::uint64_t, double>;
+            diff_t abs_diff{};
+            if constexpr(::std::integral<type>)
+            {
+                abs_diff = static_cast<diff_t>(::std::max(lhs.value, rhs)) - static_cast<diff_t>(::std::min(lhs.value, rhs));
+            }
+            else
+            {
+                abs_diff = ::verilator_utils::detail::abs(lhs.value - rhs);
+            }
+            auto abs_max{::std::max(::verilator_utils::detail::abs(lhs.value), ::verilator_utils::detail::abs(rhs))};
+            // atol非负，转换到差值的无符号类型后比较以避免警告
+            bool atol_satisfy{abs_diff <= static_cast<diff_t>(lhs.atol)};
+            bool rtol_satisfy{abs_diff <= abs_max * lhs.rtol};
+            return atol_satisfy || rtol_satisfy;
+        }
+
+        constexpr friend auto operator<=> (const approx_compare& lhs, type rhs) noexcept
+        {
+            if(lhs == rhs) { return ::std::compare_three_way_result_t<type>::equivalent; }
+            else
+            {
+                return lhs.value <=> rhs;
+            }
+        }
+    };
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
@@ -140,6 +187,73 @@ export namespace verilator_utils
 
     /// 打包储存的格式，包含宽度和数据格式
     using packed_format = ::std::pair<::std::size_t, ::verilator_utils::data_format::format>;
+
+    /**
+     * @brief 近似比较
+     *
+     * 取绝对误差和相对误差中范围更大的一个进行比较
+     * @tparam type 数据类型
+     */
+    template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, double> type>
+    struct approx
+    {
+        using value_type = type;
+
+        /**
+         * @brief 构造approx对象
+         *
+         * @param atol 绝对误差，取值为[0, type max]
+         * @param rtol 相对误差，取值为[0, 1]
+         */
+        constexpr approx(type atol, double rtol)
+        {
+            set_atol(atol);
+            set_rtol(rtol);
+        }
+
+        /**
+         * @brief 获取绝对误差
+         *
+         */
+        [[nodiscard]] constexpr type get_atol() const noexcept { return atol; }
+
+        /**
+         * @brief 获取相对误差
+         *
+         */
+        [[nodiscard]] constexpr double get_rtol() const noexcept { return rtol; }
+
+        /**
+         * @brief 设置绝对误差范围
+         *
+         * @param atol 绝对误差，取值为[0, type max]
+         */
+        constexpr void set_atol(type atol)
+        {
+            VU_CHECK(atol >= 0);
+            this->atol = atol;
+        }
+
+        /**
+         * @brief 设置相对误差范围
+         *
+         * @param rtol 相对误差，取值为[0, 1]
+         */
+        constexpr void set_rtol(double rtol)
+        {
+            VU_CHECK(rtol >= 0.0 && rtol <= 1.0);
+            this->rtol = rtol;
+        }
+
+        constexpr ::verilator_utils::detail::approx_compare<type> operator() (type value) const noexcept
+        { return {atol, value, rtol}; }
+
+    private:
+        /// 绝对误差
+        type atol{};
+        /// 相对误差
+        double rtol{};
+    };
 
     /**
      * @brief 格式包装器，将数据和数据格式绑定
@@ -1642,6 +1756,45 @@ export namespace verilator_utils
 
 export namespace std
 {
+    template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, double> type>
+    struct formatter<::verilator_utils::approx<type>>
+    {
+        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        { return ::verilator_utils::detail::parse_format_string_without_flags(ctx, "无效的verilator_utils::approx格式符"sv); }
+
+        template <typename iter_t, typename char_t>
+        static auto format(const ::verilator_utils::approx<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx)
+        { return ::std::format_to(ctx.out(), "{{atol: {}, rtol: {}}}"sv, value.get_atol(), value.get_rtol()); }
+    };
+
+    template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, double> type>
+    struct formatter<::verilator_utils::detail::approx_compare<type>>
+    {
+        bool with_detail{};
+
+        constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_with_detail_flag(
+                ctx,
+                "无效的verilator_utils::detail::approx_compare格式符"sv,
+                with_detail);
+        }
+
+        template <typename iter_t, typename char_t>
+        auto format(const ::verilator_utils::detail::approx_compare<type>& value,
+                    ::std::basic_format_context<iter_t, char_t>& ctx) const
+        {
+            if(with_detail)
+            {
+                return ::std::format_to(ctx.out(), "{{value: {}, atol: {}, rtol: {}}}"sv, value.value, value.atol, value.rtol);
+            }
+            else
+            {
+                return ::std::format_to(ctx.out(), "{}"sv, value.value);
+            }
+        }
+    };
+
     /**
      * @brief bit_slice格式化支持
      *
@@ -1727,6 +1880,19 @@ export namespace std
 
 export namespace doctest
 {
+    template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, double> type>
+    struct StringMaker<::verilator_utils::approx<type>>
+    {
+        static ::doctest::String convert(const ::verilator_utils::approx<type>& value) { return ::std::format("{}"sv, value); }
+    };
+
+    template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, double> type>
+    struct StringMaker<::verilator_utils::detail::approx_compare<type>>
+    {
+        static ::doctest::String convert(const ::verilator_utils::detail::approx_compare<type>& value)
+        { return ::std::format("{}"sv, value); }
+    };
+
     template <::verilator_utils::is_verilator_data_type value_type>
     struct StringMaker<::verilator_utils::bit_slice<value_type>>
     {

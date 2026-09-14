@@ -406,28 +406,28 @@ namespace verilator_utils
         concept is_number_type = ::std::integral<type> || ::std::floating_point<type>;
 
         /**
-         * @brief 计算绝对值，运行时转发到std::abs，编译时使用简易实现
+         * @brief 计算绝对值
          *
-         * @note <cmath>尚不支持编译时计算，因此实现该包装函数
          * @param value 要计算的值
          * @return 绝对值
          */
         constexpr auto abs(::verilator_utils::detail::is_number_type auto value) noexcept
         {
-            if consteval
+            using value_t = decltype(value);
+            if constexpr(::std::unsigned_integral<value_t>) { return value; }
+            else if constexpr(::std::signed_integral<value_t>)
             {
-                if constexpr(::std::integral<decltype(value)>)
-                {
-                    return ::verilator_utils::detail::abs(static_cast<double>(value));
-                }
-                else
-                {
-                    return value < 0 ? -value : value;
-                }
+                using unsigned_t = ::std::make_unsigned_t<value_t>;
+                auto unsigned_value{static_cast<unsigned_t>(value)};
+                return value < 0 ? -unsigned_value : unsigned_value;
             }
             else
             {
-                return ::std::abs(value);
+                if consteval { return value < 0.0 ? -value : value; }
+                else
+                {
+                    return ::std::abs(value);
+                }
             }
         }
 
