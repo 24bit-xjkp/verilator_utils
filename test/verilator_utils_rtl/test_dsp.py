@@ -1,6 +1,7 @@
 """verilator_utils_rtl.dsp模块测试"""
 
 import math
+import warnings
 
 import numpy as np
 import pytest
@@ -381,6 +382,12 @@ class TestLinear2dB:
         assert linear2dB(10, ref=10) == pytest.approx(0.0)
         assert isinstance(linear2dB(10, ref=10), float)
 
+    def test_scalar_zero_ref_is_signed_inf(self) -> None:
+        assert linear2dB(2.0, ref=0.0) == math.inf
+        assert linear2dB(-2.0, ref=0.0) == -math.inf
+        assert linear2dB(0.0, ref=0.0) == math.inf
+        assert linear2dB(2.0, ref=0.0, square=True) == math.inf
+
     def test_array_default_ref_is_max(self) -> None:
         x = np.array([1.0, 10.0, 100.0])
         y = linear2dB(x)
@@ -392,6 +399,33 @@ class TestLinear2dB:
         x = np.array([1.0, 10.0, 100.0])
         np.testing.assert_allclose(linear2dB(x, ref=10.0), 10 * np.log10(x / 10.0))
         np.testing.assert_allclose(linear2dB(x, ref=np.array([10.0, 10.0, 10.0])), 10 * np.log10(x / 10.0))
+
+    def test_array_zero_scalar_ref(self) -> None:
+        y = linear2dB(np.array([1.0, -1.0, 0.0]), ref=0.0)
+        assert isinstance(y, np.ndarray)
+        assert y.dtype == np.float64
+        np.testing.assert_array_equal(y, np.array([np.inf, -np.inf, np.inf]))
+        np.testing.assert_array_equal(linear2dB(np.array([1, -1]), ref=0), np.array([np.inf, -np.inf]))
+
+    def test_array_zero_ref_matches_scalar_branch(self) -> None:
+        x = np.array([-3.0, 0.0, 3.0])
+        np.testing.assert_array_equal(linear2dB(x, ref=0.0), np.array([linear2dB(float(v), ref=0.0) for v in x]))
+
+    def test_array_zero_ref_element(self) -> None:
+        x = np.array([1.0, 10.0, -1.0])
+        y = linear2dB(x, ref=np.array([0.0, 10.0, 0.0]))
+        np.testing.assert_array_equal(y, np.array([np.inf, 0.0, -np.inf]))
+
+    def test_array_default_ref_all_zero(self) -> None:
+        # 全零数组的默认参考值（最大值）也是0
+        np.testing.assert_array_equal(linear2dB(np.zeros(3)), np.full(3, np.inf))
+
+    @pytest.mark.parametrize("square", [False, True])
+    def test_array_zero_ref_emits_no_warning(self, square: bool) -> None:
+        with warnings.catch_warnings():
+            warnings.simplefilter("error")
+            y = linear2dB(np.array([1.0, 10.0]), ref=np.array([0.0, 10.0]), square=square)
+        np.testing.assert_array_equal(y, np.array([np.inf, 0.0]))
 
     def test_scalar_with_array_ref_raises(self) -> None:
         with pytest.raises(AssertionError, match="不支持以ndarray为参考值"):

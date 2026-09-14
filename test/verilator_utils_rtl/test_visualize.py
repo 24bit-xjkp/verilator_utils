@@ -262,7 +262,7 @@ class TestVisualizeSpectrogram:
         f = scipy.fft.fftfreq(128, 1 / 1000.0)
         x = np.linspace(1.0, 2.0, 128)
         viz.visualize_spectrogram(ax, f, x)
-        assert ax.get_title() == "双边功率谱"
+        assert ax.get_title() == "双边幅度谱"
         shifted_f = scipy.fft.fftshift(f)
         shifted_x = scipy.fft.fftshift(np.abs(x))
         np.testing.assert_allclose(as_float64(ax.lines[0].get_xdata()), shifted_f)
@@ -274,7 +274,7 @@ class TestVisualizeSpectrogram:
         f = np.linspace(0.0, 400.0, 128)
         x = np.linspace(1.0, 2.0, 128)
         viz.visualize_spectrogram(ax, f, x)
-        assert ax.get_title() == "单边功率谱"
+        assert ax.get_title() == "单边幅度谱"
         np.testing.assert_allclose(as_float64(ax.lines[0].get_ydata()), x)
         assert ax.get_ylabel() == "幅度"
 
@@ -291,7 +291,7 @@ class TestVisualizeSpectrogram:
         x = np.linspace(1.0, 2.0, 128)
         viz.visualize_spectrogram(ax, f, x, linear=False)
         assert ax.get_ylabel() == "dB"
-        expected = 10 * np.log10(x / np.max(x))
+        expected = 20 * np.log10(x / np.max(x))
         np.testing.assert_allclose(as_float64(ax.lines[0].get_ydata()), expected)
 
     def test_explicit_unit(self) -> None:

@@ -130,12 +130,12 @@ class sim_env:
                     subfig = typing.cast(SubFigure, subfigs[0])
                     axes = subfig.subplots(2, 1)
                     rtl.visualize_waveform(axes[0], self.t, x, "原始信号波形图")
-                    rtl.visualize_spectrogram_fft(axes[1], self.fs, x, title="原始信号双边功率谱")
+                    rtl.visualize_spectrogram_fft(axes[1], self.fs, x, title="原始信号双边幅度谱")
                     # 绘制滤波后信号
                     subfig = typing.cast(SubFigure, subfigs[1])
                     axes = subfig.subplots(2, 1)
                     rtl.visualize_waveform(axes[0], self.t_d, y, "CIC滤波后信号波形图")
-                    rtl.visualize_spectrogram_fft(axes[1], self.fs_d, y, title="CIC滤波后信号双边功率谱")
+                    rtl.visualize_spectrogram_fft(axes[1], self.fs_d, y, title="CIC滤波后信号双边幅度谱")
                     fig.suptitle(name, fontsize="x-large")
                     proc(fig, output_dir / f"{name}.svg")
 

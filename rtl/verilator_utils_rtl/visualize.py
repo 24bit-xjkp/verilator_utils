@@ -347,12 +347,13 @@ def visualize_spectrogram(
             unit = freq_unit.Hz
     x = np.abs(x)
     if not linear:
-        x = linear2dB(x)
+        # |X(ω)|是幅度，转dB时系数是20
+        x = linear2dB(x, square=True)
     (ax.stem if as_discrete(n, discrete) else ax.plot)(f / unit, x, **kwargs)
     ax.set_xlabel(f"频率 ({unit.name})")
     ax.set_ylabel("幅度" if linear else "dB")
     if title is None:
-        title = "双边功率谱" if float(f[0]) < 0.0 else "单边功率谱"
+        title = "双边幅度谱" if float(f[0]) < 0.0 else "单边幅度谱"
     ax.set_title(title)
 
 
