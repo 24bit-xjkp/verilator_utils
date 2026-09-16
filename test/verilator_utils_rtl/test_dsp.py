@@ -118,20 +118,15 @@ class TestLinearScaleParam:
         assert np.all(y >= -128)
         assert np.all(y <= 127)
 
-    def test_signed_same_sign_returns_none(self) -> None:
-        assert linear_scale_param(np.array([2.0, 4.0]), 8, True) is None
-        assert linear_scale_param(np.array([-4.0, -2.0]), 8, True) is None
-
-    def test_signed_positive_only_returns_none(self) -> None:
-        # 输入不跨越零点时，无偏置的线性变换无法映射到有符号范围
-        assert linear_scale_param(np.array([0.0, 4.0]), 8, True) is None
+    def test_signed_same_sign(self) -> None:
+        factor = linear_scale_param(np.array([2.0, 4.0]), 8, True)
+        assert factor == pytest.approx(31.4325)
+        factor = linear_scale_param(np.array([-4.0, -2.0]), 8, True)
+        assert factor == pytest.approx(31.68)
 
     def test_all_zero(self) -> None:
-        # 无符号输入全零可以缩放到0
         assert linear_scale_param(np.zeros(3), 8, False) == 0.0
-        # 有符号输入全零无法求解（符号检查先返回None）
-        assert linear_scale_param(np.zeros(3), 8, True) is None
-
+        assert linear_scale_param(np.zeros(3), 8, True) == 0.0
     def test_unsigned(self) -> None:
         x = np.array([2.0, 4.0])
         assert linear_scale_param(x, 8, False, guard=0.0) == pytest.approx(63.75)

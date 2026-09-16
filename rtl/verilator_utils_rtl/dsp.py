@@ -102,8 +102,6 @@ def linear_scale_param(x: ndarray, width: int, signed: bool = True, guard: float
         float | None: 缩放因子，求解失败时为None
     """
     x_min, x_max = float(np.min(x)), float(np.max(x))
-    if signed and math.copysign(1.0, x_min) == math.copysign(1.0, x_max):
-        return None
     if not signed and math.copysign(1.0, x_min) != math.copysign(1.0, x_max):
         return None
     y_min, y_max = get_range(width, signed)
@@ -113,7 +111,7 @@ def linear_scale_param(x: ndarray, width: int, signed: bool = True, guard: float
             return 0.0
         min_factor = y_min / x_min if x_min != 0.0 else math.inf
         max_factor = y_max / x_max if x_max != 0.0 else math.inf
-        return min(min_factor, max_factor) * guard_factor
+        return min(abs(min_factor), abs(max_factor)) * guard_factor
     else:
         abs_max = max(abs(x_min), abs(x_max))
         if abs_max == 0.0:
