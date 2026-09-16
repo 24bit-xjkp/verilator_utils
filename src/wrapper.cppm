@@ -1651,6 +1651,17 @@ export namespace verilator_utils
         {
         }
 
+        /**
+         * @brief 创建unpacked数组包装器
+         *
+         * @param data 数据对象
+         * @param packed_format 打包的数据格式
+         */
+        explicit unpacked_array(unpacked_array_type& data, ::verilator_utils::packed_format packed_format) :
+            unpacked_array{data, packed_format.first, packed_format.second, ::std::make_index_sequence<n>{}}
+        {
+        }
+
         unpacked_array(const unpacked_array&) = default;
         unpacked_array(unpacked_array&&) = default;
         unpacked_array& operator= (unpacked_array&&) = default;
