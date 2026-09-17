@@ -14,7 +14,6 @@ add_packages("verilator")
 local config = {
     configs = {
         shared = is_kind("shared"),
-        asan = get_config("use_sanitizer"),
         lto = get_config("use_lto")
     }
 }

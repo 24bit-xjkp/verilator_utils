@@ -1,7 +1,8 @@
 set_policy("build.c++.modules", true)
 add_rules("enable_sanitizer", "enable_lto")
 
-local sanitizer_envs = { "ASAN_OPTIONS=check_initialization_order=1" }
+-- 禁用container overflow检查，在第三方库未插桩时避免误报
+local sanitizer_envs = { ASAN_OPTIONS = "check_initialization_order=1,detect_container_overflow=0" }
 
 target("unit_test")
     set_enabled(get_config("enable_test"))
@@ -18,10 +19,10 @@ target("unit_test")
         -- 在未安装verilator的环境下首次config时避免访问空表
         local verilator_root = (target:pkgenvs() or {})["VERILATOR_ROOT"]
         if verilator_root then
-            target:add("files", path.join(verilator_root, "include", "verilated.cpp"), {warnings = "none"})
-            target:add("files", path.join(verilator_root, "include", "verilated_threads.cpp"), {warnings = "none"})
+            target:add("files", path.join(verilator_root, "include", "verilated.cpp"), { warnings = "none" })
+            target:add("files", path.join(verilator_root, "include", "verilated_threads.cpp"), { warnings = "none" })
             -- dut_context的析构函数引用了覆盖率接口
-            target:add("files", path.join(verilator_root, "include", "verilated_cov.cpp"), {warnings = "none"})
+            target:add("files", path.join(verilator_root, "include", "verilated_cov.cpp"), { warnings = "none" })
         end
     end)
 target_end()
@@ -38,14 +39,14 @@ for name, _ in pairs(rtl_verilator_target) do
         set_default(false)
         add_files(format("rtl_%s*.cpp", name))
         add_defines("VERILATOR_TRACER=" .. (get_config("trace_support_fst") and "VerilatedFstC" or "VerilatedVcdC"))
-        add_tests("rtl", {runargs = {"+verilator+rand+reset+2", "-fc"}, runenvs = sanitizer_envs})
+        add_tests("rtl", { runargs = {"+verilator+rand+reset+2", "-fc"}, runenvs = sanitizer_envs })
         on_load(function (target)
             target:set("targetdir", path.join(target:targetdir(), name))
         end)
 
         -- 由该测试目标统一清理生成和测试过程中产生的文件
         after_clean(function (target)
-            os.rm(target:targetdir(), {async = true, detach = true})
+            os.rm(target:targetdir(), { async = true, detach = true })
         end)
     target_end()
 end

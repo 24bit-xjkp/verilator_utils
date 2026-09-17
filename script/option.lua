@@ -17,7 +17,7 @@ function get_std_harden_options()
     return options
 end
 option("use_std_harden", function ()
-    set_default(false)
+    set_default(true)
     set_description("Enable c++ standard library harden.")
     add_defines(std_harden_defines)
 end)
