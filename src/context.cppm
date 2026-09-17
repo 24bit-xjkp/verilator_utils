@@ -402,15 +402,15 @@ export namespace std
     template <>
     struct formatter<::verilator_utils::dut_context_stats>
     {
-        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr static auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_without_flags(
                 ctx,
                 "无效的verilator_utils::dut_context_stats格式符"sv);
         }
 
-        template <typename iter_t, typename char_t>
-        static auto format(const ::verilator_utils::dut_context_stats& value, ::std::basic_format_context<iter_t, char_t>& ctx)
+        template <typename iter_t>
+        static auto format(const ::verilator_utils::dut_context_stats& value, ::std::basic_format_context<iter_t, char>& ctx)
         {
             return ::std::format_to(
                 ctx.out(),

@@ -538,8 +538,7 @@ namespace verilator_utils
          * @param message 解析失败时的消息
          * @return 解析后的迭代器
          */
-        constexpr ::std::format_parse_context::iterator parse_format_string_without_flags(::std::format_parse_context& ctx,
-                                                                                          ::std::string_view message)
+        constexpr auto parse_format_string_without_flags(::std::format_parse_context& ctx, ::std::string_view message)
         {
             auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
             if(iter != ctx.end() && *iter != '}')
@@ -557,7 +556,7 @@ namespace verilator_utils
          * @param with_detail 是否带有详细说明
          * @return 解析后的迭代器
          */
-        constexpr ::std::format_parse_context::iterator
+        constexpr auto
             parse_format_string_with_detail_flag(::std::format_parse_context& ctx, ::std::string_view message, bool& with_detail)
         {
             auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)

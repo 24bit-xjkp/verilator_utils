@@ -1770,11 +1770,11 @@ export namespace std
     template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, double> type>
     struct formatter<::verilator_utils::approx<type>>
     {
-        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr static auto parse(::std::format_parse_context& ctx)
         { return ::verilator_utils::detail::parse_format_string_without_flags(ctx, "无效的verilator_utils::approx格式符"sv); }
 
-        template <typename iter_t, typename char_t>
-        static auto format(const ::verilator_utils::approx<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx)
+        template <typename iter_t>
+        static auto format(const ::verilator_utils::approx<type>& value, ::std::basic_format_context<iter_t, char>& ctx)
         { return ::std::format_to(ctx.out(), "{{atol: {}, rtol: {}}}"sv, value.get_atol(), value.get_rtol()); }
     };
 
@@ -1783,7 +1783,7 @@ export namespace std
     {
         bool with_detail{};
 
-        constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_with_detail_flag(
                 ctx,
@@ -1791,9 +1791,9 @@ export namespace std
                 with_detail);
         }
 
-        template <typename iter_t, typename char_t>
+        template <typename iter_t>
         auto format(const ::verilator_utils::detail::approx_compare<type>& value,
-                    ::std::basic_format_context<iter_t, char_t>& ctx) const
+                    ::std::basic_format_context<iter_t, char>& ctx) const
         {
             if(with_detail)
             {
@@ -1815,12 +1815,11 @@ export namespace std
     template <::verilator_utils::is_verilator_data_type value_type>
     struct formatter<::verilator_utils::bit_slice<value_type>>
     {
-        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr static auto parse(::std::format_parse_context& ctx)
         { return ::verilator_utils::detail::parse_format_string_without_flags(ctx, "无效的verilator_utils::bit_slice格式符"sv); }
 
-        template <typename iter_t, typename char_t>
-        static auto format(const ::verilator_utils::bit_slice<value_type>& value,
-                           ::std::basic_format_context<iter_t, char_t>& ctx)
+        template <typename iter_t>
+        static auto format(const ::verilator_utils::bit_slice<value_type>& value, ::std::basic_format_context<iter_t, char>& ctx)
         { return value.format_to(ctx.out()); }
     };
 
@@ -1833,15 +1832,15 @@ export namespace std
     template <::verilator_utils::is_verilator_data_type value_type>
     struct formatter<::verilator_utils::vector_slice<value_type>>
     {
-        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr static auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_without_flags(ctx,
                                                                                 "无效的verilator_utils::vector_slice格式符"sv);
         }
 
-        template <typename iter_t, typename char_t>
+        template <typename iter_t>
         static auto format(const ::verilator_utils::vector_slice<value_type>& value,
-                           ::std::basic_format_context<iter_t, char_t>& ctx)
+                           ::std::basic_format_context<iter_t, char>& ctx)
         { return value.format_to(ctx.out()); }
     };
 
@@ -1855,15 +1854,15 @@ export namespace std
     template <::verilator_utils::is_verilator_data_type type, ::std::size_t n>
     struct formatter<::verilator_utils::unpacked_array<type, n>>
     {
-        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr static auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_without_flags(ctx,
                                                                                 "无效的verilator_utils::unpacked_array格式符"sv);
         }
 
-        template <typename iter_t, typename char_t>
+        template <typename iter_t>
         static auto format(const ::verilator_utils::unpacked_array<type, n>& value,
-                           ::std::basic_format_context<iter_t, char_t>& ctx)
+                           ::std::basic_format_context<iter_t, char>& ctx)
         { return value.format_to(ctx.out()); }
     };
 
@@ -1876,15 +1875,15 @@ export namespace std
     template <::verilator_utils::is_format_wrapper_data_type value_type>
     struct formatter<::verilator_utils::format_wrapper<value_type>>
     {
-        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr static auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_without_flags(ctx,
                                                                                 "无效的verilator_utils::format_wrapper格式符"sv);
         }
 
-        template <typename iter_t, typename char_t>
+        template <typename iter_t>
         static auto format(const ::verilator_utils::format_wrapper<value_type>& value,
-                           ::std::basic_format_context<iter_t, char_t>& ctx)
+                           ::std::basic_format_context<iter_t, char>& ctx)
         { return value.format_to(ctx.out()); }
     };
 }  // namespace std

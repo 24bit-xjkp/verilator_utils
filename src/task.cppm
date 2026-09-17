@@ -2057,15 +2057,15 @@ export namespace std
     {
         bool with_detail{};
 
-        constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_with_detail_flag(ctx,
                                                                                    "无效的verilator_utils::mailbox格式符"sv,
                                                                                    with_detail);
         }
 
-        template <typename iter_t, typename char_t>
-        auto format(const ::verilator_utils::mailbox<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx) const
+        template <typename iter_t>
+        auto format(const ::verilator_utils::mailbox<type>& value, ::std::basic_format_context<iter_t, char>& ctx) const
         {
             constexpr static auto transform{::std::views::transform([](auto&& ref) static noexcept { return ref.value(); })};
             if(with_detail)
@@ -2111,7 +2111,7 @@ export namespace std
     {
         bool with_detail{};
 
-        constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_with_detail_flag(
                 ctx,
@@ -2119,8 +2119,8 @@ export namespace std
                 with_detail);
         }
 
-        template <typename iter_t, typename char_t>
-        auto format(const ::verilator_utils::shift_register<type>& value, ::std::basic_format_context<iter_t, char_t>& ctx) const
+        template <typename iter_t>
+        auto format(const ::verilator_utils::shift_register<type>& value, ::std::basic_format_context<iter_t, char>& ctx) const
         {
             if(with_detail) { return ::std::format_to(ctx.out(), "{{depth: {}, reg: {}}}"sv, value.depth, value.reg); }
             else
@@ -2141,7 +2141,7 @@ export namespace std
     {
         bool with_color{};
 
-        constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_with_detail_flag(
                 ctx,
@@ -2149,9 +2149,9 @@ export namespace std
                 with_color);
         }
 
-        template <typename iter_t, typename char_t>
+        template <typename iter_t>
         auto format(const ::verilator_utils::coroutine_stacktrace::stacktrace_frame& value,
-                    ::std::basic_format_context<iter_t, char_t>& ctx) const
+                    ::std::basic_format_context<iter_t, char>& ctx) const
         {
             if(with_color)
             {
@@ -2192,7 +2192,7 @@ export namespace std
     {
         bool with_color{};
 
-        constexpr ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_with_detail_flag(
                 ctx,
@@ -2200,8 +2200,8 @@ export namespace std
                 with_color);
         }
 
-        template <typename iter_t, typename char_t>
-        auto format(const ::verilator_utils::coroutine_stacktrace& value, ::std::basic_format_context<iter_t, char_t>& ctx) const
+        template <typename iter_t>
+        auto format(const ::verilator_utils::coroutine_stacktrace& value, ::std::basic_format_context<iter_t, char>& ctx) const
         {
             auto out{::std::format_to(ctx.out(), "Coroutine Stacktrace:\n"sv)};
             for(auto&& [i, frame]: value.frames | ::std::views::enumerate)

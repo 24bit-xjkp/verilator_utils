@@ -1427,16 +1427,16 @@ export namespace std
     template <>
     struct formatter<::verilator_utils::detail::promise_base::coroutine_type_enum>
     {
-        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        constexpr static auto parse(::std::format_parse_context& ctx)
         {
             return ::verilator_utils::detail::parse_format_string_without_flags(
                 ctx,
                 "无效的verilator_utils::detail::promise_base::coroutine_type_enum格式符"sv);
         }
 
-        template <typename iter_t, typename char_t>
+        template <typename iter_t>
         static auto format(::verilator_utils::detail::promise_base::coroutine_type_enum value,
-                           ::std::basic_format_context<iter_t, char_t>& ctx)
+                           ::std::basic_format_context<iter_t, char>& ctx)
         {
             using enum verilator_utils::detail::promise_base::coroutine_type_enum;
             switch(value)
