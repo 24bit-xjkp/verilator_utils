@@ -88,6 +88,9 @@ for name, opt in pairs(rtl_verilator_target) do
         if opt.python then
             add_deps(python_target_name)
         end
+        if is_mode("debug") then
+            set_optimize("fast")
+        end
         on_load(function (target)
             target:set("targetdir", path.join(target:targetdir(), name))
         end)
