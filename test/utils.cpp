@@ -261,4 +261,145 @@ TEST_SUITE("verilator_utils/utils")
             static_assert(type_traits::n == 1);
         }
     }
+
+    TEST_CASE("width_cast keeps unsigned values that fit the target width")
+    {
+        CHECK_EQ(::verilator_utils::width_cast(0u, 8zu), 0u);
+        CHECK_EQ(::verilator_utils::width_cast(1u, 1zu), 1u);
+        CHECK_EQ(::verilator_utils::width_cast(2u, 2zu), 2u);
+        CHECK_EQ(::verilator_utils::width_cast(0x1Fu, 5zu), 0x1Fu);
+        CHECK_EQ(::verilator_utils::width_cast(0xABCu, 12zu), 0xABCu);
+        CHECK_EQ(::verilator_utils::width_cast(255u, 8zu), 255u);
+        CHECK_EQ(::verilator_utils::width_cast(65'535u, 16zu), 65'535u);
+        CHECK_EQ(::verilator_utils::width_cast(::std::numeric_limits<::std::uint32_t>::max(), 32zu),
+                 static_cast<::std::uint64_t>(::std::numeric_limits<::std::uint32_t>::max()));
+        CHECK_THROWS_AS(::verilator_utils::width_cast(0u, 0zu), ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("width_cast rejects unsigned values that exceed the target width")
+    {
+        CHECK_THROWS_AS(::verilator_utils::width_cast(1u, 0zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(2u, 1zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(0x20u, 5zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(256u, 8zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(65'536u, 16zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(::std::numeric_limits<::std::uint64_t>::max(), 63zu),
+                        ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("width_cast reinterprets signed values as two's complement")
+    {
+        CHECK_EQ(::verilator_utils::width_cast(0, 8zu), 0u);
+        CHECK_EQ(::verilator_utils::width_cast(1, 8zu), 1u);
+        CHECK_EQ(::verilator_utils::width_cast(127, 8zu), 127u);
+        CHECK_EQ(::verilator_utils::width_cast(-1, 8zu), 0xFFu);
+        CHECK_EQ(::verilator_utils::width_cast(-127, 8zu), 0x81u);
+        CHECK_EQ(::verilator_utils::width_cast(1, 2zu), 0b01u);
+        CHECK_EQ(::verilator_utils::width_cast(-1, 2zu), 0b11u);
+        CHECK_EQ(::verilator_utils::width_cast(-1, 5zu), 0x1Fu);
+        CHECK_EQ(::verilator_utils::width_cast(-3, 12zu), 0xFFDu);
+        CHECK_EQ(::verilator_utils::width_cast(::std::int16_t{-2}, 16zu), 0xFFFEu);
+        CHECK_EQ(::verilator_utils::width_cast(::std::int32_t{-2}, 32zu), 0xFFFF'FFFEu);
+    }
+
+    TEST_CASE("width_cast accepts the most negative value of the target width")
+    {
+        CHECK_EQ(::verilator_utils::width_cast(-2, 2zu), 0b10u);
+        CHECK_EQ(::verilator_utils::width_cast(-128, 8zu), 0x80u);
+        CHECK_EQ(::verilator_utils::width_cast(-32'768, 16zu), 0x8000u);
+        CHECK_EQ(::verilator_utils::width_cast(::std::int16_t{-32'768}, 16zu), 0x8000u);
+        CHECK_EQ(::verilator_utils::width_cast(::std::numeric_limits<::std::int64_t>::min() / 2, 63zu), 0x4000'0000'0000'0000ull);
+    }
+
+    TEST_CASE("width_cast reproduces the two's complement pattern over the whole int16 range")
+    {
+        ::std::size_t mismatches{};
+        for(auto raw: ::std::views::iota(-32'768, 32'768))
+        {
+            auto expected{static_cast<::std::uint64_t>(static_cast<::std::uint16_t>(raw))};
+            if(::verilator_utils::width_cast(static_cast<::std::int16_t>(raw), 16zu) != expected) { ++mismatches; }
+        }
+        CHECK_EQ(mismatches, 0zu);
+    }
+
+    TEST_CASE("width_cast rejects signed values that exceed the target width")
+    {
+        CHECK_THROWS_AS(::verilator_utils::width_cast(2, 2zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(-3, 2zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(128, 8zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(-129, 8zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(32'768, 16zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(-32'769, 16zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(::std::numeric_limits<::std::int64_t>::min(), 63zu),
+                        ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(::std::numeric_limits<::std::int64_t>::max() / 2 + 1, 63zu),
+                        ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("width_cast requires at least two bits for signed values")
+    {
+        CHECK_THROWS_AS(::verilator_utils::width_cast(0, 0zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(0, 1zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(-1, 1zu), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::width_cast(::std::int16_t{1}, 1zu), ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("width_cast preserves the full sixty-four bit target width")
+    {
+        constexpr static auto uint64_max{::std::numeric_limits<::std::uint64_t>::max()};
+        constexpr static auto int64_min{::std::numeric_limits<::std::int64_t>::min()};
+        constexpr static auto int64_max{::std::numeric_limits<::std::int64_t>::max()};
+        CHECK_EQ(::verilator_utils::width_cast(0u, 64zu), 0u);
+        CHECK_EQ(::verilator_utils::width_cast(uint64_max, 64zu), uint64_max);
+        CHECK_EQ(::verilator_utils::width_cast(0, 64zu), 0u);
+        CHECK_EQ(::verilator_utils::width_cast(-1, 64zu), uint64_max);
+        CHECK_EQ(::verilator_utils::width_cast(int64_min, 64zu), 0x8000'0000'0000'0000ull);
+        CHECK_EQ(::verilator_utils::width_cast(int64_max, 64zu), 0x7FFF'FFFF'FFFF'FFFFull);
+    }
+
+    TEST_CASE("width_cast accepts every integral value type")
+    {
+        CHECK_EQ(::verilator_utils::width_cast(static_cast<::std::uint8_t>(255), 8zu), 255u);
+        CHECK_EQ(::verilator_utils::width_cast(static_cast<::std::int8_t>(-1), 8zu), 0xFFu);
+        CHECK_EQ(::verilator_utils::width_cast(static_cast<::std::uint16_t>(65'535), 16zu), 65'535u);
+        CHECK_EQ(::verilator_utils::width_cast(static_cast<::std::int16_t>(-1), 16zu), 0xFFFFu);
+        CHECK_EQ(::verilator_utils::width_cast(static_cast<::std::uint32_t>(0xFFFF'FFFFu), 32zu), 0xFFFF'FFFFu);
+        CHECK_EQ(::verilator_utils::width_cast(static_cast<::std::int32_t>(-1), 32zu), 0xFFFF'FFFFu);
+        CHECK_EQ(::verilator_utils::width_cast(0x0123'4567'89ABull, 48zu), 0x0123'4567'89ABull);
+        CHECK_EQ(::verilator_utils::width_cast(::CData{0xABu}, 8zu), 0xABu);
+        CHECK_EQ(::verilator_utils::width_cast(::SData{0xCDEFu}, 16zu), 0xCDEFu);
+        CHECK_EQ(::verilator_utils::width_cast(::IData{0xDEAD'BEEFu}, 32zu), 0xDEAD'BEEFu);
+        CHECK_EQ(::verilator_utils::width_cast(::QData{0x0123'4567'89ABull}, 48zu), 0x0123'4567'89ABull);
+        static_assert(::std::same_as<decltype(::verilator_utils::width_cast(0u, 8zu)), ::std::uint64_t>);
+        static_assert(::std::same_as<decltype(::verilator_utils::width_cast(::std::int8_t{0}, 8zu)), ::std::uint64_t>);
+    }
+
+    TEST_CASE("width_cast is usable in constant evaluation")
+    {
+        static_assert(::verilator_utils::width_cast(255u, 8zu) == 255u);
+        static_assert(::verilator_utils::width_cast(0xABCu, 12zu) == 0xABCu);
+        static_assert(::verilator_utils::width_cast(-1, 8zu) == 0xFFu);
+        static_assert(::verilator_utils::width_cast(-128, 8zu) == 0x80u);
+        static_assert(::verilator_utils::width_cast(static_cast<::std::int16_t>(-2), 16zu) == 0xFFFEu);
+        static_assert(::verilator_utils::width_cast(1u, 64zu) == 1u);
+        static_assert(::verilator_utils::width_cast(-1, 64zu) == ::std::numeric_limits<::std::uint64_t>::max());
+        static_assert(::verilator_utils::width_cast(::std::numeric_limits<::std::int64_t>::min(), 64zu) ==
+                      0x8000'0000'0000'0000ull);
+        constexpr auto value{::verilator_utils::width_cast(-1, 4zu)};
+        static_assert(value == 0xFu);
+        CHECK_EQ(value, 0xFu);
+    }
+
+    TEST_CASE("width_cast reports the offending value and the target width")
+    {
+        CHECK_THROWS_WITH_AS(::verilator_utils::width_cast(256u, 8zu),
+                             ::doctest::Contains{"256超出uint8的表示范围"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(::verilator_utils::width_cast(-129, 8zu),
+                             ::doctest::Contains{"-129超出int8的表示范围"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(::verilator_utils::width_cast(1, 1zu),
+                             ::doctest::Contains{"有符号数宽度至少为2"},
+                             ::verilator_utils::assertion_error);
+    }
 }

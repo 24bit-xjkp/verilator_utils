@@ -48,11 +48,11 @@ TEST_SUITE("cic_filter")
         ctx.add_task(generate_reset(port.rst, port.clk));
         const auto do_stimulate{[&] -> task<void> {
             co_await wait_reset_finish(port.rst);
-            for(std::uint16_t input: origin_signal)
+            for(std::int16_t input: origin_signal)
             {
                 co_await wait_stimulate(port.clk);
                 port.i_valid = 1;
-                port.in = input;
+                port.in = width_cast(input, port_t::width);
             }
         }};
         ctx.add_task(do_stimulate());
