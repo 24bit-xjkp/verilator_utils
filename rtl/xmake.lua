@@ -29,6 +29,7 @@ rtl_verilator_target = {
     sync_dual_ram = {top = "sync_dual_ram_wrapper"},
     sync_fifo = {},
     cic_filter = {python = "cic_filter.py", gen_src = "cic_filter_param.sv"},
+    fir_filter_wrapper = {python = "fir_filter.py", gen_src = "fir_filter_param.sv"},
 }
 
 for name, opt in pairs(rtl_verilator_target) do
