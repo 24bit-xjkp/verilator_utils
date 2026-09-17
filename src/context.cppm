@@ -1,4 +1,5 @@
 module;
+#include <verilated_config.h>
 #include <assert_macros.hpp>
 #include <doctest_macros.hpp>
 export module verilator_utils:context;
@@ -99,6 +100,32 @@ export namespace verilator_utils
         ::std::optional<int> argc{};
         /// 命令行参数数组，默认为传递给程序的命令行参数数组，不进行过滤
         ::std::optional<const char**> argv{};
+    };
+
+    /**
+     * @brief DUT上下文统计信息
+     *
+     */
+    struct dut_context_stats
+    {
+        /// 仿真器名称
+        constexpr static ::std::string_view stimulator{VERILATOR_PRODUCT " " VERILATOR_VERSION};
+        /// 仿真时间
+        ::std::string simtime_str;
+        /// 仿真速度
+        ::std::string speed_str;
+        /// 并发线程数
+        ::std::size_t threads;
+        /// 仿真时间，单位为dut时间单位
+        double simtime;
+        /// 墙钟时间，以秒为单位
+        double walltime;
+        /// cpu时间，以秒为单位
+        double cputime;
+        /// 仿真速度，单位为dut时间单位/s
+        double speed;
+        /// 峰值内存，单位为MB
+        double memory_peak;
     };
 
     /**
@@ -320,6 +347,91 @@ export namespace verilator_utils
          * @note 相当于在绑定的调度器对象scheduler上调用add_task
          */
         void add_task(::verilator_utils::task<void> task) noexcept { scheduler->add_task(::std::move(task)); }
-    };
 
+        /**
+         * @brief 获取统计信息
+         *
+         * @return 统计信息
+         */
+        [[nodiscard]] ::verilator_utils::dut_context_stats get_stats() const
+        {
+            auto simtime{scheduler->time_in_time_unit()};
+            // 时间单位的指数，e.g. fs -> -15
+            auto time_unit{context->timeunit()};
+            auto walltime{context->statWallTimeSinceStart()};
+            auto speed{simtime / walltime};
+            ::std::uint64_t memory_peak{};
+            ::std::uint64_t memory_current{};
+            ::VlOs::memUsageBytes(memory_peak, memory_current);
+
+            auto scaled_speed{speed};
+            // 对齐到IEEE标准
+            auto scaled_time_unit{(time_unit - 2) / 3 * 3};
+            scaled_speed *= ::std::pow(10.0, time_unit - scaled_time_unit);
+            // 对仿真速度进行缩放，最大为s，最小为fs
+            // 边界判定必须排除端点单位，否则会越过time_unit_table的范围
+            while(scaled_speed > 1e3 && scaled_time_unit < 0)
+            {
+                scaled_speed *= 1e-3;
+                scaled_time_unit += 3;
+            }
+            while(scaled_speed < 1.0 && scaled_time_unit > -15)
+            {
+                scaled_speed *= 1e3;
+                scaled_time_unit -= 3;
+            }
+            auto scaled_time_unit_suffix{
+                ::std::get<2>(*::std::ranges::find_if(::verilator_utils::detail::time_unit_table, [&](const auto& item) {
+                    return ::std::get<0>(item) == scaled_time_unit;
+                }))};
+
+            return {scheduler->time_in_string(),
+                    ::std::format("{:.3f}{}/s", scaled_speed, scaled_time_unit_suffix),
+                    context->threadsInModels(),
+                    simtime,
+                    walltime,
+                    context->statCpuTimeSinceStart(),
+                    speed,
+                    static_cast<double>(memory_peak) / 1024.0 / 1024.0};
+        }
+    };
 }  // namespace verilator_utils
+
+export namespace std
+{
+    template <>
+    struct formatter<::verilator_utils::dut_context_stats>
+    {
+        constexpr static ::std::format_parse_context::iterator parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_without_flags(
+                ctx,
+                "无效的verilator_utils::dut_context_stats格式符"sv);
+        }
+
+        template <typename iter_t, typename char_t>
+        static auto format(const ::verilator_utils::dut_context_stats& value, ::std::basic_format_context<iter_t, char_t>& ctx)
+        {
+            return ::std::format_to(
+                ctx.out(),
+                "- 仿真器: {}\n- 仿真时间: {} 挂钟时间: {:.3f}s 仿真速度: {}\n- CPU时间: {:.3f}s 并发线程数: {} 内存峰值: {:.3f}MB"sv,
+                value.stimulator,
+                value.simtime_str,
+                value.walltime,
+                value.speed_str,
+                value.cputime,
+                value.threads,
+                value.memory_peak);
+        }
+    };
+}  // namespace std
+
+export namespace doctest
+{
+    template <>
+    struct StringMaker<::verilator_utils::dut_context_stats>
+    {
+        static ::doctest::String convert(const ::verilator_utils::dut_context_stats& value)
+        { return ::std::format("\n{}"sv, value); }
+    };
+}  // namespace doctest

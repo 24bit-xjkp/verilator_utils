@@ -43,4 +43,9 @@ export namespace verilator_utils::verilator
     using ::VlIsVlWide;
     using ::VlUnpacked;
     using ::VlWide;
+
+    namespace VlOs
+    {
+        using ::VlOs::memUsageBytes;
+    }
 }  // namespace verilator_utils::verilator

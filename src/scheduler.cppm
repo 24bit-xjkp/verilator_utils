@@ -883,6 +883,15 @@ namespace verilator_utils::detail
      * 考虑测试激励厂家，调度器内协程数量不太多，使用flat_map以提高cache命中率
      */
     using suspend_queue_t = ::std::flat_map<::verilator_utils::detail::coroutine_pair, ::std::size_t>;
+
+    constexpr ::std::array time_unit_table{
+        ::std::tuple{0,   1'000'000'000'000'000zu, "s"sv },
+        ::std::tuple{-3,  1'000'000'000'000zu,     "ms"sv},
+        ::std::tuple{-6,  1'000'000'000zu,         "us"sv},
+        ::std::tuple{-9,  1'000'000zu,             "ns"sv},
+        ::std::tuple{-12, 1'000zu,                 "ps"sv},
+        ::std::tuple{-15, 1zu,                     "fs"sv},
+    };
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
@@ -1043,15 +1052,6 @@ export namespace verilator_utils
             return any_coroutine_run;
         }
 
-        constexpr static ::std::array unit_table{
-            ::std::tuple{0,   1'000'000'000'000'000zu, "s"sv },
-            ::std::tuple{-3,  1'000'000'000'000zu,     "ms"sv},
-            ::std::tuple{-6,  1'000'000'000zu,         "us"sv},
-            ::std::tuple{-9,  1'000'000zu,             "ns"sv},
-            ::std::tuple{-12, 1'000zu,                 "ps"sv},
-            ::std::tuple{-15, 1zu,                     "fs"sv},
-        };
-
     public:
         /**
          * @brief 构造调度器对象
@@ -1071,7 +1071,7 @@ export namespace verilator_utils
             auto time_unit{context.timeunit()};
             time_precision_fs = static_cast<::std::uint64_t>(::std::pow(10, 15 + time_precision));
             time_precision_per_time_unit = static_cast<::std::uint64_t>(::std::pow(10, time_unit - time_precision));
-            for(auto&& [unit_exponent, unit_fs, unit_suffix]: unit_table)
+            for(auto&& [unit_exponent, unit_fs, unit_suffix]: ::verilator_utils::detail::time_unit_table)
             {
                 if(time_unit >= unit_exponent)
                 {
