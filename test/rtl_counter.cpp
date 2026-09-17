@@ -77,5 +77,6 @@ TEST_SUITE("counter")
         };
         ctx.add_task(do_verify());
         ctx.loop_until_finish();
+        MESSAGE(ctx.get_stats());
     }
 }

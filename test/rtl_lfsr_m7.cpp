@@ -102,5 +102,6 @@ TEST_SUITE("lfsr_m7")
         ctx.add_task(generate_clock(port.clk, 2_ns));
         ctx.add_task(do_verify());
         ctx.loop_until_finish();
+        MESSAGE(ctx.get_stats());
     }
 }

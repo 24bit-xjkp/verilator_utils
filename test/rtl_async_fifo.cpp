@@ -274,6 +274,7 @@ TEST_SUITE("async_fifo")
         ctx.add_task(generate_clock(port.o_clk, fast_period));
         ctx.add_task(do_verify_random(ctx, port, dist_t{0, 1}, dist_t{0, 3}));
         ctx.loop_until_finish(110_us);
+        MESSAGE(ctx.get_stats());
     }
 
     TEST_CASE("write_fast_read_slow_random")
@@ -286,5 +287,6 @@ TEST_SUITE("async_fifo")
         ctx.add_task(generate_clock(port.o_clk, slow_period));
         ctx.add_task(do_verify_random(ctx, port, dist_t{0, 3}, dist_t{0, 1}));
         ctx.loop_until_finish(110_us);
+        MESSAGE(ctx.get_stats());
     }
 }

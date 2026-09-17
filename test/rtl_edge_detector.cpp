@@ -98,5 +98,6 @@ TEST_SUITE("edge_detector")
         ctx.add_task(stimulate());
 
         ctx.loop_until_finish();
+        MESSAGE(ctx.get_stats());
     }
 }

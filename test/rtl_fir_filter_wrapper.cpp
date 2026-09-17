@@ -9,7 +9,7 @@ TEST_SUITE("fir_filter")
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_fir_filter_wrapper_verilator;
-    using dut_context_t = dut_context<dut_t, VerilatedFstC>;
+    using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
 
     struct port_t
     {
@@ -94,5 +94,6 @@ TEST_SUITE("fir_filter")
         ctx.add_task(do_verify());
 
         ctx.loop_until_finish(200_us);
+        MESSAGE(ctx.get_stats());
     }
 }

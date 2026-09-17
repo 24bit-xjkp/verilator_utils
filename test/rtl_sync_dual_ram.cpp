@@ -198,5 +198,6 @@ TEST_SUITE("sync_dual_ram")
         ctx.add_task(do_verify());
 
         ctx.loop_until_finish(1_us);
+        MESSAGE(ctx.get_stats());
     }
 }

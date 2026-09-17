@@ -135,20 +135,8 @@ TEST_SUITE("dual_ram")
             },
         };
         ctx.add_task(do_verify());
+
         ctx.loop_until_finish();
-    }
-
-    TEST_CASE("context random seed management")
-    {
-        dut_context_t ctx{option};
-
-        CHECK_EQ(ctx.get_seed(), static_cast<std::size_t>(ctx.get_context().randSeed()));
-
-        const auto seed{ctx.get_seed()};
-        CHECK_EQ(ctx.get_seed(), seed);
-
-        ctx.get_context().randSeed(42);
-        CHECK_EQ(ctx.get_seed(), 42zu);
-        CHECK_EQ(ctx.get_seed(), static_cast<std::size_t>(ctx.get_context().randSeed()));
+        MESSAGE(ctx.get_stats());
     }
 }

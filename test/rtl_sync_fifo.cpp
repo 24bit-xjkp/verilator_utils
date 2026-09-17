@@ -115,5 +115,6 @@ TEST_SUITE("sync_fifo")
         ctx.add_task(do_verify());
 
         ctx.loop_until_finish(10_us);
+        MESSAGE(ctx.get_stats());
     }
 }
