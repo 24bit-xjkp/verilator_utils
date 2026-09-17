@@ -1,19 +1,16 @@
 set_policy("build.c++.modules", true)
 add_rules("enable_sanitizer", "enable_lto")
 
--- 禁用container overflow检查，在第三方库未插桩时避免误报
-local sanitizer_envs = { ASAN_OPTIONS = "check_initialization_order=1,detect_container_overflow=0" }
-
 target("unit_test", function ()
     set_enabled(get_config("enable_test"))
     set_group("unit_test")
     add_deps("verilator_utils_main")
     set_default(false)
-    local regex = "*.cpp|rtl_*.cpp|common.cpp"
-    add_files(regex, "common.cpp")
+    local regex = "*.cpp|rtl_*.cpp|common.cpp|asan_option.cpp"
+    add_files(regex, "common.cpp", "asan_option.cpp")
     for _, file in ipairs(os.files(regex)) do
         local name = path.basename(file)
-        add_tests(name, { runargs = { "-ts=verilator_utils/" .. name, "-fc" }, runenvs = sanitizer_envs })
+        add_tests(name, { runargs = { "-ts=verilator_utils/" .. name, "-fc" } })
     end
     after_load(function (target)
         -- 在未安装verilator的环境下首次config时避免访问空表
@@ -37,9 +34,9 @@ for name, _ in pairs(rtl_verilator_target) do
         end
         add_packages("libnpy-matajoh")
         set_default(false)
-        add_files(format("rtl_%s*.cpp", name))
+        add_files(format("rtl_%s*.cpp", name), "asan_option.cpp")
         add_defines("VERILATOR_TRACER=" .. (get_config("trace_support_fst") and "VerilatedFstC" or "VerilatedVcdC"))
-        add_tests("rtl", { runargs = { "+verilator+rand+reset+2", "-fc" }, runenvs = sanitizer_envs })
+        add_tests("rtl", { runargs = { "+verilator+rand+reset+2", "-fc" } })
         on_load(function (target)
             target:set("targetdir", path.join(target:targetdir(), name))
         end)
