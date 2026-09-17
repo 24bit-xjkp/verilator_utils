@@ -19,7 +19,9 @@ local config = {
 }
 add_requires("doctest_module", "cpptrace", config)
 add_requireconfs("doctest_module", { configs = { main = false, std_harden = get_config("use_std_harden") } })
-add_requireconfs("cpptrace", { configs = { cxxflags = get_std_harden_options() } })
+-- 未插桩的代码和插桩代码需要通过动态链接隔离
+local shared_cpptrace = is_kind("shared") or get_config("use_sanitizer")
+add_requireconfs("cpptrace", { configs = { shared = shared_cpptrace, cxxflags = get_std_harden_options() } })
 set_exceptions("cxx")
 set_policy("build.c++.modules.hide_dependencies", true)
 set_defaultmode("release")

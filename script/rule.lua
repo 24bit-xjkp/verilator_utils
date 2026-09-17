@@ -13,8 +13,6 @@ rule("enable_sanitizer", function ()
         if get_config("use_sanitizer") then
             target:set("policy", "build.sanitizer.address", true)
             target:set("policy", "build.sanitizer.undefined", true)
-            -- 禁用container overflow检查，在第三方库未插桩时避免误报
-            target:add("defines", "__SANITIZER_DISABLE_CONTAINER_OVERFLOW__")
         end
     end)
 end)

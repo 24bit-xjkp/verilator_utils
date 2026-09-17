@@ -1,5 +1,7 @@
 set_policy("build.c++.modules", true)
 add_rules("enable_sanitizer", "enable_lto")
+-- 使单元测试安装后可以运行
+add_rpathdirs("$ORIGIN/../lib", { installonly = true })
 
 target("unit_test", function ()
     set_enabled(get_config("enable_test"))
