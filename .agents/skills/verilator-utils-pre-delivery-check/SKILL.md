@@ -44,11 +44,11 @@ xmake format -af "src/*.cppm:test/*.cpp"
 
 `-f` / `-af` 的取值是一组文件模式：
 
-- **`:` 分隔多个模式**（xmake 用环境变量式的路径分隔符切分，Linux 上即 `:`）。上面两条等价于"`src/*.cppm` 一批 + `test/*.cpp` 一批"，共 25 个文件（9 个 `.cppm` + 16 个 `.cpp`/`rtl_*.cpp`）。
+- **`:` 分隔多个模式**（xmake 用环境变量式的路径分隔符切分，Linux 上即 `:`）。上面两条等价于"`src/*.cppm` 一批 + `test/*.cpp` 一批"。
 - **`|` 表示从该模式中排除**，不是"或"。排除项按"去掉匹配目录前缀后的相对路径"匹配，通常是文件名级模式：
 
   ```bash
-  # 只检查 src/*.cppm，但排除 assert.cppm → 10 个变 9 个文件
+  # 只检查 src/*.cppm，但排除 assert.cppm
   xmake check clang.tidy --compdb=.vscode --configfile=.clang-tidy --quiet -f "src/*.cppm|assert.cppm"
   ```
 
@@ -60,8 +60,8 @@ xmake format -af "src/*.cppm:test/*.cpp"
 
 在本仓库当前配置（clang 工具链、debug、sanitizer + 标准库加固）下，第 3 节两条命令的预期结果是：
 
-- `clang.tidy`：`analyzed 25 files`，exit 0，**0 error、0 warning**；
-- `format`：`formatted 25 files`，正常情况下不改动任何已格式化文件（`git status` 中不出现 C++ 文件）。
+- `clang.tidy`：exit 0，**0 error、0 warning**；
+- `format`：正常情况下不改动任何已格式化文件。
 
 **0 error、0 warning 是基线**：任何新告警都需要解释或消除，不能默认"仓库本来就有告警"。
 
