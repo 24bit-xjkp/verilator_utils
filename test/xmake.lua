@@ -4,7 +4,7 @@ add_rules("enable_sanitizer", "enable_lto")
 -- 禁用container overflow检查，在第三方库未插桩时避免误报
 local sanitizer_envs = { ASAN_OPTIONS = "check_initialization_order=1,detect_container_overflow=0" }
 
-target("unit_test")
+target("unit_test", function ()
     set_enabled(get_config("enable_test"))
     set_group("unit_test")
     add_deps("verilator_utils_main")
@@ -25,10 +25,10 @@ target("unit_test")
             target:add("files", path.join(verilator_root, "include", "verilated_cov.cpp"), { warnings = "none" })
         end
     end)
-target_end()
+end)
 
 for name, _ in pairs(rtl_verilator_target) do
-    target("unit_test_rtl_"..name)
+    target("unit_test_rtl_" .. name, function ()
         set_enabled(get_config("enable_test"))
         set_group("unit_test_rtl")
         add_deps(format("unit_test_rtl_%s_verilator", name), "verilator_utils_main")
@@ -39,7 +39,7 @@ for name, _ in pairs(rtl_verilator_target) do
         set_default(false)
         add_files(format("rtl_%s*.cpp", name))
         add_defines("VERILATOR_TRACER=" .. (get_config("trace_support_fst") and "VerilatedFstC" or "VerilatedVcdC"))
-        add_tests("rtl", { runargs = {"+verilator+rand+reset+2", "-fc"}, runenvs = sanitizer_envs })
+        add_tests("rtl", { runargs = { "+verilator+rand+reset+2", "-fc" }, runenvs = sanitizer_envs })
         on_load(function (target)
             target:set("targetdir", path.join(target:targetdir(), name))
         end)
@@ -48,5 +48,5 @@ for name, _ in pairs(rtl_verilator_target) do
         after_clean(function (target)
             os.rm(target:targetdir(), { async = true, detach = true })
         end)
-    target_end()
+    end)
 end

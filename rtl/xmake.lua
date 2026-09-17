@@ -1,12 +1,7 @@
 local gen_src_dir = path.join(os.projectdir(), get_config("builddir"), ".gens", "system_verilog")
 local verilator_options = {
-    "-Wall",
-    get_config("trace_support_fst") and "--trace-fst" or "--trace-vcd",
-    {"--x-assign", "unique"},
-    {"--x-initial", "unique"},
-    "--coverage",
-    "-DSIMULATION=1",
-    "-Irtl"
+    "-Wall", get_config("trace_support_fst") and "--trace-fst" or "--trace-vcd", { "--x-assign", "unique" },
+    { "--x-initial", "unique" }, "--coverage", "-DSIMULATION=1", "-Irtl"
 }
 set_warnings("none")
 add_toolchains("@verilator")
@@ -21,15 +16,15 @@ add_toolchains("@verilator")
 -- 数组元素为文件路径，若只有一个可简写成字符串形式
 rtl_verilator_target = {
     edge_detector = {},
-    lfsr_m7 = {top = "lfsr_m7_wrapper"},
+    lfsr_m7 = { top = "lfsr_m7_wrapper" },
     counter = {},
     sequence_detector = {},
     async_dual_ram = {},
     async_fifo = {},
-    sync_dual_ram = {top = "sync_dual_ram_wrapper"},
+    sync_dual_ram = { top = "sync_dual_ram_wrapper" },
     sync_fifo = {},
-    cic_filter = {python = "cic_filter.py", gen_src = "cic_filter_param.sv"},
-    fir_filter_wrapper = {python = "fir_filter.py", gen_src = "fir_filter_param.sv"},
+    cic_filter = { python = "cic_filter.py", gen_src = "cic_filter_param.sv" },
+    fir_filter_wrapper = { python = "fir_filter.py", gen_src = "fir_filter_param.sv" }
 }
 
 for name, opt in pairs(rtl_verilator_target) do
@@ -37,7 +32,7 @@ for name, opt in pairs(rtl_verilator_target) do
     local target_gen_src_dir = path.join(gen_src_dir, name)
     if opt.python then
         python_target_name = format("unit_test_rtl_%s_python", name)
-        target(python_target_name)
+        target(python_target_name, function ()
             set_kind("object")
             set_enabled(get_config("enable_test"))
             add_rules("python")
@@ -45,8 +40,7 @@ for name, opt in pairs(rtl_verilator_target) do
             set_policy("build.fence", true)
             on_load(function (target)
                 local additional_args = {
-                    "-o", path.join(target:targetdir(), name),
-                    "-g", target_gen_src_dir,
+                    "-o", path.join(target:targetdir(), name), "-g", target_gen_src_dir,
                     get_config("visualize") and "--visualize" or "--no-visualize"
                 }
                 local prefix = path.relative(target:scriptdir(), os.projectdir())
@@ -77,19 +71,19 @@ for name, opt in pairs(rtl_verilator_target) do
                 -- 删除生成的源代码，生成的数据由最终的rtl测试目标进行删除
                 os.rm(target_gen_src_dir)
             end)
-        target_end()
+        end)
     end
 
-    target(format("unit_test_rtl_%s_verilator", name))
+    target(format("unit_test_rtl_%s_verilator", name), function ()
         set_enabled(get_config("enable_test"))
         add_rules("verilator.shared")
-        add_files(name..".sv")
+        add_files(name .. ".sv")
         for _, file in ipairs(table.wrap(opt.gen_src or {})) do
             add_files(path.join(target_gen_src_dir, file))
         end
         set_default(false)
         local top_module = opt.top or name
-        add_values("verilator.flags", table.join(verilator_options, {"--top", top_module}))
+        add_values("verilator.flags", table.join(verilator_options, { "--top", top_module }))
         set_policy("build.fence", true)
         if opt.python then
             add_deps(python_target_name)
@@ -97,5 +91,5 @@ for name, opt in pairs(rtl_verilator_target) do
         on_load(function (target)
             target:set("targetdir", path.join(target:targetdir(), name))
         end)
-    target_end()
+    end)
 end
