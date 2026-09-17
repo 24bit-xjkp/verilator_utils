@@ -1592,6 +1592,41 @@ export namespace verilator_utils
     };
 }  // namespace verilator_utils
 
+export namespace verilator_utils
+{
+    /**
+     * @brief 对数据的宽度进行转换
+     *
+     * @param value 值，必须为整数
+     * @param width 目标宽度，范围为[1, 64]
+     * @return 截断后的值
+     */
+    constexpr ::std::uint64_t width_cast(::std::integral auto value, ::std::size_t width)
+    {
+        VU_CHECK(width >= 1 && width <= 64, "宽度{}超出范围[1, 64]"sv, width);
+        if constexpr(::std::signed_integral<decltype(value)>)
+        {
+            VU_CHECK(width >= 2, "有符号数宽度至少为2"sv);
+            auto ext_value{static_cast<::std::int64_t>(value)};
+            using limit_t = ::std::numeric_limits<::std::int64_t>;
+            auto shift{64zu - width};
+            auto min{limit_t::min() >> shift};  // NOLINT(bugprone-signed-bitwise)
+            auto max{limit_t::max() >> shift};  // NOLINT(bugprone-signed-bitwise)
+            VU_CHECK(ext_value >= min && ext_value <= max, "{}超出int{}的表示范围"sv, value, width);
+            auto mask{-1zu >> shift};
+            return static_cast<::std::uint64_t>(ext_value) & mask;
+        }
+        else
+        {
+            auto ext_value{static_cast<::std::uint64_t>(value)};
+            if(width == 64) { return ext_value; }
+            auto mask{(1zu << width) - 1zu};
+            VU_CHECK(ext_value >> width == 0, "{}超出uint{}的表示范围"sv, value, width);
+            return ext_value & mask;
+        }
+    }
+}  // namespace verilator_utils
+
 export namespace verilator_utils::detail
 {
 
