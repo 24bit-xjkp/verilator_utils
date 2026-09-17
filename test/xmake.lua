@@ -20,6 +20,8 @@ target("unit_test")
         if verilator_root then
             target:add("files", path.join(verilator_root, "include", "verilated.cpp"), {warnings = "none"})
             target:add("files", path.join(verilator_root, "include", "verilated_threads.cpp"), {warnings = "none"})
+            -- dut_context的析构函数引用了覆盖率接口
+            target:add("files", path.join(verilator_root, "include", "verilated_cov.cpp"), {warnings = "none"})
         end
     end)
 target_end()
