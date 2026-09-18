@@ -36,6 +36,7 @@ Checks: >
   -bugprone-easily-swappable-parameters,
   -bugprone-unhandled-self-assignment,
   cppcoreguidelines-*,
+  -cppcoreguidelines-missing-std-forward,
   -cppcoreguidelines-avoid-non-const-global-variables,
   -cppcoreguidelines-pro-bounds-constant-array-index,
   -cppcoreguidelines-pro-bounds-pointer-arithmetic,
@@ -62,6 +63,11 @@ Checks: >
   portability-*,
   -portability-avoid-pragma-once,
   -bugprone-std-exception-baseclass
+
+# 关于-cppcoreguidelines-missing-std-forward
+# 该选项本不应该对显示对象形参(this auto&& self)进行检查<https://clang.llvm.org/extra/clang-tidy/checks/cppcoreguidelines/missing-std-forward.html#limitations>
+# 但clang-tidy(d46351c80)实现存在问题，没有排除显示对象形参，导致代码出现了大量的误报
+# 暂时禁用该检查项
 
 WarningsAsErrors: ''
 UseColor: true
