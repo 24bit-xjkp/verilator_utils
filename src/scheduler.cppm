@@ -405,7 +405,7 @@ namespace verilator_utils::detail
          * @param value 返回值
          */
         template <typename value_type>
-            requires (::std::constructible_from<return_type, value_type &&>)
+            requires (::std::constructible_from<return_type, value_type&&>)
         void return_value(value_type&& value) noexcept(::std::is_nothrow_constructible_v<return_type, value_type&&>)
         { ::std::construct_at(::std::addressof(buffer.value), ::std::forward<value_type>(value)); }
 

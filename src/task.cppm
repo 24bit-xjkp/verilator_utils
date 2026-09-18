@@ -38,7 +38,7 @@ export namespace verilator_utils
          * @param pair 协程状态对
          */
         explicit coroutine_stacktrace(::verilator_utils::detail::coroutine_pair pair) :
-            frames{::std::ranges::to<::std::vector>(backtrace(pair))}
+            frames{backtrace(pair) | ::std::ranges::to<::std::vector>()}
         {
         }
 
@@ -969,7 +969,7 @@ export namespace verilator_utils
             [[nodiscard]] auto await_resume() const
             {
                 if(scheduler != nullptr) { scheduler->throw_if_finish(); }
-                return ::std::views::transform(clk_list, [](const clock_trigger& clk) { return clk.triggered; });
+                return clk_list | ::std::views::transform([](const clock_trigger& clk) { return clk.triggered; });
             }
         };
 
@@ -1195,7 +1195,7 @@ export namespace verilator_utils
                     }
                 }};
                 auto out{::std::back_inserter(message)};
-                for(auto [i, msg]: ::std::views::enumerate(::std::views::transform(exceptions_, message_transform)))
+                for(auto [i, msg]: exceptions_ | ::std::views::transform(message_transform) | ::std::views::enumerate)
                 {
                     out = ::std::format_to(out, "{}: {}\n", i + 1, msg);
                 }
@@ -1554,7 +1554,7 @@ export namespace verilator_utils
             if(head_index < wait_queue.size())
             {
                 VU_CHECK(scheduler != nullptr, "event未绑定调度器，但等待队列不为空"sv);
-                ::std::ranges::for_each(::std::views::drop(wait_queue, static_cast<::std::ptrdiff_t>(head_index)),
+                ::std::ranges::for_each(wait_queue | ::std::views::drop(static_cast<::std::ptrdiff_t>(head_index)),
                                         [this](const pair_t& pair) {
                                             scheduler->register_ready(pair);
                                             scheduler->remove_suspend(pair);
@@ -1605,10 +1605,7 @@ export namespace verilator_utils
          * @param self 事件对象
          * @return 可等待体
          */
-        [[nodiscard]] friend suspend_awaiter operator co_await(event& self) noexcept
-        {
-            return suspend_awaiter{.self{self}};
-        }
+        [[nodiscard]] friend suspend_awaiter operator co_await(event& self) noexcept { return suspend_awaiter{.self{self}}; }
     };
 
     /**
@@ -2067,7 +2064,7 @@ export namespace std
         template <typename iter_t>
         auto format(const ::verilator_utils::mailbox<type>& value, ::std::basic_format_context<iter_t, char>& ctx) const
         {
-            constexpr static auto transform{::std::views::transform([](auto&& ref) static noexcept { return ref.value(); })};
+            constexpr static auto transform{::std::views::transform([](const auto& ref) static noexcept { return ref.value(); })};
             if(with_detail)
             {
                 if(value.infty_capicity())

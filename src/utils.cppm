@@ -541,10 +541,7 @@ namespace verilator_utils
         constexpr auto parse_format_string_without_flags(::std::format_parse_context& ctx, ::std::string_view message)
         {
             auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
-            if(iter != ctx.end() && *iter != '}')
-            {
-                throw ::std::format_error{::std::string{message}};
-            }
+            if(iter != ctx.end() && *iter != '}') { throw ::std::format_error{::std::string{message}}; }
             return iter;
         }
 
@@ -632,7 +629,7 @@ namespace verilator_utils
                                             "{:#0{}x}"sv,
                                             *left_word,  // NOLINT(clang-analyzer-security.ArrayBound)
                                             (left_word_width + digit_width - 1) / digit_width + prefix_size);
-                    for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, left_word}))
+                    for(auto value: ::std::ranges::subrange{begin, left_word} | ::std::views::reverse)
                     {
                         iter = ::std::format_to(iter, "{:0{}x}"sv, value, word_width / digit_width);
                     }
@@ -711,7 +708,7 @@ namespace verilator_utils
                     auto left_word{end - 1};
                     // NOLINTNEXTLINE(clang-analyzer-security.ArrayBound)
                     iter = ::std::format_to(iter, "{:#0{}b}"sv, *left_word, left_word_width + prefix_size);
-                    for(auto value: ::std::views::reverse(::std::ranges::subrange{begin, left_word}))
+                    for(auto value: ::std::ranges::subrange{begin, left_word} | ::std::views::reverse)
                     {
                         iter = ::std::format_to(iter, "{:0{}b}"sv, value, word_width);
                     }
