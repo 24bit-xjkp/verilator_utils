@@ -138,7 +138,9 @@ class sim_env:
         with rtl.process_figure(optimize_svg, jobs) as proc:
 
             def visualize_signal(quant: bool, shifted: bool) -> None:
+                with_shift = "带有附加相移的" if shifted else ""
                 name = "量化信号" if quant else "未量化信号"
+                name = f"{with_shift}{name}"
                 x = self.q_x if quant else self.x
                 match quant, shifted:
                     case False, False:
@@ -149,7 +151,6 @@ class sim_env:
                         k, y = self.q_kernel, self.q_y
                     case True, True:
                         k, y = self.q_shifted_kernel, self.q_shifted_y
-                with_shift = "带有附加相移的" if shifted else ""
                 with rtl.figure_env(3, 1, (12, 12), True) as (fig, subfigs):
                     # 绘制冲激响应
                     subfig = typing.cast(SubFigure, subfigs[0])
