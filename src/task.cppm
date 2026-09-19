@@ -749,24 +749,52 @@ export namespace verilator_utils
     /**
      * @brief 等待到验证时机并执行验证回调
      *
-     * @param clk 时钟信号切片
+     * @param env 事件信号切片，应当为脉冲信号
      * @param verify_callback 执行验证的回调函数
      * @param edge_to_wait 要等待到边沿个数
-     * @param edge 时钟沿极性
+     * @param edge 边沿极性
      * @param eval_stage 目标评估阶段
      * @return 同步任务
-     * @note 等待到edge_to_wait个给定时钟边沿后的给定评估阶段
-     * @note 默认为时钟上升沿且电路 **评估完成后 ** 进行验证
+     * @note 等待到edge_to_wait个给定边沿后的给定评估阶段
+     * @note 默认为上升沿且电路 **评估完成后 ** 进行验证
      */
     [[nodiscard]] ::verilator_utils::task<void>
-        verify_at(const ::verilator_utils::bit_slice<::CData>& clk,
+        verify_at(const ::verilator_utils::bit_slice<::CData>& env,
                   ::std::function<void()> verify_callback,
                   ::std::size_t edge_to_wait = 1,
                   ::verilator_utils::edge_enum edge = ::verilator_utils::edge_enum::rising,
                   ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
                       ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval)
     {
-        co_await ::verilator_utils::wait_verify(clk, edge_to_wait, edge, eval_stage);
+        co_await ::verilator_utils::wait_verify(env, edge_to_wait, edge, eval_stage);
+        auto eval_time{co_await ::verilator_utils::get_time_in_string()};
+        CAPTURE(eval_time);
+        verify_callback();
+    }
+
+    /**
+     * @brief 等待到验证时机并执行验证回调
+     *
+     * @param clk 时钟信号切片
+     * @param event_callback 事件回调函数
+     * @param verify_callback 执行验证的回调函数
+     * @param edge 边沿极性
+     * @param eval_stage 目标评估阶段
+     * @return 同步任务
+     * @note 等待直到event_callback为true，至少等待一个时钟沿
+     * @note 默认为上升沿且电路 **评估完成后 ** 进行验证
+     */
+    [[nodiscard]] ::verilator_utils::task<void>
+        verify_at(const ::verilator_utils::bit_slice<::CData>& clk,
+                  ::verilator_utils::default_event_callback event_callback,
+                  ::std::function<void()> verify_callback,
+                  ::verilator_utils::edge_enum edge = ::verilator_utils::edge_enum::rising,
+                  ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
+                      ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval)
+    {
+        // 总是等待1周期，避免event为电平信号时，多个verify_at调用在同一时钟周期触发
+        co_await ::verilator_utils::wait_verify(clk, 1, edge, eval_stage);
+        while(!event_callback()) { co_await ::verilator_utils::wait_verify(clk, 1, edge, eval_stage); }
         auto eval_time{co_await ::verilator_utils::get_time_in_string()};
         CAPTURE(eval_time);
         verify_callback();
