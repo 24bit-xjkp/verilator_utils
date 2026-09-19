@@ -21,7 +21,6 @@ argument-hint: 'Describe the component or behavior to test'
 
 ```cpp
 #include <doctest_macros.hpp>
-#include <assert_macros.hpp>   // 仅在需要 VU_CHECK 时包含
 import unit_test;
 
 TEST_SUITE("verilator_utils/<basename>")
@@ -39,6 +38,7 @@ TEST_SUITE("verilator_utils/<basename>")
 - `test/common.cpp` 已把 `::std::string_view_literals` 再导出，因此 `"..."sv` 在测试文件中直接可用。
 - 套件名约定：框架单元测试为 `verilator_utils/<basename>`（与文件名一致），RTL 集成测试用对应模块名（如 `TEST_SUITE("edge_detector")`）。
 - 测试文件属于内部代码，命名空间作用域的 `using namespace` 是允许的；模块接口文件（`src/*.cppm`）不受此豁免。
+- `test/common.cpp` 另外把框架的运行时校验器 `check` 引入 `::verilator_utils` 并导出，因此测试里直接写 `check{}(...)` 即可（见下文"框架运行时校验"）。这属于 `unit_test` 模块提供的测试便利设施，不要照搬进 `src/`。
 
 ### RTL 集成测试（`test/rtl_<name>.cpp`）
 
@@ -165,12 +165,27 @@ ctx.loop_until_finish();
 ## doctest 断言风格
 
 - 优先使用二元断言宏而非布尔表达式：`CHECK_EQ(actual, expected)`、`CHECK_NE`、`CHECK_LT`、`CHECK_LE`、`CHECK_GT`、`CHECK_GE`。
-- 只有在测试无法安全继续时才用 `REQUIRE_*`（例如后续断言会解引用可能为空的对象）：它是唯一会终止当前用例的断言系列，滥用会让一次运行只暴露第一个问题。框架的运行时校验也必须避免 `REQUIRE*`，改用 `VU_CHECK` 等语言级契约。
+- 只有在测试无法安全继续时才用 `REQUIRE_*`（例如后续断言会解引用可能为空的对象）：它是唯一会终止当前用例的断言系列，滥用会让一次运行只暴露第一个问题。框架的运行时校验也必须避免 `REQUIRE*`，改用 `check{}` 等语言级契约（见下文"框架运行时校验"）。
 - 需要诊断上下文时用 `CAPTURE(value)`；领域信息更清晰时用 `CHECK_MESSAGE(condition, message)`。
-- 需要字符串消息时使用 `"..."sv` 字面量：`VU_CHECK(width != 0, "数据宽度不能为0，实际为{}"sv, width);`。
+- 需要字符串消息时使用 `"..."sv` 字面量：`check{}(width != 0, "数据宽度不能为0，实际为{}"sv, width);`。
 - 一个逻辑组件一个 `TEST_SUITE`，行为拆分为多个名称精确的 `TEST_CASE`。
 - 对编译期契约使用 `static_assert`（concept、类型别名、模块 API 形状）。
 - 生成随机场景时记录种子（`VerilatedContext::randSeed()`），使失败可复现；不要依赖真实 sleep 或未指定顺序。
+
+### 框架运行时校验
+
+测试里触发被包装 API 的运行时校验时用 `check{}(...)`：
+
+```cpp
+check{}(condition);                                       // 仅条件
+check{}(condition, "宽度{}非法"sv, width);                 // 带格式化消息
+```
+
+- 它的实现是 `::verilator_utils::detail::check`，由 `test/common.cpp` 引入 `::verilator_utils` 并导出（`src/` 内部则写 `::verilator_utils::check{}`）。
+- 不成立时抛 `::verilator_utils::assertion_error`；需要断言消息或位置时读 `message()`、`location()`、`trace()`。
+- 支持常量求值语境，可以在 `constexpr` 函数与 `static_assert` 中直接使用。
+
+用法细节（调用形式、`source_location` 捕获时机等）以 `src/assert.cppm` 的注释为准；审查这类校验时的判定标准见 `verilator-utils-code-review` skill。
 
 ### 异常断言：`CHECK_THROWS_WITH_AS` 与 `doctest::Contains`
 

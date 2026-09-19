@@ -3,6 +3,12 @@ module;
 export module unit_test;
 export import verilator_utils.full;
 
+export namespace verilator_utils
+{
+    // 简化单元测试内使用
+    using ::verilator_utils::detail::check;
+}
+
 export {
     using namespace ::verilator_utils;
     using namespace ::verilator_utils::verilator;

@@ -2,7 +2,6 @@ module;
 #if _WIN32
     #include <wincon.h>
 #endif
-#include <assert_macros.hpp>
 export module verilator_utils:utils;
 import :verilator;
 import :internal;
@@ -62,7 +61,7 @@ export namespace verilator_utils
          */
         constexpr static ::std::uint64_t check_mul_overflow(::std::uint64_t lhs, ::std::uint64_t rhs)
         {
-            VU_CHECK(lhs == 0 || rhs <= max / lhs, "发生上溢"sv);
+            ::verilator_utils::check{}(lhs == 0 || rhs <= max / lhs, "发生上溢"sv);
             return lhs * rhs;
         }
 
@@ -94,7 +93,7 @@ export namespace verilator_utils
         constexpr static ::std::uint64_t check_mul_overflow(::std::uint64_t lhs, double rhs)
         {
             auto result{static_cast<double>(lhs) * rhs};
-            VU_CHECK(result < static_cast<double>(max), "发生上溢"sv);
+            ::verilator_utils::check{}(result < static_cast<double>(max), "发生上溢"sv);
             return round(result);
         }
 
@@ -116,8 +115,8 @@ export namespace verilator_utils
          */
         constexpr explicit femtosecond_t(double rep)
         {
-            VU_CHECK(rep >= 0., "发生下溢"sv);
-            VU_CHECK(rep < static_cast<double>(max), "发生上溢"sv);
+            ::verilator_utils::check{}(rep >= 0., "发生下溢"sv);
+            ::verilator_utils::check{}(rep < static_cast<double>(max), "发生上溢"sv);
             // NOLINTNEXTLINE(cppcoreguidelines-prefer-member-initializer)
             this->rep = round(rep);
         }
@@ -139,7 +138,7 @@ export namespace verilator_utils
         constexpr friend femtosecond_t operator+ (femtosecond_t lhs, femtosecond_t rhs)
         {
             auto rep{lhs.rep + rhs.rep};
-            VU_CHECK(rep >= lhs.rep, "发生上溢"sv);
+            ::verilator_utils::check{}(rep >= lhs.rep, "发生上溢"sv);
             return femtosecond_t{rep};
         }
 
@@ -153,7 +152,7 @@ export namespace verilator_utils
         constexpr friend femtosecond_t operator- (femtosecond_t lhs, femtosecond_t rhs)
         {
             auto rep{lhs.rep - rhs.rep};
-            VU_CHECK(rep <= lhs.rep, "发生下溢"sv);
+            ::verilator_utils::check{}(rep <= lhs.rep, "发生下溢"sv);
             return femtosecond_t{rep};
         }
 
@@ -176,7 +175,7 @@ export namespace verilator_utils
          */
         constexpr friend femtosecond_t operator* (femtosecond_t lhs, double rhs)
         {
-            VU_CHECK(rhs >= 0, "非法乘数: {}"sv, rhs);
+            ::verilator_utils::check{}(rhs >= 0, "非法乘数: {}"sv, rhs);
             return femtosecond_t{check_mul_overflow(lhs.rep, rhs)};
         }
 
@@ -189,7 +188,7 @@ export namespace verilator_utils
          */
         constexpr friend femtosecond_t operator/ (femtosecond_t lhs, ::std::uint64_t rhs)
         {
-            VU_CHECK(rhs != 0, "发生除0"sv);
+            ::verilator_utils::check{}(rhs != 0, "发生除0"sv);
             return femtosecond_t{lhs.rep / rhs};
         }
 
@@ -202,10 +201,10 @@ export namespace verilator_utils
          */
         constexpr friend femtosecond_t operator/ (femtosecond_t lhs, double rhs)
         {
-            VU_CHECK(rhs > 0., "非法除数: {}"sv, rhs);
+            ::verilator_utils::check{}(rhs > 0., "非法除数: {}"sv, rhs);
             auto rep{static_cast<double>(lhs.rep) / rhs};
             // static_cast<double>(max)为max + 1
-            VU_CHECK(rep < static_cast<double>(max), "发生上溢"sv);
+            ::verilator_utils::check{}(rep < static_cast<double>(max), "发生上溢"sv);
             return femtosecond_t{round(rep)};
         }
 
@@ -610,7 +609,7 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
-                VU_CHECK(width != 0, "数据宽度不能为0，实际为{}"sv, width);
+                ::verilator_utils::check{}(width != 0, "数据宽度不能为0，实际为{}"sv, width);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 /// 每个十六进制位的位宽
@@ -693,7 +692,7 @@ namespace verilator_utils
             template <typename iter_t, ::verilator_utils::is_verilator_data_type type>
             [[nodiscard]] iter_t format_to(iter_t iter, const type& data, ::std::size_t width) const
             {
-                VU_CHECK(width != 0, "数据宽度不能为0，实际为{}"sv, width);
+                ::verilator_utils::check{}(width != 0, "数据宽度不能为0，实际为{}"sv, width);
                 /// 每个字的位宽
                 constexpr static ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
                 // 0b前缀长度
@@ -1330,7 +1329,7 @@ namespace verilator_utils
              */
             constexpr ::verilator_utils::data_format::format fsm_enum(::std::vector<::std::string> enum_string)
             {
-                VU_CHECK(!enum_string.empty(), "枚举列表不能为空"sv);
+                ::verilator_utils::check{}(!enum_string.empty(), "枚举列表不能为空"sv);
                 return ::verilator_utils::data_format::fsm_enum_t{::std::move(enum_string)};
             }
 
@@ -1350,7 +1349,10 @@ namespace verilator_utils
         constexpr void check_format(const ::verilator_utils::data_format::format& format, ::std::size_t width)
         {
             format.visit([width]<typename format_t>(const format_t& format) -> void {
-                if constexpr(::std::same_as<format_t, ::std::monostate>) { VU_CHECK(false, "必须设置数据类型"sv); }
+                if constexpr(::std::same_as<format_t, ::std::monostate>)
+                {
+                    ::verilator_utils::check{}(false, "必须设置数据类型"sv);
+                }
                 else if constexpr(requires() {
                                       format.min_width();
                                       format.max_width();
@@ -1358,21 +1360,21 @@ namespace verilator_utils
                 {
                     if constexpr(::std::same_as<format_t, ::verilator_utils::data_format::fsm_enum_t>)
                     {
-                        VU_CHECK(!format.enum_string.empty(), "枚举列表不能为空"sv);
+                        ::verilator_utils::check{}(!format.enum_string.empty(), "枚举列表不能为空"sv);
                     }
 
                     auto min_width{format.min_width()};
                     auto max_width{format.max_width()};
 
-                    VU_CHECK(width >= min_width && width <= max_width,
-                             "数据宽度{}超出格式允许范围[{}, {}]"sv,
-                             width,
-                             min_width,
-                             max_width);
+                    ::verilator_utils::check{}(width >= min_width && width <= max_width,
+                                               "数据宽度{}超出格式允许范围[{}, {}]"sv,
+                                               width,
+                                               min_width,
+                                               max_width);
                 }
                 else
                 {
-                    VU_CHECK(width == format.width(), "数据宽度{}与格式宽度{}不同"sv, width, format.width());
+                    ::verilator_utils::check{}(width == format.width(), "数据宽度{}与格式宽度{}不同"sv, width, format.width());
                 }
             });
         }
@@ -1599,16 +1601,16 @@ export namespace verilator_utils
      */
     constexpr ::std::uint64_t width_cast(::std::integral auto value, ::std::size_t width)
     {
-        VU_CHECK(width >= 1 && width <= 64, "宽度{}超出范围[1, 64]"sv, width);
+        ::verilator_utils::check{}(width >= 1 && width <= 64, "宽度{}超出范围[1, 64]"sv, width);
         if constexpr(::std::signed_integral<decltype(value)>)
         {
-            VU_CHECK(width >= 2, "有符号数宽度至少为2"sv);
+            ::verilator_utils::check{}(width >= 2, "有符号数宽度至少为2"sv);
             auto ext_value{static_cast<::std::int64_t>(value)};
             using limit_t = ::std::numeric_limits<::std::int64_t>;
             auto shift{64zu - width};
             auto min{limit_t::min() >> shift};  // NOLINT(bugprone-signed-bitwise)
             auto max{limit_t::max() >> shift};  // NOLINT(bugprone-signed-bitwise)
-            VU_CHECK(ext_value >= min && ext_value <= max, "{}超出int{}的表示范围"sv, value, width);
+            ::verilator_utils::check{}(ext_value >= min && ext_value <= max, "{}超出int{}的表示范围"sv, value, width);
             auto mask{-1zu >> shift};
             return static_cast<::std::uint64_t>(ext_value) & mask;
         }
@@ -1617,7 +1619,7 @@ export namespace verilator_utils
             auto ext_value{static_cast<::std::uint64_t>(value)};
             if(width == 64) { return ext_value; }
             auto mask{(1zu << width) - 1zu};
-            VU_CHECK(ext_value >> width == 0, "{}超出uint{}的表示范围"sv, value, width);
+            ::verilator_utils::check{}(ext_value >> width == 0, "{}超出uint{}的表示范围"sv, value, width);
             return ext_value & mask;
         }
     }

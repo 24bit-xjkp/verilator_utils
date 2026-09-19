@@ -1,5 +1,4 @@
 module;
-#include <assert_macros.hpp>
 export module verilator_utils:scheduler;
 import :wrapper;
 
@@ -236,7 +235,7 @@ namespace verilator_utils::detail
          */
         [[nodiscard]] ::verilator_utils::eval_scheduler* check_scheduler() const
         {
-            VU_CHECK(scheduler != nullptr, "任务必须绑定调度器"sv);
+            ::verilator_utils::check{}(scheduler != nullptr, "任务必须绑定调度器"sv);
             return scheduler;
         }
 
@@ -584,7 +583,7 @@ export namespace verilator_utils
              */
             [[nodiscard]] return_type get_result()
             {
-                VU_CHECK(is_coroutine_returned(), "协程尚未执行完成，不能获取结果"sv);
+                ::verilator_utils::check{}(is_coroutine_returned(), "协程尚未执行完成，不能获取结果"sv);
                 return get_return_value();
             }
         };
@@ -679,7 +678,7 @@ export namespace verilator_utils
          */
         friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
         {
-            VU_CHECK(subtask.joinable(), "子任务未绑定协程，不能等待"sv);
+            ::verilator_utils::check{}(subtask.joinable(), "子任务未绑定协程，不能等待"sv);
             return ::verilator_utils::detail::subtask_awaiter<promise_type>{subtask.handle};
         }
 
@@ -866,7 +865,7 @@ namespace verilator_utils::detail
 
         [[nodiscard]] bool is_ready() const
         {
-            VU_CHECK(event_callback != nullptr, "事件回调不能为空"sv);
+            ::verilator_utils::check{}(event_callback != nullptr, "事件回调不能为空"sv);
             return (*event_callback)();
         }
     };
@@ -1292,8 +1291,8 @@ export namespace verilator_utils
         void initial_eval()
         {
             using enum eval_stage_enum;
-            VU_CHECK(eval_stage <= after_initial_eval, "已进入仿真循环阶段，不能执行初始化"sv);
-            VU_CHECK(eval_stage == not_begin, "已执行过initial_eval，不应再次执行"sv);
+            ::verilator_utils::check{}(eval_stage <= after_initial_eval, "已进入仿真循环阶段，不能执行初始化"sv);
+            ::verilator_utils::check{}(eval_stage == not_begin, "已执行过initial_eval，不应再次执行"sv);
             while(ready_queue_eval()) {}
             eval_stage = after_initial_eval;
         }
@@ -1316,12 +1315,12 @@ export namespace verilator_utils
          */
         void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
         {
-            VU_CHECK(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
+            ::verilator_utils::check{}(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
             auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
-            VU_CHECK(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
+            ::verilator_utils::check{}(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
             auto current_time{dut->contextp()->time()};
             auto target_time{time_to_wait_in_time_precision + current_time};
-            VU_CHECK(target_time > current_time, "Verilator仿真计时器溢出"sv);
+            ::verilator_utils::check{}(target_time > current_time, "Verilator仿真计时器溢出"sv);
             wait_queue.emplace(target_time, pair);
         }
 
@@ -1362,7 +1361,9 @@ export namespace verilator_utils
         void remove_suspend(::verilator_utils::detail::coroutine_pair pair)
         {
             auto iter{suspend_queue.find(pair)};
-            VU_CHECK(iter != suspend_queue.end(), "要取消的协程在挂起队列中不存在，协程柄为: {}", pair.handle.address());
+            ::verilator_utils::check{}(iter != suspend_queue.end(),
+                                       "要取消的协程在挂起队列中不存在，协程柄为: {}",
+                                       pair.handle.address());
             if(--iter->second == 0) { suspend_queue.erase(iter); }
         }
 
@@ -1415,7 +1416,7 @@ export namespace verilator_utils
     template <typename promise_type>
     auto ::verilator_utils::detail::subtask_awaiter<promise_type>::await_resume() -> return_type
     {
-        VU_CHECK(subhandle.done(), "子任务尚未完成，不能获取结果"sv);
+        ::verilator_utils::check{}(subhandle.done(), "子任务尚未完成，不能获取结果"sv);
         subhandle.promise().scheduler->throw_if_finish();
         subhandle.promise().rethrow_exception();
         return subhandle.promise().get_result();

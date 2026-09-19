@@ -57,11 +57,11 @@ xmake 目标、选项与命令细节由 `.agents/skills/xmake/` 中的 xmake ski
 - 把 API 兼容性当作刻意决策：删除的拷贝/移动操作、收紧的约束、返回类型与引用类别、异常行为、所有权转移都可能破坏现有测试或下游使用者。
 - 对照受支持的 Verilator 标量与宽数据类型验证 concept，包括契约有意严格时的 cv/引用行为。
 - 在模块接口文件（`src/*.cppm`）中，`using namespace` 必须保持在块作用域或 TU-local 作用域；命名空间作用域的 `using namespace` 仅保留给测试等内部文件。接口文件中允许的例外只有两处：对模块自身公共 inline 命名空间的 `export using namespace ::verilator_utils::data_format::interface;` 再导出，以及启用全文件 `"..."sv` 字面量的 TU 级 `namespace { using namespace ::std::string_view_literals; }`。
-- 优先使用 `::std::string_view` 字面量（`"..."sv`）作为 `::std::format`/`::std::format_to` 的格式串、`VU_CHECK` 消息与波形文件名。
+- 优先使用 `::std::string_view` 字面量（`"..."sv`）作为 `::std::format`/`::std::format_to` 的格式串、`check{}` 消息与波形文件名。
 
 ### 字符串格式化与 string_view 字面量
 
-- 所有格式串与断言消息都使用 `"..."sv`；逐个检查 `::std::format`/`::std::format_to` 调用与 `VU_CHECK` 消息，缺少 `sv` 后缀会实体化临时对象，破坏该约定。
+- 所有格式串与断言消息都使用 `"..."sv`；逐个检查 `::std::format`/`::std::format_to` 调用与 `check{}` 消息，缺少 `sv` 后缀会实体化临时对象，破坏该约定。
 - 每个模块接口文件用一处 TU-local 的 `namespace { using namespace ::std::string_view_literals; }` 启用字面量运算符，位置在模块声明与导入之后。由于 using 指令使被提名名字出现在同时包含该指令与 `::std::string_view_literals` 的最近外围命名空间（即模块的全局作用域），`"..."sv` 在整个 TU 中可用——包括类作用域成员初始化器与嵌套命名空间中的特化。该指令位于匿名命名空间内，且 using 指令不会跨越模块导入，因此保持 TU-local，绝不导出给导入方。不要再写逐函数的 `using namespace ::std::string_view_literals;`。
 - 内部格式化辅助函数的消息参数保持 `::std::string_view`，仅在 API 要求实体化时（如 `::std::format_error`）用 `::std::string{message}` 转换。
 - 格式化结果传给 C 风格 API（如 `tracer->open`）时，用 `sv` 字面量格式化并传临时对象的 `.data()`。
@@ -73,6 +73,9 @@ xmake 目标、选项与命令细节由 `.agents/skills/xmake/` 中的 xmake ski
 - 优先使用语言级契约：异常、约束（concept/`requires`）、或已文档化的前置条件与未定义行为，与该 API 的既有方向一致。
 - 在校验之前检查算术：下溢、溢出、非法移位、零宽度、反向区间、越界字访问。
 - 确认 `noexcept` 函数不会走到可能抛异常的校验、分配、格式化、回调或协程异常路径。
+- 框架运行时校验的唯一入口是 `src/assert.cppm` 中的可调用对象 `check`（`src/*.cppm` 里写 `::verilator_utils::check{}`），底层实现是 `::verilator_utils::detail::check`；`test/common.cpp` 为便于单元测试把它引入 `::verilator_utils` 并导出，因此测试里用 `check{}`。
+- 审查这类校验时确认调用形式是 `check{}(condition, ...)` 而不是 `check(condition, ...)`：条件与消息是 `operator()` 的实参，构造函数只接受 `::std::source_location`。`location` 只在构造时由默认实参捕获，复用同一个检查器对象会报出构造处位置。
+- `check{}` 必须同时支持常量求值与运行时：常量求值语境失败抛 `::verilator_utils::constexpr_assertion_error`（使常量求值失败并产生编译错误），运行时失败抛 `::verilator_utils::assertion_error`，并由 `message()`/`location()`/`trace()` 暴露消息、位置与栈回溯。新增校验若绕开这条契约（例如在 `constexpr` 函数里改用会阻断常量求值的写法），需要指出。
 
 ### 所有权与生命周期
 
@@ -201,7 +204,7 @@ TEST_SUITE("edge_detector")
 - 协程、回调与被引用对象的生命周期在所有挂起点上有效。
 - 调度器期望与实际阶段顺序和队列修改顺序一致。
 - 已考虑标量、宽数据、边界宽度与跨字包装路径。
-- 生产数据校验不依赖 `REQUIRE*` 等致命 doctest 断言（与 doctest 的既有集成点除外）。
+- 生产数据校验不依赖 `REQUIRE*` 等致命 doctest 断言（与 doctest 的既有集成点除外），且新校验通过 `check{}(condition, ...)` 调用、`source_location` 在构造处捕获。
 - 手写 RTL 测试证明了采样、复位、延迟、join 与结束语义。
 - 生成的测试有独立核实的期望值，且没有明显的复制粘贴覆盖缺口。
 - 格式串与断言消息使用 `"..."sv`，并由每个接口文件顶部那一处 `namespace { using namespace ::std::string_view_literals; }` 启用。

@@ -6,7 +6,7 @@ target("verilator_utils", function ()
     add_packages("cpptrace", {public = true})
     add_files("*.cppm", {public = true, install = true})
     add_includedirs(".", {public = true})
-    add_headerfiles("assert_macros.hpp", "verilator_*.hpp")
+    add_headerfiles("verilator_*.hpp")
     set_group("verilator_utils")
 end)
 

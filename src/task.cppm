@@ -1,5 +1,4 @@
 module;
-#include <assert_macros.hpp>
 #include <doctest_macros.hpp>
 #include <utility>
 export module verilator_utils:task;
@@ -271,7 +270,7 @@ namespace verilator_utils::detail
          * @param eval_stage 目标评估阶段
          */
         explicit eval_stage_awaiter(scheduler_t::eval_stage_enum eval_stage) : eval_stage{eval_stage}
-        { VU_CHECK(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv); }
+        { ::verilator_utils::check{}(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv); }
 
         /**
          * @brief 根据协程柄初始化字段
@@ -447,7 +446,7 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_posedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
+        ::verilator_utils::check{}(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event(
             [edge_detector = edge_detector_t{bit, edge_detector_t::rising}, edge_to_wait] mutable {
@@ -467,7 +466,7 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_negedge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
+        ::verilator_utils::check{}(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event(
             [edge_detector = edge_detector_t{bit, edge_detector_t::falling}, edge_to_wait] mutable {
@@ -487,7 +486,7 @@ export namespace verilator_utils
     [[nodiscard]] ::verilator_utils::detail::event_awaiter wait_alledge(const ::verilator_utils::is_bit_slice auto& bit,
                                                                         ::std::size_t edge_to_wait = 1)
     {
-        VU_CHECK(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
+        ::verilator_utils::check{}(edge_to_wait != 0, "要等待的边沿数量不能为0，实际为{}"sv, edge_to_wait);
         using edge_detector_t = ::verilator_utils::edge_detector;
         return ::verilator_utils::wait_event([edge_detector = edge_detector_t{bit, edge_detector_t::both}, edge_to_wait] mutable {
             edge_to_wait -= edge_detector();
@@ -679,16 +678,16 @@ namespace verilator_utils::detail
      */
     void check_lfsr_generator_args(::std::size_t width, ::std::uint64_t& feedback_mask, ::std::uint64_t initial_value)
     {
-        VU_CHECK(width >= 3 && width <= 64, "LFSR宽度{}超出范围[3, 64]"sv, width);
-        VU_CHECK(initial_value != 0, "初始值为0时LFSR输出恒为0"sv);
+        ::verilator_utils::check{}(width >= 3 && width <= 64, "LFSR宽度{}超出范围[3, 64]"sv, width);
+        ::verilator_utils::check{}(initial_value != 0, "初始值为0时LFSR输出恒为0"sv);
         if(width != 64)
         {
-            VU_CHECK((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度{}"sv, width);
-            VU_CHECK((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度{}"sv, width);
+            ::verilator_utils::check{}((feedback_mask >> width) == 0, "反馈表达式宽度不应超过LFSR宽度{}"sv, width);
+            ::verilator_utils::check{}((initial_value >> width) == 0, "初始值宽度不应超过LFSR宽度{}"sv, width);
         }
 
         if(feedback_mask == 0) { feedback_mask = ::verilator_utils::detail::lfsr_feedback_mask_table[width - 3]; }
-        VU_CHECK((feedback_mask & 1zu) != 0, "反馈表达式必须包含常数项"sv);
+        ::verilator_utils::check{}((feedback_mask & 1zu) != 0, "反馈表达式必须包含常数项"sv);
     }
 }  // namespace verilator_utils::detail
 
@@ -713,7 +712,7 @@ export namespace verilator_utils
                     ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
                         ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval)
     {
-        VU_CHECK(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿"sv);
+        ::verilator_utils::check{}(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿"sv);
         return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, edge, eval_stage);
     }
 
@@ -735,7 +734,7 @@ export namespace verilator_utils
                        ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
                            ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
     {
-        VU_CHECK(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿"sv);
+        ::verilator_utils::check{}(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿"sv);
 
         if(eval_stage == ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
         {
@@ -815,7 +814,7 @@ export namespace verilator_utils
                                                                ::verilator_utils::femtosecond_t delay = 0_fs,
                                                                double duty_ratio = 0.5)
     {
-        VU_CHECK(duty_ratio > 0. && duty_ratio < 1., "时钟占空比{}超出取值范围(0, 1)"sv, duty_ratio);
+        ::verilator_utils::check{}(duty_ratio > 0. && duty_ratio < 1., "时钟占空比{}超出取值范围(0, 1)"sv, duty_ratio);
         clk = 0;
         if(delay != 0_fs) { co_await ::verilator_utils::wait_time(delay); }
         auto positive_duration{period * duty_ratio};
@@ -1044,11 +1043,11 @@ export namespace verilator_utils
         async_task(::verilator_utils::eval_scheduler& scheduler, ::verilator_utils::task<void> task) :
             subhandle{task.get_handle()}
         {
-            VU_CHECK(static_cast<bool>(task), "该任务对象未绑定协程"sv);
+            ::verilator_utils::check{}(static_cast<bool>(task), "该任务对象未绑定协程"sv);
             auto&& promise{task.get_promise()};
-            VU_CHECK(promise.parent == nullptr, "该任务已经绑定到父任务，不能转化为异步任务"sv);
-            VU_CHECK(promise.status == ::verilator_utils::task<void>::status_enum::initial_suspend,
-                     "该任务已开始执行，不能转化为异步任务"sv);
+            ::verilator_utils::check{}(promise.parent == nullptr, "该任务已经绑定到父任务，不能转化为异步任务"sv);
+            ::verilator_utils::check{}(promise.status == ::verilator_utils::task<void>::status_enum::initial_suspend,
+                                       "该任务已开始执行，不能转化为异步任务"sv);
             promise.is_async = true;
             promise.scheduler = &scheduler;
             scheduler.add_task(::std::move(task));
@@ -1179,7 +1178,7 @@ export namespace verilator_utils
 
         async_task_awaiter operator co_await()
         {
-            VU_CHECK(joinable(), "异步任务未绑定协程，不能等待"sv);
+            ::verilator_utils::check{}(joinable(), "异步任务未绑定协程，不能等待"sv);
             return async_task_awaiter{::std::exchange(subhandle, nullptr)};
         }
 
@@ -1398,7 +1397,7 @@ export namespace verilator_utils
          */
         [[nodiscard]] ::verilator_utils::task<void> join_all()
         {
-            VU_CHECK(joinable(), "任务集合不能为空"sv);
+            ::verilator_utils::check{}(joinable(), "任务集合不能为空"sv);
             return do_join_all();
         }
 
@@ -1409,7 +1408,7 @@ export namespace verilator_utils
          */
         [[nodiscard]] join_any_awaiter join_any()
         {
-            VU_CHECK(joinable(), "任务集合不能为空"sv);
+            ::verilator_utils::check{}(joinable(), "任务集合不能为空"sv);
             return join_any_awaiter{pool};
         }
 
@@ -1420,7 +1419,7 @@ export namespace verilator_utils
          */
         [[nodiscard]] ::std::suspend_never join_none()
         {
-            VU_CHECK(joinable(), "任务集合不能为空"sv);
+            ::verilator_utils::check{}(joinable(), "任务集合不能为空"sv);
             pool.clear();
             return ::std::suspend_never{};
         }
@@ -1549,7 +1548,8 @@ export namespace verilator_utils
                 if(self.scheduler == nullptr) { self.scheduler = new_scheduler; }
                 else
                 {
-                    VU_CHECK(self.scheduler == new_scheduler, "等待同一event对象的协程必须绑定相同的调度器对象"sv);
+                    ::verilator_utils::check{}(self.scheduler == new_scheduler,
+                                               "等待同一event对象的协程必须绑定相同的调度器对象"sv);
                 }
                 self.wait_queue.emplace_back(handle);
                 self.scheduler->register_suspend(handle);
@@ -1581,7 +1581,7 @@ export namespace verilator_utils
         {
             if(head_index < wait_queue.size())
             {
-                VU_CHECK(scheduler != nullptr, "event未绑定调度器，但等待队列不为空"sv);
+                ::verilator_utils::check{}(scheduler != nullptr, "event未绑定调度器，但等待队列不为空"sv);
                 ::std::ranges::for_each(wait_queue | ::std::views::drop(static_cast<::std::ptrdiff_t>(head_index)),
                                         [this](const pair_t& pair) {
                                             scheduler->register_ready(pair);
@@ -1602,7 +1602,7 @@ export namespace verilator_utils
         {
             if(head_index < wait_queue.size())
             {
-                VU_CHECK(scheduler != nullptr, "event未绑定调度器，但等待队列不为空"sv);
+                ::verilator_utils::check{}(scheduler != nullptr, "event未绑定调度器，但等待队列不为空"sv);
                 auto iter{wait_queue.begin() + static_cast<::std::ptrdiff_t>(head_index++)};
                 scheduler->register_ready(*iter);
                 scheduler->remove_suspend(*iter);

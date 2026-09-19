@@ -251,7 +251,7 @@ namespace verilator_utils::detail
         if consteval { throw ::verilator_utils::constexpr_assertion_error{}; }
         else
         {
-            throw ::verilator_utils::assertion_error{"断言失败", location};
+            throw ::verilator_utils::assertion_error{::std::string{"断言失败"sv}, location};
         }
     }
 
@@ -275,42 +275,62 @@ namespace verilator_utils::detail
     }
 }  // namespace verilator_utils::detail
 
-export namespace verilator_utils
+namespace verilator_utils
 {
-    /**
-     * @brief 断言检查函数
-     *
-     * 检查条件是否成立，不成立时抛出携带源代码位置的verilator_utils::assertion_error异常
-     * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
-     * @param condition 断言条件
-     * @param location 断言调用处的源代码位置
-     */
-    constexpr void check(bool condition, ::std::source_location location = ::std::source_location::current())
+    export namespace detail
     {
-        if(condition) [[likely]] { return; }
-        ::verilator_utils::detail::assert_fail(location);
-    }
+        /**
+         * @brief verilator_utils框架的检查器
+         *
+         */
+        struct check
+        {
+            /**
+             * @brief 构造检查器对象
+             *
+             * @param location 源代码位置
+             */
+            explicit constexpr check(::std::source_location location = ::std::source_location::current()) noexcept :
+                location{location}
+            {
+            }
 
-    /**
-     * @brief 断言检查函数，携带格式化消息
-     *
-     * 检查条件是否成立，不成立时抛出携带格式化消息的verilator_utils::assertion_error异常
-     * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
-     * @note 由于参数包之后不能携带默认参数，源代码位置需要显式传入，
-     *       通常使用assert_macros.hpp中的VU_CHECK宏自动捕获
-     * @tparam args_t 格式化参数类型
-     * @param condition 断言条件
-     * @param location 断言调用处的源代码位置
-     * @param fmt 格式化字符串
-     * @param args 格式化参数
-     * @code {.cpp}
-     * check(width >= 3 && width <= 64, ::std::source_location::current(), "LFSR宽度{}超出范围[3, 64]", width);
-     * @endcode
-     */
-    template <typename... args_t>
-    constexpr void check(bool condition, ::std::source_location location, ::std::format_string<args_t...> fmt, args_t&&... args)
-    {
-        if(condition) [[likely]] { return; }
-        ::verilator_utils::detail::assert_fail(location, fmt, ::std::forward<args_t>(args)...);
-    }
+            /**
+             * @brief 断言检查函数
+             *
+             * 检查条件是否成立，不成立时抛出携带源代码位置的verilator_utils::assertion_error异常
+             * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
+             * @param condition 断言条件
+             */
+            constexpr void operator() (bool condition) const
+            {
+                if(condition) [[likely]] { return; }
+                ::verilator_utils::detail::assert_fail(location);
+            }
+
+            /**
+             * @brief 断言检查函数，携带格式化消息
+             *
+             * 检查条件是否成立，不成立时抛出携带格式化消息的verilator_utils::assertion_error异常
+             * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
+             * @tparam args_t 格式化参数类型
+             * @param condition 断言条件
+             * @param location 断言调用处的源代码位置
+             * @param fmt 格式化字符串
+             * @param args 格式化参数
+             */
+            template <typename... args_t>
+            constexpr void operator() (bool condition, ::std::format_string<args_t...> fmt, args_t&&... args) const
+            {
+                if(condition) [[likely]] { return; }
+                ::verilator_utils::detail::assert_fail(location, fmt, ::std::forward<args_t>(args)...);
+            }
+
+        private:
+            ::std::source_location location;
+        };
+    }  // namespace detail
+
+    // 引入verilator_utils命名空间以简化模块内使用
+    using ::verilator_utils::detail::check;  // NOLINT(misc-unused-using-decls)
 }  // namespace verilator_utils

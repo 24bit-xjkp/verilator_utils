@@ -1,5 +1,4 @@
 #include <doctest_macros.hpp>
-#include <assert_macros.hpp>
 import unit_test;
 
 TEST_SUITE("verilator_utils/assert")
@@ -8,16 +7,16 @@ TEST_SUITE("verilator_utils/assert")
 
     TEST_CASE("check passes without throwing")
     {
-        ::verilator_utils::check(true);
-        VU_CHECK(true);
-        VU_CHECK(1 == 1, "消息{}"sv, 1);
+        ::verilator_utils::check{}(true);
+        ::verilator_utils::check{}(true);
+        ::verilator_utils::check{}(1 == 1, "消息{}"sv, 1);  // NOLINT(misc-redundant-expression)
     }
 
     TEST_CASE("check is usable in constant evaluation")
     {
         constexpr auto ok_result{[] {
-            ::verilator_utils::check(true);
-            VU_CHECK(2 == 2, "常量求值消息{}"sv, 2);
+            ::verilator_utils::check{}(true);
+            ::verilator_utils::check{}(2 == 2, "常量求值消息{}"sv, 2);  // NOLINT(misc-redundant-expression)
             return true;
         }()};
         static_assert(ok_result);
@@ -25,10 +24,10 @@ TEST_SUITE("verilator_utils/assert")
 
     TEST_CASE("check throws assertion_error with formatted message")
     {
-        CHECK_THROWS_AS(VU_CHECK(false, "自定义消息{}"sv, 42), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(::verilator_utils::check{}(false, "自定义消息{}"sv, 42), ::verilator_utils::assertion_error);
         try
         {
-            VU_CHECK(false, "自定义消息{}"sv, 42);
+            ::verilator_utils::check{}(false, "自定义消息{}"sv, 42);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
@@ -41,7 +40,7 @@ TEST_SUITE("verilator_utils/assert")
     {
         try
         {
-            VU_CHECK(false, "位置测试"sv);
+            ::verilator_utils::check{}(false, "位置测试"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
@@ -57,7 +56,7 @@ TEST_SUITE("verilator_utils/assert")
     {
         try
         {
-            VU_CHECK(false, "调用栈测试"sv);
+            ::verilator_utils::check{}(false, "调用栈测试"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
@@ -76,7 +75,7 @@ TEST_SUITE("verilator_utils/assert")
         ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = true});
         try
         {
-            VU_CHECK(false, "颜色配置测试"sv);
+            ::verilator_utils::check{}(false, "颜色配置测试"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
@@ -88,7 +87,7 @@ TEST_SUITE("verilator_utils/assert")
         ::verilator_utils::set_assertion_color_config({.force_colors = true, .no_colors = false});
         try
         {
-            VU_CHECK(false, "颜色配置测试"sv);
+            ::verilator_utils::check{}(false, "颜色配置测试"sv);
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
