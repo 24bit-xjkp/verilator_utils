@@ -32,7 +32,7 @@ option("trace_support_fst", function ()
     set_description("Enable FST trace support. This feature needs zlib and lz4.")
 end)
 
-option("target_kind", function ()
+option("target kind", function ()
     set_values(false)
     set_showmenu(false)
     set_description([[Check the build kind. "static" and "shared" are supported.]])
