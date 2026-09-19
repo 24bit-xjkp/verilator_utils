@@ -4,7 +4,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_sequence_detector_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("sequence_detector")
+namespace
 {
     using namespace verilator_utils;
     namespace views = std::views;
@@ -18,18 +18,15 @@ TEST_SUITE("sequence_detector")
         bit_slice<CData> bit_stream;
         bit_slice<CData> result;
 
-        inline explicit port_t(dut_t& dut) :
-            clk{dut.clk}, enable{dut.enable}, bit_stream{dut.bit_stream}, result{dut.result, boolean}
-        {
-        }
+        explicit port_t(dut_t& dut) : clk{dut.clk}, enable{dut.enable}, bit_stream{dut.bit_stream}, result{dut.result, boolean} {}
     };
 
     struct reference_module
     {
-        constexpr inline static auto sequence_to_detect{0b11001010zu};
+        constexpr static auto sequence_to_detect{0b11001010zu};
         std::uint8_t status{};
 
-        inline bool operator() (bool input)
+        bool operator() (bool input)
         {
             status = static_cast<std::size_t>(status) << 1zu | static_cast<std::size_t>(input);
             return status == sequence_to_detect;
@@ -37,7 +34,10 @@ TEST_SUITE("sequence_detector")
     };
 
     constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
+}  // namespace
 
+TEST_SUITE("sequence_detector")
+{
     TEST_CASE("sequence_detector")
     {
         dut_context_t ctx{option};
@@ -54,10 +54,7 @@ TEST_SUITE("sequence_detector")
                     co_await wait_stimulate(port.clk);
                     port.enable = 1;
                     port.bit_stream = input_bit;
-                    co_await verify_at(port.clk, [&] {
-                        auto ground_truth{ref(input_bit)};
-                        CHECK_EQ(port.result, ground_truth);
-                    });
+                    co_await verify_at(port.clk, [&] { CHECK_EQ(port.result, ref(input_bit)); });
                 }
 
                 for(auto i{0zu}; i != 8zu; ++i)

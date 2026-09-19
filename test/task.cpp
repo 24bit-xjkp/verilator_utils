@@ -11,7 +11,7 @@ namespace
     /// 带静态存活计数的move-only类型，用于验证mailbox对元素的析构平衡
     struct lifecycle_counter
     {
-        inline static ::std::size_t live_count{};
+        static ::std::size_t live_count;
         int value{};
 
         explicit lifecycle_counter(int value) : value{value} { ++live_count; }
@@ -29,6 +29,8 @@ namespace
 
         ~lifecycle_counter() { --live_count; }
     };
+
+    constinit ::std::size_t lifecycle_counter::live_count{};
 
     struct scheduler_fixture
     {
@@ -163,7 +165,7 @@ TEST_SUITE("verilator_utils/task")
 
     TEST_CASE("zero repeat count leaves LFSR generators unbounded")
     {
-        auto fibonacci{::verilator_utils::fibonacci_lfsr_generator(3)};
+        const auto fibonacci{::verilator_utils::fibonacci_lfsr_generator(3)};
         auto fibonacci_iter{fibonacci.begin()};
         for(const bool expected: {true, false, false, true, true, true, false, true})
         {
@@ -172,7 +174,7 @@ TEST_SUITE("verilator_utils/task")
             ++fibonacci_iter;
         }
 
-        auto galois{::verilator_utils::galois_lfsr_generator(3)};
+        const auto galois{::verilator_utils::galois_lfsr_generator(3)};
         auto galois_iter{galois.begin()};
         for(const bool expected: {true, false, true, true, true, false, false, true})
         {
@@ -186,7 +188,7 @@ TEST_SUITE("verilator_utils/task")
 
     TEST_CASE("mailbox nonblocking operations preserve FIFO order and capacity")
     {
-        scheduler_fixture fixture{};
+        const scheduler_fixture fixture{};
         ::verilator_utils::mailbox<int> mailbox{2};
 
         bool put1{};
@@ -223,7 +225,7 @@ TEST_SUITE("verilator_utils/task")
 
     TEST_CASE("unbounded mailbox accepts move-only values")
     {
-        scheduler_fixture fixture{};
+        const scheduler_fixture fixture{};
         ::verilator_utils::mailbox<::std::unique_ptr<int>> mailbox{};
 
         bool put_succeeded{};
@@ -276,7 +278,7 @@ TEST_SUITE("verilator_utils/task")
 
     TEST_CASE("mailbox formatter renders values and detailed state")
     {
-        scheduler_fixture fixture{};
+        const scheduler_fixture fixture{};
         using mailbox_t = ::verilator_utils::mailbox<int>;
         static_assert(::std::formattable<mailbox_t, char>);
 
@@ -438,14 +440,14 @@ TEST_SUITE("verilator_utils/task")
     {
         ::verilator_utils::shift_register<::VlWide<2>> delay_line{1, 48, ::verilator_utils::data_format::hex};
 
-        ::VlWide<2> first_value{0x89ab'cdefu, 0x0000'0123u};
+        const ::VlWide<2> first_value{0x89ab'cdefu, 0x0000'0123u};
         CHECK_FALSE(delay_line.update(first_value).has_value());
 
         // disable 的输入不进入寄存器链
-        ::VlWide<2> disabled_value{0xdead'beefu, 0x0000'0deau};
+        const ::VlWide<2> disabled_value{0xdead'beefu, 0x0000'0deau};
         CHECK_FALSE(delay_line.update(disabled_value, false).has_value());
 
-        ::VlWide<2> second_value{0x1122'3344u, 0x0000'0001u};
+        const ::VlWide<2> second_value{0x1122'3344u, 0x0000'0001u};
         auto delayed{delay_line.update(second_value)};
         REQUIRE(delayed.has_value());
         CHECK_EQ(delayed->value().at(0), 0x89ab'cdefu);
@@ -488,13 +490,13 @@ TEST_SUITE("verilator_utils/task")
     {
         ::verilator_utils::shift_register<::VlWide<2>> delay_line{2, 48, ::verilator_utils::data_format::hex};
 
-        ::VlWide<2> first_value{0x89ab'cdefu, 0x0000'0123u};
+        const ::VlWide<2> first_value{0x89ab'cdefu, 0x0000'0123u};
         CHECK_FALSE(delay_line.update(first_value).has_value());
 
-        ::VlWide<2> second_value{0x1122'3344u, 0x0000'0001u};
+        const ::VlWide<2> second_value{0x1122'3344u, 0x0000'0001u};
         CHECK_FALSE(delay_line.update(second_value).has_value());
 
-        ::VlWide<2> third_value{0x5566'7788u, 0x0000'0002u};
+        const ::VlWide<2> third_value{0x5566'7788u, 0x0000'0002u};
         auto delayed{delay_line.update(third_value)};
         REQUIRE(delayed.has_value());
         CHECK_EQ(delayed->value().at(0), 0x89ab'cdefu);
@@ -503,7 +505,7 @@ TEST_SUITE("verilator_utils/task")
         CHECK(::std::holds_alternative<::verilator_utils::data_format::hex_t>(delayed->format()));
         CHECK_EQ(delayed->to_string(), "0x012389abcdef"sv);
 
-        ::VlWide<2> fourth_value{0xaabb'ccddu, 0x0000'0003u};
+        const ::VlWide<2> fourth_value{0xaabb'ccddu, 0x0000'0003u};
         auto delayed_again{delay_line.update(fourth_value)};
         REQUIRE(delayed_again.has_value());
         CHECK_EQ(delayed_again->value().at(0), 0x1122'3344u);
@@ -609,7 +611,7 @@ TEST_SUITE("verilator_utils/task")
         int expected_line{};
 
         auto root_task{stacktrace_root(captured, child_handle, grandchild_handle, expected_line)};
-        auto root_handle{root_task.get_handle()};
+        const auto root_handle{root_task.get_handle()};
         scheduler.add_task(::std::move(root_task));
         scheduler.loop_until_finish();
 
@@ -675,7 +677,7 @@ TEST_SUITE("verilator_utils/task")
         ::std::shared_ptr<::verilator_utils::coroutine_stacktrace> captured{};
         int expected_line{};
 
-        ::verilator_utils::async_task child{scheduler, stacktrace_orphan_async(captured, expected_line)};
+        const ::verilator_utils::async_task child{scheduler, stacktrace_orphan_async(captured, expected_line)};
         scheduler.loop_until_finish();
 
         REQUIRE(captured);
@@ -734,7 +736,7 @@ TEST_SUITE("verilator_utils/task")
             peeked = ::std::addressof(reference);
             received = co_await mailbox.get();
         }()};
-        ::verilator_utils::async_task consumer{scheduler, ::std::move(consumer_task)};
+        const ::verilator_utils::async_task consumer{scheduler, ::std::move(consumer_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(consumer.done());
@@ -771,7 +773,7 @@ TEST_SUITE("verilator_utils/task")
 
         // 通过非const阻塞式peek获取队首元素，用于验证元素的身份
         auto peeker_task{[&](this auto) -> ::verilator_utils::task<void> { peeked = co_await mailbox.peek(); }()};
-        ::verilator_utils::async_task peeker{scheduler, ::std::move(peeker_task)};
+        const ::verilator_utils::async_task peeker{scheduler, ::std::move(peeker_task)};
         scheduler.loop_once();
         CHECK(peeker.done());
 
@@ -799,7 +801,7 @@ TEST_SUITE("verilator_utils/task")
             co_await mailbox.put(2);
             producer_completed = true;
         }()};
-        ::verilator_utils::async_task producer{scheduler, ::std::move(producer_task)};
+        const ::verilator_utils::async_task producer{scheduler, ::std::move(producer_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(producer.done());
@@ -848,7 +850,7 @@ TEST_SUITE("verilator_utils/task")
             co_await semaphore.get(2);
             acquired = true;
         }()};
-        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        const ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(waiter.done());
@@ -869,14 +871,14 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::semaphore semaphore{};
         ::std::vector<int> acquisition_order;
 
-        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+        const auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
             co_await semaphore.get();
             acquisition_order.push_back(id);
         }};
         auto first_task{make_waiter(1)};
         auto second_task{make_waiter(2)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(first.done());
@@ -907,7 +909,7 @@ TEST_SUITE("verilator_utils/task")
             co_await semaphore.get(2);
             acquired = true;
         }()};
-        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        const ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
 
         scheduler.loop_once();
         CHECK(waiter.done());
@@ -924,14 +926,14 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::semaphore semaphore{};
         ::std::vector<int> acquisition_order;
 
-        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+        const auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
             co_await semaphore.get();
             acquisition_order.push_back(id);
         }};
         auto first_task{make_waiter(1)};
         auto second_task{make_waiter(2)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(first.done());
@@ -968,16 +970,16 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::semaphore semaphore{};
         ::std::vector<int> acquisition_order;
 
-        auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
+        const auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
             co_await semaphore.get(update);
             acquisition_order.push_back(id);
         }};
         auto first_task{make_waiter(1, 1)};
         auto second_task{make_waiter(2, 2)};
         auto third_task{make_waiter(3, 3)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
-        ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(first.done());
@@ -1013,14 +1015,14 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::semaphore semaphore{};
         ::std::vector<int> acquisition_order;
 
-        auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
+        const auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
             co_await semaphore.get(update);
             acquisition_order.push_back(id);
         }};
         auto first_task{make_waiter(1, 3)};
         auto second_task{make_waiter(2, 1)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(first.done());
@@ -1061,14 +1063,14 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::semaphore semaphore{};
         ::std::vector<int> acquisition_order;
 
-        auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
+        const auto make_waiter{[&](this auto, int id, ::std::size_t update) -> ::verilator_utils::task<void> {
             co_await semaphore.get(update);
             acquisition_order.push_back(id);
         }};
         auto first_task{make_waiter(1, 5)};
         auto second_task{make_waiter(2, 1)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(first.done());
@@ -1108,7 +1110,7 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::semaphore semaphore{};
 
         auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> { co_await semaphore.get(); }()};
-        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        const ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(waiter.done());
@@ -1128,7 +1130,7 @@ TEST_SUITE("verilator_utils/task")
             acquired = true;
         }()};
         semaphore.put();
-        ::verilator_utils::async_task fast{scheduler, ::std::move(fast_task)};
+        const ::verilator_utils::async_task fast{scheduler, ::std::move(fast_task)};
         scheduler.loop_once();
         CHECK(fast.done());
         CHECK(acquired);
@@ -1148,7 +1150,7 @@ TEST_SUITE("verilator_utils/task")
             co_await semaphore.get(5);
             acquired = true;
         }()};
-        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        const ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(waiter.done());
@@ -1190,14 +1192,14 @@ TEST_SUITE("verilator_utils/task")
         ::std::vector<::std::size_t> acquisition_order;
         acquisition_order.reserve(waiter_count);
 
-        auto waiter{[&](this auto, ::std::size_t id) -> ::verilator_utils::task<void> {
+        const auto waiter{[&](this auto, ::std::size_t id) -> ::verilator_utils::task<void> {
             co_await semaphore.get();
             acquisition_order.push_back(id);
         }};
 
         ::std::vector<::verilator_utils::async_task> tasks;
         tasks.reserve(waiter_count);
-        for(auto i: iota_range) { tasks.emplace_back(scheduler, waiter(i)); }
+        for(const auto i: iota_range) { tasks.emplace_back(scheduler, waiter(i)); }
 
         scheduler.loop_once();
         CHECK_EQ(acquisition_order.size(), 0u);
@@ -1207,10 +1209,10 @@ TEST_SUITE("verilator_utils/task")
         scheduler.loop_once();
 
         REQUIRE_EQ(acquisition_order.size(), waiter_count);
-        auto expected{iota_range | ::std::ranges::to<::std::vector>()};
+        const auto expected{iota_range | ::std::ranges::to<::std::vector>()};
         CHECK_EQ(acquisition_order, expected);
         CHECK_FALSE(semaphore.try_get());
-        for(auto& task: tasks) { task.get_promise().rethrow_exception(); }
+        for(const auto& task: tasks) { task.get_promise().rethrow_exception(); }
     }
 
     TEST_CASE("semaphore reclaims queue storage for very large waiter queues")
@@ -1222,7 +1224,7 @@ TEST_SUITE("verilator_utils/task")
         constexpr static ::std::size_t waiter_count{6000};
         ::std::size_t completed{};
 
-        auto waiter{[&](this auto, ::std::size_t update) -> ::verilator_utils::task<void> {
+        const auto waiter{[&](this auto, ::std::size_t update) -> ::verilator_utils::task<void> {
             co_await semaphore.get(update);
             ++completed;
         }};
@@ -1241,7 +1243,7 @@ TEST_SUITE("verilator_utils/task")
 
         CHECK_EQ(completed, waiter_count);
         CHECK_FALSE(semaphore.try_get());
-        for(auto& task: tasks) { task.get_promise().rethrow_exception(); }
+        for(const auto& task: tasks) { task.get_promise().rethrow_exception(); }
     }
 
     TEST_CASE("mailbox put rechecks capacity when a peer producer fills the freed slot")
@@ -1261,7 +1263,7 @@ TEST_SUITE("verilator_utils/task")
         REQUIRE(initial_put1);
         REQUIRE(initial_put2);
 
-        auto make_producer{[&](this auto, int value) -> ::verilator_utils::task<void> {
+        const auto make_producer{[&](this auto, int value) -> ::verilator_utils::task<void> {
             co_await mailbox.put(value);
             ++completed_count;
             max_observed_size = ::std::max(max_observed_size, mailbox.num());
@@ -1270,9 +1272,9 @@ TEST_SUITE("verilator_utils/task")
         auto first_task{make_producer(10)};
         auto second_task{make_producer(20)};
         auto third_task{make_producer(30)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
-        ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
 
         scheduler.loop_once();
         CHECK_EQ(completed_count, 0u);
@@ -1324,11 +1326,12 @@ TEST_SUITE("verilator_utils/task")
         int first_received{};
         int second_received{};
 
-        auto make_consumer{[&](this auto, int& received) -> ::verilator_utils::task<void> { received = co_await mailbox.get(); }};
+        const auto make_consumer{
+            [&](this auto, int& received) -> ::verilator_utils::task<void> { received = co_await mailbox.get(); }};
         auto first_task{make_consumer(first_received)};
         auto second_task{make_consumer(second_received)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(first.done());
@@ -1367,8 +1370,8 @@ TEST_SUITE("verilator_utils/task")
 
         auto getter_task{[&](this auto) -> ::verilator_utils::task<void> { received = co_await mailbox.get(); }()};
         auto peeker_task{[&](this auto) -> ::verilator_utils::task<void> { peeked = co_await mailbox.peek(); }()};
-        ::verilator_utils::async_task getter{scheduler, ::std::move(getter_task)};
-        ::verilator_utils::async_task peeker{scheduler, ::std::move(peeker_task)};
+        const ::verilator_utils::async_task getter{scheduler, ::std::move(getter_task)};
+        const ::verilator_utils::async_task peeker{scheduler, ::std::move(peeker_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(getter.done());
@@ -1414,7 +1417,7 @@ TEST_SUITE("verilator_utils/task")
         ::std::size_t max_observed_size{};
         bool capacity_violation{};
 
-        auto producer{[&](this auto, int id) -> ::verilator_utils::task<void> {
+        const auto producer{[&](this auto, int id) -> ::verilator_utils::task<void> {
             for(::std::size_t i{}; i != items_per_task; ++i)
             {
                 co_await mailbox.put((id * 100 + static_cast<int>(i)));
@@ -1422,7 +1425,7 @@ TEST_SUITE("verilator_utils/task")
                 capacity_violation = capacity_violation || mailbox.num() > 3;
             }
         }};
-        auto consumer{[&](this auto) -> ::verilator_utils::task<void> {
+        const auto consumer{[&](this auto) -> ::verilator_utils::task<void> {
             for(::std::size_t i{}; i != items_per_task; ++i) { received.push_back(co_await mailbox.get()); }
         }};
 
@@ -1433,7 +1436,7 @@ TEST_SUITE("verilator_utils/task")
 
         scheduler.loop_until_finish();
 
-        for(auto& task: tasks) { task.get_promise().rethrow_exception(); }
+        for(const auto& task: tasks) { task.get_promise().rethrow_exception(); }
         CHECK_FALSE(capacity_violation);
         CHECK_LE(max_observed_size, 3u);
         CHECK_EQ(mailbox.num(), 0u);
@@ -1465,7 +1468,7 @@ TEST_SUITE("verilator_utils/task")
                 results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
             }
         }()};
-        ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
+        const ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(task.done());
@@ -1528,7 +1531,7 @@ TEST_SUITE("verilator_utils/task")
                 results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
             }
         }()};
-        ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
+        const ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(task.done());
@@ -1575,7 +1578,7 @@ TEST_SUITE("verilator_utils/task")
             auto triggered{co_await clock_selector};
             results = triggered | ::std::ranges::to<::std::vector<bool>>();
         }()};
-        ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
+        const ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(task.done());
@@ -1608,7 +1611,7 @@ TEST_SUITE("verilator_utils/task")
             auto triggered{co_await clock_selector};
             results = triggered | ::std::ranges::to<::std::vector<bool>>();
         }()};
-        ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
+        const ::verilator_utils::async_task task{scheduler, ::std::move(selector_task)};
 
         scheduler.loop_once();
         CHECK(task.done());
@@ -1624,16 +1627,16 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::event event{};
         ::std::vector<int> wake_order;
 
-        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+        const auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
             co_await event;
             wake_order.push_back(id);
         }};
         auto first_task{make_waiter(1)};
         auto second_task{make_waiter(2)};
         auto third_task{make_waiter(3)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
-        ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(first.done());
@@ -1660,16 +1663,16 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::event event{};
         ::std::vector<int> wake_order;
 
-        auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+        const auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
             co_await event;
             wake_order.push_back(id);
         }};
         auto first_task{make_waiter(1)};
         auto second_task{make_waiter(2)};
         auto third_task{make_waiter(3)};
-        ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
-        ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
-        ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
+        const ::verilator_utils::async_task first{scheduler, ::std::move(first_task)};
+        const ::verilator_utils::async_task second{scheduler, ::std::move(second_task)};
+        const ::verilator_utils::async_task third{scheduler, ::std::move(third_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(first.done());
@@ -1713,7 +1716,7 @@ TEST_SUITE("verilator_utils/task")
             co_await event;
             woke = true;
         }()};
-        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        const ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(waiter.done());
@@ -1742,7 +1745,7 @@ TEST_SUITE("verilator_utils/task")
             co_await event;
             woke = true;
         }()};
-        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        const ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
         scheduler.loop_once();
         CHECK_FALSE(waiter.done());
         CHECK_FALSE(woke);
@@ -1770,7 +1773,7 @@ TEST_SUITE("verilator_utils/task")
             co_await event;
             woke = true;
         }()};
-        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        const ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
         scheduler.loop_once();
         CHECK_FALSE(waiter.done());
         CHECK_FALSE(woke);
@@ -1798,7 +1801,7 @@ TEST_SUITE("verilator_utils/task")
                 ++wake_count;
             }
         }()};
-        ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
+        const ::verilator_utils::async_task waiter{scheduler, ::std::move(waiter_task)};
 
         scheduler.loop_once();
         CHECK_FALSE(waiter.done());
@@ -1825,7 +1828,7 @@ TEST_SUITE("verilator_utils/task")
         ::std::vector<int> received;
 
         // 消费者先等待数据，生产者发送数据后等待消费者确认
-        auto consumer{[&](this auto) -> ::verilator_utils::task<void> {
+        const auto consumer{[&](this auto) -> ::verilator_utils::task<void> {
             for(::std::size_t i{}; i != item_count; ++i)
             {
                 co_await data_ready;
@@ -1833,7 +1836,7 @@ TEST_SUITE("verilator_utils/task")
                 data_consumed.notify_all();
             }
         }};
-        auto producer{[&](this auto) -> ::verilator_utils::task<void> {
+        const auto producer{[&](this auto) -> ::verilator_utils::task<void> {
             for(::std::size_t i{}; i != item_count; ++i)
             {
                 data_ready.notify_all();
@@ -1842,7 +1845,7 @@ TEST_SUITE("verilator_utils/task")
         }};
 
         auto consumer_task{consumer()};
-        ::verilator_utils::async_task consumer_async{scheduler, ::std::move(consumer_task)};
+        const ::verilator_utils::async_task consumer_async{scheduler, ::std::move(consumer_task)};
 
         // 消费者先就绪等待数据
         scheduler.loop_once();
@@ -1850,7 +1853,7 @@ TEST_SUITE("verilator_utils/task")
         CHECK(received.empty());
 
         auto producer_task{producer()};
-        ::verilator_utils::async_task producer_async{scheduler, ::std::move(producer_task)};
+        const ::verilator_utils::async_task producer_async{scheduler, ::std::move(producer_task)};
         scheduler.loop_until_finish();
 
         CHECK(consumer_async.done());

@@ -166,56 +166,11 @@ TEST_SUITE("verilator_utils/utils")
     TEST_CASE("femtosecond overflow errors carry descriptive messages")
     {
         constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
-        try
-        {
-            auto result{femtosecond_t{max} + 1_fs};
-            (void)result;
-            FAIL("expected assertion_error for addition overflow"sv);
-        }
-        catch(const ::verilator_utils::assertion_error& error)
-        {
-            CHECK_EQ(error.message(), "发生上溢"sv);
-        }
-        try
-        {
-            auto result{1_fs - 2_fs};
-            (void)result;
-            FAIL("expected assertion_error for subtraction underflow"sv);
-        }
-        catch(const ::verilator_utils::assertion_error& error)
-        {
-            CHECK_EQ(error.message(), "发生下溢"sv);
-        }
-        try
-        {
-            auto result{1_fs / static_cast<::std::uint64_t>(0)};
-            (void)result;
-            FAIL("expected assertion_error for division by zero"sv);
-        }
-        catch(const ::verilator_utils::assertion_error& error)
-        {
-            CHECK_EQ(error.message(), "发生除0"sv);
-        }
-        try
-        {
-            auto result{1_fs * -1.0};
-            (void)result;
-            FAIL("expected assertion_error for negative multiplier"sv);
-        }
-        catch(const ::verilator_utils::assertion_error& error)
-        {
-            CHECK_EQ(error.message(), "非法乘数: -1"sv);
-        }
-        try
-        {
-            auto result{1_fs / -1.0};
-            (void)result;
-            FAIL("expected assertion_error for negative divisor"sv);
-        }
-        catch(const ::verilator_utils::assertion_error& error)
-        {
-            CHECK_EQ(error.message(), "非法除数: -1"sv);
-        }
+        CHECK_THROWS_WITH_AS(femtosecond_t{max} + 1_fs, ::doctest::Contains{"发生上溢"}, ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(1_fs - 2_fs, ::doctest::Contains{"发生下溢"}, ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(1_fs / 0zu, ::doctest::Contains{"发生除0"}, ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(1_fs * -1.0, ::doctest::Contains{"非法乘数: -1"}, ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(1_fs / -1.0, ::doctest::Contains{"非法除数: -1"}, ::verilator_utils::assertion_error);
     }
 
     TEST_CASE("verilator data type traits identify supported types")
@@ -314,9 +269,9 @@ TEST_SUITE("verilator_utils/utils")
     TEST_CASE("width_cast reproduces the two's complement pattern over the whole int16 range")
     {
         ::std::size_t mismatches{};
-        for(auto raw: ::std::views::iota(-32'768, 32'768))
+        for(const auto raw: ::std::views::iota(-32'768, 32'768))
         {
-            auto expected{static_cast<::std::uint64_t>(static_cast<::std::uint16_t>(raw))};
+            const auto expected{static_cast<::std::uint64_t>(static_cast<::std::uint16_t>(raw))};
             if(::verilator_utils::width_cast(static_cast<::std::int16_t>(raw), 16zu) != expected) { ++mismatches; }
         }
         CHECK_EQ(mismatches, 0zu);

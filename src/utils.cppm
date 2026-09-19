@@ -92,7 +92,7 @@ export namespace verilator_utils
          */
         constexpr static ::std::uint64_t check_mul_overflow(::std::uint64_t lhs, double rhs)
         {
-            auto result{static_cast<double>(lhs) * rhs};
+            const auto result{static_cast<double>(lhs) * rhs};
             ::verilator_utils::check{}(result < static_cast<double>(max), "发生上溢"sv);
             return round(result);
         }
@@ -202,7 +202,7 @@ export namespace verilator_utils
         constexpr friend femtosecond_t operator/ (femtosecond_t lhs, double rhs)
         {
             ::verilator_utils::check{}(rhs > 0., "非法除数: {}"sv, rhs);
-            auto rep{static_cast<double>(lhs.rep) / rhs};
+            const auto rep{static_cast<double>(lhs.rep) / rhs};
             // static_cast<double>(max)为max + 1
             ::verilator_utils::check{}(rep < static_cast<double>(max), "发生上溢"sv);
             return femtosecond_t{round(rep)};
@@ -563,7 +563,7 @@ namespace verilator_utils
                 switch(*iter)
                 {
                     case '#':
-                        ++iter;
+                        ::std::advance(iter, 1);
                         with_detail = true;
                         break;
                     case '}': return iter;
@@ -781,10 +781,9 @@ namespace verilator_utils
             [[nodiscard]] constexpr static ::std::int64_t to_underlying(::std::uint64_t packed_value,
                                                                         ::std::size_t width) noexcept
             {
-                auto shift{64zu - width};
+                const auto shift{64zu - width};
                 // NOLINTNEXTLINE(*-signed-bitwise)
-                auto sign_extended_value{static_cast<::std::int64_t>(packed_value << shift) >> shift};
-                return sign_extended_value;
+                return static_cast<::std::int64_t>(packed_value << shift) >> shift;
             }
 
             /**
@@ -797,7 +796,7 @@ namespace verilator_utils
             [[nodiscard]] constexpr static ::std::uint64_t to_verilator(::std::int64_t underlying_value,
                                                                         ::std::size_t width) noexcept
             {
-                auto shift{64zu - width};
+                const auto shift{64zu - width};
                 return static_cast<::std::uint64_t>(underlying_value) << shift >> shift;
             }
         };
@@ -1097,10 +1096,10 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr double to_underlying(::std::uint64_t packed_value) const noexcept
             {
-                auto sign_bit_index{width() - 1};
-                auto sign{packed_value >> sign_bit_index};
-                auto magnitude_mask{(1zu << sign_bit_index) - 1zu};
-                auto magnitude{::verilator_utils::detail::ldexp(packed_value & magnitude_mask, -fractional_bit)};
+                const auto sign_bit_index{width() - 1};
+                const auto sign{packed_value >> sign_bit_index};
+                const auto magnitude_mask{(1zu << sign_bit_index) - 1zu};
+                const auto magnitude{::verilator_utils::detail::ldexp(packed_value & magnitude_mask, -fractional_bit)};
                 return sign == 0 ? magnitude : -magnitude;
             }
 
@@ -1112,8 +1111,8 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr ::std::uint64_t to_verilator(double underlying_value) const noexcept
             {
-                auto sign{static_cast<::std::uint64_t>(::verilator_utils::detail::signbit(underlying_value))};
-                auto magnitude{
+                const auto sign{static_cast<::std::uint64_t>(::verilator_utils::detail::signbit(underlying_value))};
+                const auto magnitude{
                     ::verilator_utils::detail::ldexp(::verilator_utils::detail::abs(underlying_value), fractional_bit)};
                 return sign << (width() - 1) | static_cast<::std::uint64_t>(magnitude);
             }
@@ -1605,20 +1604,20 @@ export namespace verilator_utils
         if constexpr(::std::signed_integral<decltype(value)>)
         {
             ::verilator_utils::check{}(width >= 2, "有符号数宽度至少为2"sv);
-            auto ext_value{static_cast<::std::int64_t>(value)};
+            const auto ext_value{static_cast<::std::int64_t>(value)};
             using limit_t = ::std::numeric_limits<::std::int64_t>;
-            auto shift{64zu - width};
-            auto min{limit_t::min() >> shift};  // NOLINT(bugprone-signed-bitwise)
-            auto max{limit_t::max() >> shift};  // NOLINT(bugprone-signed-bitwise)
+            const auto shift{64zu - width};
+            const auto min{limit_t::min() >> shift};  // NOLINT(bugprone-signed-bitwise)
+            const auto max{limit_t::max() >> shift};  // NOLINT(bugprone-signed-bitwise)
             ::verilator_utils::check{}(ext_value >= min && ext_value <= max, "{}超出int{}的表示范围"sv, value, width);
-            auto mask{-1zu >> shift};
+            const auto mask{-1zu >> shift};
             return static_cast<::std::uint64_t>(ext_value) & mask;
         }
         else
         {
-            auto ext_value{static_cast<::std::uint64_t>(value)};
+            const auto ext_value{static_cast<::std::uint64_t>(value)};
             if(width == 64) { return ext_value; }
-            auto mask{(1zu << width) - 1zu};
+            const auto mask{(1zu << width) - 1zu};
             ::verilator_utils::check{}(ext_value >> width == 0, "{}超出uint{}的表示范围"sv, value, width);
             return ext_value & mask;
         }

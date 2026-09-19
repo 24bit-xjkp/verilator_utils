@@ -142,10 +142,7 @@ namespace verilator_utils::detail
         constexpr friend auto operator<=> (const approx_compare& lhs, type rhs) noexcept
         {
             if(lhs == rhs) { return ::std::compare_three_way_result_t<type>::equivalent; }
-            else
-            {
-                return lhs.value <=> rhs;
-            }
+            return lhs.value <=> rhs;
         }
     };
 }  // namespace verilator_utils::detail
@@ -701,7 +698,7 @@ export namespace verilator_utils
             {
                 auto word_index{index / word_width};
                 auto index_in_word{index % word_width};
-                auto mask{::EData{1} << index_in_word};
+                const auto mask{1zu << index_in_word};
                 data[word_index] = (data[word_index] & ~mask) | (value << index_in_word);
             }
             else
@@ -1112,6 +1109,7 @@ export namespace verilator_utils
          */
         vector_slice& operator= (const vector_slice& other)
         {
+            if(this == &other) { return *this; }
             ::verilator_utils::check{}(width() == other.width(), "切片宽度{}与赋值源宽度{}不同"sv, width(), other.width());
             auto aligned_value{static_cast<cast_type>(other)};
             if constexpr(is_vl_wide) { assign_aligned_value(aligned_value); }
@@ -1547,14 +1545,14 @@ export namespace verilator_utils
         /// 数据类型
         ::verilator_utils::data_format::format data_format;
 
-        constexpr static ::std::uint64_t scalar_mask(::std::size_t width, ::std::size_t right_bound) noexcept
+        static ::std::uint64_t scalar_mask(::std::size_t width, ::std::size_t right_bound) noexcept
         {
-            auto lower_mask{width == 64 ? ::std::numeric_limits<::std::uint64_t>::max() : (::std::uint64_t{1} << width) - 1u};
+            const auto lower_mask{width == 64 ? ::std::numeric_limits<::std::uint64_t>::max() : (1zu << width) - 1zu};
             return lower_mask << right_bound;
         }
 
         template <typename wide_type>
-        constexpr static ::std::uint64_t wide_to_uint64(const wide_type& value) noexcept
+        static ::std::uint64_t wide_to_uint64(const wide_type& value) noexcept
         {
             ::std::uint64_t result{value.at(0)};
             if constexpr(wide_type::Words > 1) { result |= static_cast<::std::uint64_t>(value.at(1)) << word_width; }
@@ -1701,6 +1699,7 @@ export namespace verilator_utils
 
         unpacked_array& operator= (const unpacked_array& other)
         {
+            if(this == &other) { return *this; }
             ::verilator_utils::check{}(width() == other.width(), "数组宽度{}与赋值源宽度{}不同"sv, width(), other.width());
             ::std::ranges::copy(other.data, data.begin());
             return *this;
@@ -1808,10 +1807,7 @@ export namespace std
             {
                 return ::std::format_to(ctx.out(), "{{value: {}, atol: {}, rtol: {}}}"sv, value.value, value.atol, value.rtol);
             }
-            else
-            {
-                return ::std::format_to(ctx.out(), "{}"sv, value.value);
-            }
+            return ::std::format_to(ctx.out(), "{}"sv, value.value);
         }
     };
 

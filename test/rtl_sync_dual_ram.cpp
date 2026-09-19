@@ -4,7 +4,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_sync_dual_ram_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("sync_dual_ram")
+namespace
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_sync_dual_ram_verilator;
@@ -55,7 +55,7 @@ TEST_SUITE("sync_dual_ram")
                 if(port.read_enable == 1)
                 {
                     read_data_read_first = ram[port.read_addr];
-                    bool read_write_simultaneously{port.write_enable == 1 && port.read_addr == port.write_addr};
+                    const bool read_write_simultaneously{port.write_enable == 1 && port.read_addr == port.write_addr};
                     read_data_write_first = read_write_simultaneously ? port.write_data : ram[port.read_addr];
                     if(!read_write_simultaneously) { read_data_no_change = ram[port.read_addr]; }
                 }
@@ -63,12 +63,15 @@ TEST_SUITE("sync_dual_ram")
             }
         }
     };
+}  // namespace
 
-    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
-
+TEST_SUITE("sync_dual_ram")
+{
     TEST_CASE("sync_dual_ram")
     {
-        dut_context_t ctx{option};
+        dut_context_t ctx{
+            {.coverage = true, .time_precision = verilator_time_unit::ns}
+        };
         port_t port{ctx.get_dut()};
         reference_module ref{port};
 
@@ -88,7 +91,7 @@ TEST_SUITE("sync_dual_ram")
         };
         const auto do_sync_write{
             [&] -> task<void> {
-                for(auto i: views::iota(0zu, port_t::depth))
+                for(const auto i: views::iota(0zu, port_t::depth))
                 {
                     co_await wait_stimulate(port.clk);
                     port.write_enable = 1;
@@ -105,7 +108,7 @@ TEST_SUITE("sync_dual_ram")
                 co_await wait_event([&] { return port.write_enable == 1; });
                 // 读落后写1拍以避免读到未初始化的值
                 co_await wait_verify(port.clk);
-                for(auto i: views::iota(0zu, port_t::depth))
+                for(const auto i: views::iota(0zu, port_t::depth))
                 {
                     co_await wait_stimulate(port.clk);
                     port.read_enable = 1;
@@ -140,7 +143,7 @@ TEST_SUITE("sync_dual_ram")
             [&] -> task<void> {
                 auto addr_list{gen | views::keys | ranges::to<std::vector>()};
                 ranges::shuffle(addr_list | views::take(port_t::depth * suffered_epochs), rng);
-                for(auto addr: addr_list)
+                for(const auto addr: addr_list)
                 {
                     co_await wait_stimulate(port.clk);
                     port.read_enable = 1;
@@ -153,7 +156,7 @@ TEST_SUITE("sync_dual_ram")
         };
 
         const auto do_read_write_without_enable{[&] -> task<void> {
-            for(auto [addr, data]: gen | views::take(port_t::depth))
+            for(const auto& [addr, data]: gen | views::take(port_t::depth))
             {
                 co_await wait_stimulate(port.clk);
                 port.write_enable = 0;
@@ -164,10 +167,10 @@ TEST_SUITE("sync_dual_ram")
                 co_await verify_at(port.clk, read_and_verify);
             }
 
-            auto read_first_dump{port.read_data_read_first.dump()};
-            auto write_first_dump{port.read_data_write_first.dump()};
-            auto no_change_dump{port.read_data_no_change.dump()};
-            for(auto addr: gen | views::keys | views::take(port_t::depth))
+            const auto read_first_dump{port.read_data_read_first.dump()};
+            const auto write_first_dump{port.read_data_write_first.dump()};
+            const auto no_change_dump{port.read_data_no_change.dump()};
+            for(const auto addr: gen | views::keys | views::take(port_t::depth))
             {
                 co_await wait_stimulate(port.clk);
                 port.read_enable = 0;

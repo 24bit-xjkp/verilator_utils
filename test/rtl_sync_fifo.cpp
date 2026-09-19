@@ -4,7 +4,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_sync_fifo_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("sync_fifo")
+namespace
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_sync_fifo_verilator;
@@ -51,10 +51,10 @@ TEST_SUITE("sync_fifo")
                 co_await wait_posedge(port.clk);
 
                 // 组合逻辑
-                auto write_enable{!full() && port.i_valid == 1};
-                auto read_enable{!empty() && port.o_ready == 1};
-                auto o_data_d{read_enable ? co_await fifo.peek() : o_data_r};
-                auto o_valid_d{!empty()};
+                const auto write_enable{!full() && port.i_valid == 1};
+                const auto read_enable{!empty() && port.o_ready == 1};
+                const auto o_data_d{read_enable ? co_await fifo.peek() : o_data_r};
+                const auto o_valid_d{!empty()};
 
                 // 时序逻辑
                 if(write_enable) { co_await fifo.put(port.i_data); }
@@ -74,7 +74,10 @@ TEST_SUITE("sync_fifo")
 
         [[nodiscard]] bool empty() const noexcept { return fifo.num() == 0; }
     };
+}  // namespace
 
+TEST_SUITE("sync_fifo")
+{
     TEST_CASE("sync_fifo")
     {
         dut_context_t ctx{
@@ -93,11 +96,11 @@ TEST_SUITE("sync_fifo")
         const auto do_verify{[&] -> task<void> {
             co_await wait_reset_finish(port.rst);
             CData cnt{};
-            for(auto _: std::views::iota(0zu, port_t::depth * 500zu))
+            for(const auto _: std::views::iota(0zu, port_t::depth * 500zu))
             {
                 co_await wait_stimulate(port.clk);
-                auto i_valid{dist(engin)};
-                auto o_ready{dist(engin)};
+                const auto i_valid{dist(engin)};
+                const auto o_ready{dist(engin)};
                 port.i_valid = i_valid;
                 port.i_data = (cnt += i_valid);
                 port.o_ready = o_ready;

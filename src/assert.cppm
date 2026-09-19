@@ -37,15 +37,16 @@ namespace verilator_utils::detail
      * 与doctest框架的--force-colors和--no-colors命令行选项相对应，
      * 由main函数解析doctest命令行参数后通过set_assertion_color_config配置
      */
-    export struct assertion_color_config_t
+    struct assertion_color_config_t
     {
         /// 强制使用彩色输出
-        bool force_colors{};
+        static bool force_colors;
         /// 强制不使用彩色输出
-        bool no_colors{};
+        static bool no_colors;
     };
 
-    constinit ::verilator_utils::detail::assertion_color_config_t assertion_color_config{};
+    constinit bool ::verilator_utils::detail::assertion_color_config_t::force_colors{};
+    constinit bool ::verilator_utils::detail::assertion_color_config_t::no_colors{};
 
     /**
      * @brief 判断断言消息是否使用彩色输出
@@ -54,21 +55,21 @@ namespace verilator_utils::detail
      * 未配置时根据标准错误输出是否为控制台自适应决定
      * @return 是否使用彩色输出
      */
-    [[nodiscard]] inline bool should_colorize_assertion_message() noexcept
+    [[nodiscard]] bool should_colorize_assertion_message() noexcept
     {
-        const auto& config{::verilator_utils::detail::assertion_color_config};
-        if(config.no_colors) { return false; }
-        if(config.force_colors) { return true; }
+        using config_t = ::verilator_utils::detail::assertion_color_config_t;
+        if(config_t::no_colors) { return false; }
+        if(config_t::force_colors) { return true; }
         return ::cpptrace::isatty(::cpptrace::stderr_fileno);
     }
 
     /// ANSI颜色转义序列
     namespace assertion_color
     {
-        constexpr inline auto reset{"\033[0m"sv};
-        constexpr inline auto cyan{"\033[36m"sv};
-        constexpr inline auto yellow{"\033[33m"sv};
-        constexpr inline auto red{"\033[31m"sv};
+        constexpr auto reset{"\033[0m"sv};
+        constexpr auto cyan{"\033[36m"sv};
+        constexpr auto yellow{"\033[33m"sv};
+        constexpr auto red{"\033[31m"sv};
     }  // namespace assertion_color
 
     /**
@@ -130,10 +131,11 @@ namespace verilator_utils::detail
                 "verilator_utils::detail::generate_assertion_trace"sv,
                 "verilator_utils::check"sv,
             };
-            auto erase_begin{::std::ranges::find_if(trace.frames, [](const ::verilator_utils::trace::stacktrace_frame& frame) {
-                return ::std::ranges::none_of(internal_names,
-                                              [&frame](::std::string_view name) { return frame.symbol.contains(name); });
-            })};
+            const auto erase_begin{
+                ::std::ranges::find_if(trace.frames, [](const ::verilator_utils::trace::stacktrace_frame& frame) {
+                    return ::std::ranges::none_of(internal_names,
+                                                  [&frame](::std::string_view name) { return frame.symbol.contains(name); });
+                })};
             trace.frames.erase(trace.frames.begin(), erase_begin);
             return trace;
         }
@@ -147,20 +149,39 @@ namespace verilator_utils::detail
 export namespace verilator_utils
 {
     /**
+     * @brief 断言消息的颜色配置
+     *
+     */
+    struct assertion_color_config_t
+    {
+        /// 强制使用彩色输出
+        bool force_colors;
+        /// 强制不使用彩色输出
+        bool no_colors;
+    };
+
+    /**
      * @brief 获取断言彩色输出设置
      *
      * @return 彩色输出设置
      */
-    ::verilator_utils::detail::assertion_color_config_t get_assertion_color_config() noexcept
-    { return ::verilator_utils::detail::assertion_color_config; }
+    ::verilator_utils::assertion_color_config_t get_assertion_color_config() noexcept
+    {
+        using config_t = ::verilator_utils::detail::assertion_color_config_t;
+        return {config_t::force_colors, config_t::no_colors};
+    }
 
     /**
      * @brief 设置断言彩色输出设置
      *
      * @param config 彩色输出设置
      */
-    void set_assertion_color_config(::verilator_utils::detail::assertion_color_config_t config) noexcept
-    { ::verilator_utils::detail::assertion_color_config = config; }
+    void set_assertion_color_config(::verilator_utils::assertion_color_config_t config) noexcept
+    {
+        using config_t = ::verilator_utils::detail::assertion_color_config_t;
+        config_t::force_colors = config.force_colors;
+        config_t::no_colors = config.no_colors;
+    }
 
     /**
      * @brief 断言失败异常
@@ -248,6 +269,7 @@ namespace verilator_utils::detail
      */
     [[noreturn]] constexpr void assert_fail(::std::source_location location)
     {
+        // NOLINTNEXTLINE(bugprone-std-exception-baseclass)
         if consteval { throw ::verilator_utils::constexpr_assertion_error{}; }
         else
         {
@@ -267,6 +289,7 @@ namespace verilator_utils::detail
     [[noreturn]] constexpr void
         assert_fail(::std::source_location location, ::std::format_string<args_t...> fmt, args_t&&... args)
     {
+        // NOLINTNEXTLINE(bugprone-std-exception-baseclass)
         if consteval { throw ::verilator_utils::constexpr_assertion_error{}; }
         else
         {

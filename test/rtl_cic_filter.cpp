@@ -5,7 +5,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_cic_filter_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("cic_filter")
+namespace
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_cic_filter_verilator;
@@ -32,7 +32,10 @@ TEST_SUITE("cic_filter")
         {
         }
     };
+}  // namespace
 
+TEST_SUITE("cic_filter")
+{
     TEST_CASE("cic_filter")
     {
         dut_context_t ctx{

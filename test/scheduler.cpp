@@ -40,11 +40,8 @@ namespace
      * @brief 判断挂起点位置是否为空（等价于未记录挂起点）
      *
      */
-    [[nodiscard]] bool is_default_suspend_location(const ::std::source_location& location) noexcept
-    {
-        return location.line() == 0u && location.column() == 0u &&
-               (location.file_name() == nullptr || location.file_name()[0] == '\0');
-    }
+    [[nodiscard]] bool is_default_suspend_location(::std::source_location location) noexcept
+    { return location.line() == 0u && location.column() == 0u && ::std::string_view{location.file_name()}.empty(); }
 
     /**
      * @brief 协程帧析构计数器
@@ -109,14 +106,14 @@ TEST_SUITE("verilator_utils/scheduler")
 
         ::verilator_utils::task<void>::handle_t parent_handle;
         const auto parent{[&] -> ::verilator_utils::task<void> {
-            auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+            const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
             CHECK(handle);
             parent_handle = handle;
             CHECK_EQ(handle.promise().status, ::verilator_utils::task<void>::status_enum::running);
             co_await child;
         }};
         auto parent_task{parent()};
-        auto expected_parent_handle{parent_task.get_handle()};
+        const auto expected_parent_handle{parent_task.get_handle()};
 
         CHECK(parent_task);
         CHECK(child);
@@ -252,7 +249,7 @@ TEST_SUITE("verilator_utils/scheduler")
         auto task{[] -> ::verilator_utils::task<void> { co_return; }()};
         auto original_handle{task.get_handle()};
 
-        ::verilator_utils::task<void> moved{::std::move(task)};
+        const ::verilator_utils::task<void> moved{::std::move(task)};
         // The moved-from state is part of task's move-construction contract.
         // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
         CHECK_FALSE(task);
@@ -261,7 +258,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         ::verilator_utils::task<void> assigned{[] -> ::verilator_utils::task<void> { co_return; }()};
         original_handle = assigned.get_handle();
-        auto detached_handle{assigned.detach()};
+        const auto detached_handle{assigned.detach()};
         CHECK_FALSE(assigned);
         CHECK_EQ(detached_handle, original_handle);
         detached_handle.destroy();
@@ -397,7 +394,7 @@ TEST_SUITE("verilator_utils/scheduler")
         {
             CAPTURE(time_unit);
             scheduler_fixture fixture{time_unit, time_unit};
-            auto scheduler{fixture.make_scheduler()};
+            const auto scheduler{fixture.make_scheduler()};
             fixture.context.time(1u);
             CHECK_EQ(scheduler.time_in_string(), expected);
         }
@@ -823,10 +820,10 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler.add_task(rising_task());
 
         scheduler.loop_once();
-        clk = 1;
+        clk = 1;  // NOLINT(clang-analyzer-deadcode.DeadStores)
         scheduler.loop_once();
         CHECK_EQ(rising_stage, ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
-        clk = 0;
+        clk = 0;  // NOLINT(clang-analyzer-deadcode.DeadStores)
         scheduler.loop_once();
         CHECK_EQ(falling_stage, ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
     }
@@ -1074,6 +1071,7 @@ TEST_SUITE("verilator_utils/scheduler")
         const auto failing_child{
             [] -> ::verilator_utils::task<void> {
                 co_await ::verilator_utils::wait_time(1_ps);
+                // NOLINTNEXTLINE(bugprone-std-exception-baseclass)
                 throw ::non_standard_error{};
             },
         };
@@ -1229,7 +1227,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
-                [[maybe_unused]] auto handle{
+                [[maybe_unused]] const auto handle{
                     co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
                 recorded_line = ::std::source_location::current().line();
                 co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
@@ -1238,7 +1236,7 @@ TEST_SUITE("verilator_utils/scheduler")
         auto child{child_lambda()};
         const auto parent{[&] -> ::verilator_utils::task<void> { co_await child; }};
         scheduler.add_task(parent());
-        auto& promise{child.get_promise()};
+        const auto& promise{child.get_promise()};
 
         CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::initial_suspend);
         CHECK(is_default_suspend_location(promise.suspend_location));
@@ -1266,7 +1264,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
-                auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
                 co_await ::verilator_utils::wait_time(1_ps);
                 observed_status = handle.promise().status;
                 observed_location = handle.promise().suspend_location;
@@ -1291,8 +1289,8 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
-                auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
-                auto& promise{handle.promise()};
+                const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                const auto& promise{handle.promise()};
                 CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::running);
                 CHECK(is_default_suspend_location(promise.suspend_location));
 
@@ -1321,7 +1319,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
-                [[maybe_unused]] auto handle{
+                [[maybe_unused]] const auto handle{
                     co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
                 co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
             },
@@ -1335,7 +1333,7 @@ TEST_SUITE("verilator_utils/scheduler")
             },
         };
         auto parent_task{parent()};
-        auto& promise{parent_task.get_promise()};
+        const auto& promise{parent_task.get_promise()};
         scheduler.add_task(::std::move(parent_task));
 
         scheduler.loop_once();
@@ -1356,7 +1354,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
-                [[maybe_unused]] auto handle{
+                [[maybe_unused]] const auto handle{
                     co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
                 co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
             },
@@ -1370,7 +1368,7 @@ TEST_SUITE("verilator_utils/scheduler")
             },
         };
         auto parent_task{parent()};
-        auto& promise{parent_task.get_promise()};
+        const auto& promise{parent_task.get_promise()};
         scheduler.add_task(::std::move(parent_task));
 
         scheduler.loop_once();
@@ -1391,7 +1389,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto task_lambda{
             [&] -> ::verilator_utils::task<void> {
-                auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
                 auto& promise{handle.promise()};
                 co_await bool_suspend_awaiter{false};
                 status_after_false_resume = promise.status;
@@ -1402,7 +1400,7 @@ TEST_SUITE("verilator_utils/scheduler")
             },
         };
         auto task{task_lambda()};
-        auto& promise{task.get_promise()};
+        const auto& promise{task.get_promise()};
 
         task.resume();
         CHECK_FALSE(resumed_after_true);
@@ -1427,7 +1425,7 @@ TEST_SUITE("verilator_utils/scheduler")
             auto scheduler{fixture.make_scheduler()};
             ::verilator_utils::event event{};
             const auto waiter_lambda{[&] -> ::verilator_utils::task<void> {
-                frame_destruction_counter counter{&destroyed};
+                const frame_destruction_counter counter{&destroyed};
                 co_await event;
             }};
             scheduler.add_task(waiter_lambda());
@@ -1446,14 +1444,14 @@ TEST_SUITE("verilator_utils/scheduler")
             scheduler_fixture fixture{};
             auto scheduler{fixture.make_scheduler()};
             ::verilator_utils::event event{};
-            auto make_waiter{[&] -> ::verilator_utils::task<void> {
-                frame_destruction_counter counter{&destroyed};
+            const auto make_waiter{[&] -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
                 co_await event;
             }};
 
             // async_task对象先于调度器析构：detach后由调度器的挂起队列兜底回收
-            ::verilator_utils::async_task first{scheduler, make_waiter()};
-            ::verilator_utils::async_task second{scheduler, make_waiter()};
+            const ::verilator_utils::async_task first{scheduler, make_waiter()};
+            const ::verilator_utils::async_task second{scheduler, make_waiter()};
             scheduler.loop_once();
             CHECK_FALSE(first.done());
             CHECK_FALSE(second.done());
@@ -1468,11 +1466,11 @@ TEST_SUITE("verilator_utils/scheduler")
             scheduler_fixture fixture{};
             auto scheduler{fixture.make_scheduler()};
             const auto parent_lambda{[&] -> ::verilator_utils::task<void> {
-                frame_destruction_counter pool_counter{&destroyed};
+                const frame_destruction_counter pool_counter{&destroyed};
                 auto pool{co_await ::verilator_utils::get_spawn_pool()};
                 ::verilator_utils::event event{};
                 const auto subtask{[&] -> ::verilator_utils::task<void> {
-                    frame_destruction_counter subtask_counter{&destroyed};
+                    const frame_destruction_counter subtask_counter{&destroyed};
                     co_await event;
                 }};
                 pool.add_task(subtask());
@@ -1491,7 +1489,7 @@ TEST_SUITE("verilator_utils/scheduler")
         ::std::size_t destroyed{};
         ::verilator_utils::event event{};
         const auto child_lambda{[&] -> ::verilator_utils::task<void> {
-            frame_destruction_counter counter{&destroyed};
+            const frame_destruction_counter counter{&destroyed};
             co_await event;
         }};
         auto child{child_lambda()};
@@ -1499,7 +1497,7 @@ TEST_SUITE("verilator_utils/scheduler")
             scheduler_fixture fixture{};
             auto scheduler{fixture.make_scheduler()};
             const auto parent{[&] -> ::verilator_utils::task<void> {
-                frame_destruction_counter counter{&destroyed};
+                const frame_destruction_counter counter{&destroyed};
                 co_await child;
             }};
             scheduler.add_task(parent());
@@ -1520,8 +1518,8 @@ TEST_SUITE("verilator_utils/scheduler")
             auto scheduler{fixture.make_scheduler()};
             ::verilator_utils::mailbox<int> mailbox{};
             const auto waiter_lambda{[&] -> ::verilator_utils::task<void> {
-                frame_destruction_counter counter{&destroyed};
-                [[maybe_unused]] auto value{co_await mailbox.get()};
+                const frame_destruction_counter counter{&destroyed};
+                [[maybe_unused]] const auto value{co_await mailbox.get()};
             }};
             auto task{waiter_lambda()};
             scheduler.add_task(::std::move(task));
@@ -1539,13 +1537,13 @@ TEST_SUITE("verilator_utils/scheduler")
             auto scheduler{fixture.make_scheduler()};
             ::verilator_utils::event event{};
 
-            auto make_waiter{[&] -> ::verilator_utils::task<void> {
-                frame_destruction_counter counter{&destroyed};
+            const auto make_waiter{[&] -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
                 co_await event;
                 ++wake_count;
             }};
-            ::verilator_utils::async_task first{scheduler, make_waiter()};
-            ::verilator_utils::async_task second{scheduler, make_waiter()};
+            const ::verilator_utils::async_task first{scheduler, make_waiter()};
+            const ::verilator_utils::async_task second{scheduler, make_waiter()};
             scheduler.loop_once();
             CHECK_FALSE(first.done());
             CHECK_FALSE(second.done());
@@ -1573,13 +1571,13 @@ TEST_SUITE("verilator_utils/scheduler")
             auto scheduler{fixture.make_scheduler()};
             ::verilator_utils::event event{};
 
-            auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
-                frame_destruction_counter counter{&destroyed};
+            const auto make_waiter{[&](this auto, int id) -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
                 co_await event;
                 wake_order.push_back(id);
             }};
-            ::verilator_utils::async_task first{scheduler, make_waiter(1)};
-            ::verilator_utils::async_task second{scheduler, make_waiter(2)};
+            const ::verilator_utils::async_task first{scheduler, make_waiter(1)};
+            const ::verilator_utils::async_task second{scheduler, make_waiter(2)};
             scheduler.loop_once();
             CHECK_FALSE(first.done());
             CHECK_FALSE(second.done());
@@ -1605,15 +1603,15 @@ TEST_SUITE("verilator_utils/scheduler")
             ::verilator_utils::event event{};
             ::std::size_t wake_count{};
 
-            auto waiter{[&](this auto) -> ::verilator_utils::task<void> {
-                frame_destruction_counter counter{&destroyed};
+            const auto waiter{[&](this auto) -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
                 for(::std::size_t i{}; i != 3; ++i)
                 {
                     co_await event;
                     ++wake_count;
                 }
             }};
-            ::verilator_utils::async_task task{scheduler, waiter()};
+            const ::verilator_utils::async_task task{scheduler, waiter()};
             scheduler.loop_once();
             CHECK_FALSE(task.done());
             CHECK_EQ(wake_count, 0u);
@@ -1636,9 +1634,9 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         const auto task_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
-        auto task{task_lambda()};
-        auto handle{task.get_handle()};
-        ::verilator_utils::detail::coroutine_pair pair{handle};
+        const auto task{task_lambda()};
+        const auto handle{task.get_handle()};
+        const ::verilator_utils::detail::coroutine_pair pair{handle};
 
         // 未注册的协程不能移除
         CHECK_THROWS_AS(scheduler.remove_suspend(pair), ::verilator_utils::assertion_error);
@@ -1663,11 +1661,11 @@ TEST_SUITE("verilator_utils/scheduler")
             auto scheduler{fixture.make_scheduler()};
             ::verilator_utils::event event{};
             const auto waiter_lambda{[&] -> ::verilator_utils::task<void> {
-                frame_destruction_counter counter{&destroyed};
+                const frame_destruction_counter counter{&destroyed};
                 co_await event;
             }};
             auto task{waiter_lambda()};
-            auto handle{task.get_handle()};
+            const auto handle{task.get_handle()};
             scheduler.add_task(::std::move(task));
             scheduler.initial_eval();
 
@@ -1712,9 +1710,9 @@ TEST_SUITE("verilator_utils/scheduler")
     {
         const auto first_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
         const auto second_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
-        auto first{first_lambda()};
-        auto second{second_lambda()};
-        ::verilator_utils::detail::coroutine_pair first_pair{first.get_handle()};
+        const auto first{first_lambda()};
+        const auto second{second_lambda()};
+        const ::verilator_utils::detail::coroutine_pair first_pair{first.get_handle()};
         ::verilator_utils::detail::coroutine_pair first_pair_duplicate{first.get_handle()};
         ::verilator_utils::detail::coroutine_pair second_pair{second.get_handle()};
 

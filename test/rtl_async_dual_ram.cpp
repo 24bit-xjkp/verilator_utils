@@ -4,7 +4,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_async_dual_ram_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("dual_ram")
+namespace
 {
     using namespace verilator_utils;
     namespace views = std::views;
@@ -23,22 +23,25 @@ TEST_SUITE("dual_ram")
         vector_slice<CData> write_addr;
         vector_slice<CData> write_data;
 
-        constexpr inline static auto data_width{8zu};
-        constexpr inline static auto addr_width{3zu};
+        constexpr static auto data_width{8zu};
+        constexpr static auto addr_width{3zu};
 
-        inline explicit port_t(dut_t& dut) :
+        explicit port_t(dut_t& dut) :
             read_clk{dut.read_clk}, read_enable{dut.read_enable, boolean}, read_addr{dut.read_addr, addr_width},
             read_data{dut.read_data, data_width}, write_clk{dut.write_clk}, write_enable{dut.write_enable, boolean},
             write_addr{dut.write_addr, addr_width}, write_data{dut.write_data, data_width}
         {
         }
     };
+}  // namespace
 
-    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
-
+TEST_SUITE("dual_ram")
+{
     TEST_CASE("dual_ram")
     {
-        dut_context_t ctx{option};
+        dut_context_t ctx{
+            {.coverage = true, .time_precision = verilator_time_unit::ns}
+        };
         port_t port{ctx.get_dut()};
         using pair_t = std::pair<std::uint8_t, std::uint8_t>;
         mailbox<std::uint8_t> queue{};

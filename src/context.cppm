@@ -31,19 +31,17 @@ export namespace verilator_utils
          * @brief DUT上下文使用的默认命令行参数
          *
          */
-        struct dut_context_default_args
+        struct dut_context_default_args  // NOLINT(misc-use-internal-linkage)
         {
         private:
             template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
             friend struct ::verilator_utils::dut_context;
-            friend int ::main(int, const char**);
+            friend int ::main(int, const char*[]);
 
-            static int argc;
-            static const char** argv;
+            static ::std::span<const char*> args;
         };
 
-        constinit int ::verilator_utils::detail::dut_context_default_args::argc{};
-        constinit const char** ::verilator_utils::detail::dut_context_default_args::argv{};
+        constinit ::std::span<const char*> verilator_utils::detail::dut_context_default_args::args{};
     }  // namespace detail
 }  // namespace verilator_utils
 
@@ -178,8 +176,8 @@ export namespace verilator_utils
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
             context = ::std::make_unique<::VerilatedContext>();
-            context->commandArgs(option.argc.value_or(::verilator_utils::detail::dut_context_default_args::argc),
-                                 option.argv.value_or(::verilator_utils::detail::dut_context_default_args::argv));
+            context->commandArgs(option.argc.value_or(::verilator_utils::detail::dut_context_default_args::args.size()),
+                                 option.argv.value_or(::verilator_utils::detail::dut_context_default_args::args.data()));
             dut = ::std::make_unique<dut_t>(context.get(),
                                             current_test.m_test_suite == nullptr ? "TOP" : current_test.m_test_suite);
             // 覆盖dut内的timescale设置
@@ -311,7 +309,7 @@ export namespace verilator_utils
          * @return 可执行文件所在路径
          */
         [[nodiscard]] ::std::filesystem::path get_binary_path() const
-        { return ::std::filesystem::canonical(::verilator_utils::detail::dut_context_default_args::argv[0]); }
+        { return ::std::filesystem::canonical(::verilator_utils::detail::dut_context_default_args::args[0]); }
 
         /**
          * @brief 判断当前上下文中覆盖率记录是否启用

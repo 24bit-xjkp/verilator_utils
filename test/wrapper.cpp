@@ -72,8 +72,8 @@ TEST_SUITE("verilator_utils/wrapper")
     TEST_CASE("format wrapper reuses packed slice format")
     {
         ::CData data{0xa6u};
-        ::verilator_utils::vector_slice<::CData> source{data, 8, ::verilator_utils::data_format::bin};
-        ::verilator_utils::format_wrapper<::std::uint64_t> value{0x2au, source.dump_format()};
+        const ::verilator_utils::vector_slice<::CData> source{data, 8, ::verilator_utils::data_format::bin};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> value{0x2au, source.dump_format()};
 
         CHECK_EQ(value.value(), 0x2au);
         CHECK_EQ(value.width(), source.width());
@@ -83,23 +83,25 @@ TEST_SUITE("verilator_utils/wrapper")
 
     TEST_CASE("format wrapper converts scalar values for every supported format")
     {
-        ::verilator_utils::format_wrapper<::std::uint64_t> unsigned_value{166u, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::format_wrapper<::std::int64_t> signed_value{-90, 8, ::verilator_utils::data_format::dec_signed};
-        ::verilator_utils::format_wrapper<float> float_value{1.5F, 32, ::verilator_utils::data_format::real_float()};
-        ::verilator_utils::format_wrapper<double> double_value{-2.25, 64, ::verilator_utils::data_format::real_double()};
-        ::verilator_utils::format_wrapper<double> unsigned_fixed_point_value{
+        const ::verilator_utils::format_wrapper<::std::uint64_t> unsigned_value{166u,
+                                                                                8,
+                                                                                ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::format_wrapper<::std::int64_t> signed_value{-90, 8, ::verilator_utils::data_format::dec_signed};
+        const ::verilator_utils::format_wrapper<float> float_value{1.5F, 32, ::verilator_utils::data_format::real_float()};
+        const ::verilator_utils::format_wrapper<double> double_value{-2.25, 64, ::verilator_utils::data_format::real_double()};
+        const ::verilator_utils::format_wrapper<double> unsigned_fixed_point_value{
             1.5,
             4,
             ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
-        ::verilator_utils::format_wrapper<double> signed_fixed_point_value{
+        const ::verilator_utils::format_wrapper<double> signed_fixed_point_value{
             -1.0,
             4,
             ::verilator_utils::data_format::signed_fixed_point(2, 1)};
-        ::verilator_utils::format_wrapper<double> sign_magnitude_value{
+        const ::verilator_utils::format_wrapper<double> sign_magnitude_value{
             -2.5,
             4,
             ::verilator_utils::data_format::sign_mag_fixed_point(2, 1)};
-        ::verilator_utils::format_wrapper<::std::uint64_t> enum_value{
+        const ::verilator_utils::format_wrapper<::std::uint64_t> enum_value{
             2u,
             2,
             ::verilator_utils::data_format::fsm_enum({"idle", "start", "run"})};
@@ -133,9 +135,9 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::VlWide<2> wide_data{0x89ab'cdefu, 0x0000'0123u};
         ::verilator_utils::format_wrapper<::VlWide<2>> wide_value{wide_data, 48};
-        ::verilator_utils::format_wrapper<::VlWide<2>> word_aligned_hex{wide_data, 64};
+        const ::verilator_utils::format_wrapper<::VlWide<2>> word_aligned_hex{wide_data, 64};
         wide_data.at(1) = 0;
-        ::verilator_utils::format_wrapper<::VlWide<2>> word_aligned_bin{wide_data, 32, ::verilator_utils::data_format::bin};
+        const ::verilator_utils::format_wrapper<::VlWide<2>> word_aligned_bin{wide_data, 32, ::verilator_utils::data_format::bin};
 
         static_assert(::std::same_as<decltype(wide_value.to_verilator()), const ::VlWide<2>&>);
         CHECK_EQ(wide_value.value().at(0), 0x89ab'cdefu);
@@ -146,21 +148,23 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(word_aligned_bin.to_string(), "0b10001001101010111100110111101111");
 
         ::VlWide<2> slice_data{0x89ab'cdefu, 0x0000'0123u};
-        ::verilator_utils::vector_slice<::VlWide<2>> slice{slice_data, 47, 0};
+        const ::verilator_utils::vector_slice<::VlWide<2>> slice{slice_data, 47, 0};
         CHECK(slice == wide_value);
 
         ::QData data{0x0000'0123'89ab'cdefu};
         ::verilator_utils::format_wrapper<::std::uint64_t> comparison_value{0x89ab'cdefu,
                                                                             32,
                                                                             ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::vector_slice<::QData> low_slice{data, 31, 0, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::vector_slice<::QData> low_slice{data, 31, 0, ::verilator_utils::data_format::dec_unsigned};
         CHECK_EQ(low_slice <=> comparison_value, ::std::partial_ordering::equivalent);
         CHECK(low_slice == comparison_value);
     }
 
     TEST_CASE("format wrapper equality compares values across scalar and wide types")
     {
-        ::verilator_utils::format_wrapper<::std::uint64_t> unsigned_value{166u, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> unsigned_value{166u,
+                                                                                8,
+                                                                                ::verilator_utils::data_format::dec_unsigned};
         ::verilator_utils::format_wrapper<::std::uint64_t> same_value{166u, 8, ::verilator_utils::data_format::dec_unsigned};
         ::verilator_utils::format_wrapper<::std::uint64_t> different_value{167u, 8, ::verilator_utils::data_format::dec_unsigned};
         CHECK(unsigned_value == same_value);
@@ -179,15 +183,15 @@ TEST_SUITE("verilator_utils/wrapper")
             ::verilator_utils::assertion_error);
 
         // bool与整数按存储值比较
-        ::verilator_utils::format_wrapper<bool> boolean_value{true, 1, ::verilator_utils::data_format::boolean};
+        const ::verilator_utils::format_wrapper<bool> boolean_value{true, 1, ::verilator_utils::data_format::boolean};
         CHECK(boolean_value ==
               ::verilator_utils::format_wrapper<::std::uint64_t>{1u, 1, ::verilator_utils::data_format::dec_unsigned});
         CHECK_FALSE(boolean_value ==
                     ::verilator_utils::format_wrapper<::std::uint64_t>{0u, 1, ::verilator_utils::data_format::dec_unsigned});
 
         // VlWide之间按存储内容比较
-        ::VlWide<2> wide_low{0x89ab'cdefu, 0x0000'0123u};
-        ::VlWide<2> wide_high_word_different{0x89ab'cdefu, 0x0000'0124u};
+        const ::VlWide<2> wide_low{0x89ab'cdefu, 0x0000'0123u};
+        const ::VlWide<2> wide_high_word_different{0x89ab'cdefu, 0x0000'0124u};
         ::verilator_utils::format_wrapper<::VlWide<2>> wide_value{wide_low, 48};
         ::verilator_utils::format_wrapper<::VlWide<2>> same_wide_value{wide_low, 48};
         ::verilator_utils::format_wrapper<::VlWide<2>> different_wide_value{wide_high_word_different, 48};
@@ -207,16 +211,16 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_FALSE(missing_high_word == wide_value);
 
         // 低字非零、高字为零时仍按64位合并值比较
-        ::VlWide<2> low_word_only{0x0000'00a5u, 0u};
-        ::verilator_utils::format_wrapper<::VlWide<2>> low_wide_value{low_word_only, 8};
+        const ::VlWide<2> low_word_only{0x0000'00a5u, 0u};
+        const ::verilator_utils::format_wrapper<::VlWide<2>> low_wide_value{low_word_only, 8};
         CHECK(low_wide_value ==
               ::verilator_utils::format_wrapper<::std::uint64_t>{0xa5u, 8, ::verilator_utils::data_format::hex});
         CHECK_FALSE(low_wide_value ==
                     ::verilator_utils::format_wrapper<::std::uint64_t>{0xa6u, 8, ::verilator_utils::data_format::hex});
 
         // 单字VlWide与标量比较
-        ::VlWide<1> single_word{0x0000'00a5u};
-        ::verilator_utils::format_wrapper<::VlWide<1>> single_word_value{single_word, 8};
+        const ::VlWide<1> single_word{0x0000'00a5u};
+        const ::verilator_utils::format_wrapper<::VlWide<1>> single_word_value{single_word, 8};
         CHECK(single_word_value ==
               ::verilator_utils::format_wrapper<::std::uint64_t>{0xa5u, 8, ::verilator_utils::data_format::hex});
     }
@@ -237,9 +241,9 @@ TEST_SUITE("verilator_utils/wrapper")
         static_assert(::verilator_utils::format_wrapper<::VlWide<2>>{constant_wide, 8} ==
                       ::verilator_utils::format_wrapper<::std::uint64_t>{0xabu, 8, ::verilator_utils::data_format::hex});
 
-        ::verilator_utils::format_wrapper<::std::uint64_t> lower{10u, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::format_wrapper<::std::uint64_t> equal{10u, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::format_wrapper<::std::uint64_t> higher{11u, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> lower{10u, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> equal{10u, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> higher{11u, 8, ::verilator_utils::data_format::dec_unsigned};
         static_assert(::std::same_as<decltype(lower <=> higher), ::std::strong_ordering>);
         CHECK_LT(lower, higher);
         CHECK_LE(lower, equal);
@@ -249,14 +253,14 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(lower <=> equal, ::std::strong_ordering::equivalent);
 
         // 有符号和无符号混合比较按数值语义进行
-        ::verilator_utils::format_wrapper<::std::int64_t> negative{-5, 8, ::verilator_utils::data_format::dec_signed};
-        ::verilator_utils::format_wrapper<::std::uint64_t> positive{5u, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::format_wrapper<::std::int64_t> negative{-5, 8, ::verilator_utils::data_format::dec_signed};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> positive{5u, 8, ::verilator_utils::data_format::dec_unsigned};
         CHECK_LT(negative, positive);
         CHECK_GT(positive, negative);
         CHECK_EQ(negative <=> positive, ::std::strong_ordering::less);
 
         // 位相同但数值不同的混合符号值：相等与三路比较必须保持一致
-        ::verilator_utils::format_wrapper<::std::int64_t> negative_one{-1, 64, ::verilator_utils::data_format::dec_signed};
+        const ::verilator_utils::format_wrapper<::std::int64_t> negative_one{-1, 64, ::verilator_utils::data_format::dec_signed};
         ::verilator_utils::format_wrapper<::std::uint64_t> all_ones{0xffff'ffff'ffff'ffffu,
                                                                     64,
                                                                     ::verilator_utils::data_format::dec_unsigned};
@@ -266,11 +270,11 @@ TEST_SUITE("verilator_utils/wrapper")
 
     TEST_CASE("format wrapper compares floating point values with partial ordering")
     {
-        ::verilator_utils::format_wrapper<double> finite{1.5, 64, ::verilator_utils::data_format::real_double()};
-        ::verilator_utils::format_wrapper<double> larger{2.5, 64, ::verilator_utils::data_format::real_double()};
-        ::verilator_utils::format_wrapper<double> nan{::std::numeric_limits<double>::quiet_NaN(),
-                                                      64,
-                                                      ::verilator_utils::data_format::real_double()};
+        const ::verilator_utils::format_wrapper<double> finite{1.5, 64, ::verilator_utils::data_format::real_double()};
+        const ::verilator_utils::format_wrapper<double> larger{2.5, 64, ::verilator_utils::data_format::real_double()};
+        const ::verilator_utils::format_wrapper<double> nan{::std::numeric_limits<double>::quiet_NaN(),
+                                                            64,
+                                                            ::verilator_utils::data_format::real_double()};
 
         static_assert(::std::same_as<decltype(finite <=> larger), ::std::partial_ordering>);
         CHECK_LT(finite, larger);
@@ -280,20 +284,22 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(nan <=> finite, ::std::partial_ordering::unordered);
 
         // float与double互比
-        ::verilator_utils::format_wrapper<float> float_value{1.5F, 32, ::verilator_utils::data_format::real_float()};
+        const ::verilator_utils::format_wrapper<float> float_value{1.5F, 32, ::verilator_utils::data_format::real_float()};
         CHECK_EQ(float_value <=> finite, ::std::partial_ordering::equivalent);
 
         // 整数与浮点互比时整数值提升为浮点数
-        ::verilator_utils::format_wrapper<::std::uint64_t> integer_value{3u, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> integer_value{3u,
+                                                                               8,
+                                                                               ::verilator_utils::data_format::dec_unsigned};
         CHECK_EQ(integer_value <=> finite, ::std::partial_ordering::greater);
         CHECK_EQ(finite <=> integer_value, ::std::partial_ordering::less);
     }
 
     TEST_CASE("format wrapper rejects three way comparison for unsupported formats")
     {
-        ::verilator_utils::format_wrapper<::std::uint64_t> hex_value{0xau, 8, ::verilator_utils::data_format::hex};
-        ::verilator_utils::format_wrapper<::std::uint64_t> bin_value{0xau, 8, ::verilator_utils::data_format::bin};
-        ::verilator_utils::format_wrapper<bool> boolean_value{true, 1, ::verilator_utils::data_format::boolean};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> hex_value{0xau, 8, ::verilator_utils::data_format::hex};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> bin_value{0xau, 8, ::verilator_utils::data_format::bin};
+        const ::verilator_utils::format_wrapper<bool> boolean_value{true, 1, ::verilator_utils::data_format::boolean};
 
         CHECK_THROWS_AS((void)(hex_value <=> hex_value), ::verilator_utils::assertion_error);
         CHECK_THROWS_AS((void)(bin_value <=> bin_value), ::verilator_utils::assertion_error);
@@ -309,7 +315,7 @@ TEST_SUITE("verilator_utils/wrapper")
         static_assert(::std::same_as<::verilator_utils::approx<::std::uint64_t>::value_type, ::std::uint64_t>);
 
         // 构造函数与访问器一致地保存误差范围
-        ::verilator_utils::approx<::std::uint64_t> unsigned_tolerance{4zu, 0.25};
+        const ::verilator_utils::approx<::std::uint64_t> unsigned_tolerance{4zu, 0.25};
         CHECK_EQ(unsigned_tolerance.get_atol(), 4zu);
         CHECK_EQ(unsigned_tolerance.get_rtol(), 0.25);
 
@@ -634,7 +640,7 @@ TEST_SUITE("verilator_utils/wrapper")
 
         // 布尔格式的位切片不支持三路比较，但相等比较可用
         ::CData boolean_data{1u};
-        ::verilator_utils::bit_slice<::CData> boolean_bit{boolean_data, 0, ::verilator_utils::data_format::boolean};
+        const ::verilator_utils::bit_slice<::CData> boolean_bit{boolean_data, 0, ::verilator_utils::data_format::boolean};
         CHECK_THROWS_AS((void)(boolean_bit <=> bit), ::verilator_utils::assertion_error);
         CHECK(boolean_bit == bit);
     }
@@ -642,15 +648,15 @@ TEST_SUITE("verilator_utils/wrapper")
     TEST_CASE("bit slice dumps current value and format")
     {
         ::CData data{1u};
-        ::verilator_utils::bit_slice<::CData> unsigned_bit{data, 0};
+        const ::verilator_utils::bit_slice<::CData> unsigned_bit{data, 0};
         ::verilator_utils::bit_slice<::CData> boolean_bit{data, 0, ::verilator_utils::data_format::boolean};
 
-        auto unsigned_dump{unsigned_bit.dump()};
-        auto boolean_dump{boolean_bit.dump<bool>()};
+        const auto unsigned_dump{unsigned_bit.dump()};
+        const auto boolean_dump{boolean_bit.dump<bool>()};
         auto [width, format]{boolean_bit.dump_format()};
 
-        static_assert(::std::same_as<decltype(unsigned_dump), ::verilator_utils::format_wrapper<::std::uint64_t>>);
-        static_assert(::std::same_as<decltype(boolean_dump), ::verilator_utils::format_wrapper<bool>>);
+        static_assert(::std::same_as<decltype(unsigned_dump), const ::verilator_utils::format_wrapper<::std::uint64_t>>);
+        static_assert(::std::same_as<decltype(boolean_dump), const ::verilator_utils::format_wrapper<bool>>);
         CHECK_EQ(unsigned_dump.value(), 1u);
         CHECK_EQ(unsigned_dump.width(), 1u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(unsigned_dump.format()));
@@ -714,8 +720,8 @@ TEST_SUITE("verilator_utils/wrapper")
     TEST_CASE("vector slice reads scalar ranges and individual bits")
     {
         ::IData data{0x1234'5678u};
-        ::verilator_utils::vector_slice<::IData> byte_slice{data, 15, 8};
-        ::verilator_utils::vector_slice<::IData> low_nibble{data, 3, 0};
+        const ::verilator_utils::vector_slice<::IData> byte_slice{data, 15, 8};
+        const ::verilator_utils::vector_slice<::IData> low_nibble{data, 3, 0};
 
         CHECK_EQ(byte_slice.width(), 8u);
         CHECK_EQ(static_cast<::std::uint64_t>(byte_slice), 0x56u);
@@ -732,8 +738,8 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::CData data{0b1010'0110u};
         ::verilator_utils::vector_slice<::CData> binary{data, 8, ::verilator_utils::data_format::bin};
-        ::verilator_utils::vector_slice<::CData> unsigned_value{data, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::vector_slice<::CData> signed_value{data, 8, ::verilator_utils::data_format::dec_signed};
+        const ::verilator_utils::vector_slice<::CData> unsigned_value{data, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::vector_slice<::CData> signed_value{data, 8, ::verilator_utils::data_format::dec_signed};
 
         CHECK_EQ(binary.format().index(), 2u);
         CHECK_EQ(binary.to_string(), "0b10100110");
@@ -754,7 +760,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(bool_value.to_string(), "true");
         CHECK_EQ(::std::format("{}"sv, bool_value), "true");
 
-        data = 0;
+        data = 0;  // NOLINT(clang-analyzer-deadcode.DeadStores)
         CHECK_EQ(bool_value.to_string(), "false");
     }
 
@@ -762,11 +768,13 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::IData float_data{::std::bit_cast<::std::uint32_t>(1.5F)};
         ::QData double_data{::std::bit_cast<::std::uint64_t>(-2.25)};
-        ::verilator_utils::vector_slice<::IData> float_value{float_data, 32, ::verilator_utils::data_format::real_float()};
-        ::verilator_utils::vector_slice<::QData> double_value{double_data, 64, ::verilator_utils::data_format::real_double()};
-        ::verilator_utils::vector_slice<::IData> hex_float_value{float_data,
-                                                                 32,
-                                                                 ::verilator_utils::data_format::real_float(true)};
+        const ::verilator_utils::vector_slice<::IData> float_value{float_data, 32, ::verilator_utils::data_format::real_float()};
+        const ::verilator_utils::vector_slice<::QData> double_value{double_data,
+                                                                    64,
+                                                                    ::verilator_utils::data_format::real_double()};
+        const ::verilator_utils::vector_slice<::IData> hex_float_value{float_data,
+                                                                       32,
+                                                                       ::verilator_utils::data_format::real_float(true)};
 
         CHECK_EQ(::std::get<float>(float_value.to_underlying()), 1.5F);
         CHECK_EQ(float_value.to_string(), "1.5");
@@ -781,15 +789,16 @@ TEST_SUITE("verilator_utils/wrapper")
         ::CData signed_data{0b1110u};
         ::CData sign_magnitude_data{0b1101u};
 
-        ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data,
-                                                                4,
-                                                                ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
-        ::verilator_utils::vector_slice<::CData> signed_value{signed_data,
-                                                              4,
-                                                              ::verilator_utils::data_format::signed_fixed_point(2, 1)};
-        ::verilator_utils::vector_slice<::CData> sign_magnitude_value{sign_magnitude_data,
+        const ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data,
                                                                       4,
-                                                                      ::verilator_utils::data_format::sign_mag_fixed_point(2, 1)};
+                                                                      ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
+        const ::verilator_utils::vector_slice<::CData> signed_value{signed_data,
+                                                                    4,
+                                                                    ::verilator_utils::data_format::signed_fixed_point(2, 1)};
+        const ::verilator_utils::vector_slice<::CData> sign_magnitude_value{
+            sign_magnitude_data,
+            4,
+            ::verilator_utils::data_format::sign_mag_fixed_point(2, 1)};
 
         CHECK_EQ(::std::get<double>(unsigned_value.to_underlying()), 1.5);
         CHECK_EQ(unsigned_value.to_string(), "1.5");
@@ -807,21 +816,26 @@ TEST_SUITE("verilator_utils/wrapper")
         ::QData double_data{::std::bit_cast<::std::uint64_t>(-2.25)};
         ::CData fixed_point_data{0b0110u};
         ::CData boolean_data{1u};
-        ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
-        ::verilator_utils::vector_slice<::IData> float_value{float_data, 32, ::verilator_utils::data_format::real_float()};
-        ::verilator_utils::vector_slice<::QData> double_value{double_data, 64, ::verilator_utils::data_format::real_double()};
-        ::verilator_utils::vector_slice<::CData> fixed_point_value{fixed_point_data,
-                                                                   4,
-                                                                   ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
-        ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
+        const ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data,
+                                                                      8,
+                                                                      ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
+        const ::verilator_utils::vector_slice<::IData> float_value{float_data, 32, ::verilator_utils::data_format::real_float()};
+        const ::verilator_utils::vector_slice<::QData> double_value{double_data,
+                                                                    64,
+                                                                    ::verilator_utils::data_format::real_double()};
+        const ::verilator_utils::vector_slice<::CData> fixed_point_value{
+            fixed_point_data,
+            4,
+            ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
+        const ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
 
-        auto unsigned_dump{unsigned_value.dump()};
-        auto signed_dump{signed_value.dump<::std::int64_t>()};
-        auto float_dump{float_value.dump<float>()};
-        auto double_dump{double_value.dump<double>()};
-        auto fixed_point_dump{fixed_point_value.dump<double>()};
-        auto boolean_dump{boolean_value.dump<bool>()};
+        const auto unsigned_dump{unsigned_value.dump()};
+        const auto signed_dump{signed_value.dump<::std::int64_t>()};
+        const auto float_dump{float_value.dump<float>()};
+        const auto double_dump{double_value.dump<double>()};
+        const auto fixed_point_dump{fixed_point_value.dump<double>()};
+        const auto boolean_dump{boolean_value.dump<bool>()};
 
         CHECK_EQ(unsigned_dump.value(), 166u);
         CHECK_EQ(unsigned_dump.to_string(), "166");
@@ -836,7 +850,7 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK(boolean_dump.value());
         CHECK_EQ(boolean_dump.to_string(), "true");
 
-        unsigned_data = 0;
+        unsigned_data = 0;  // NOLINT(clang-analyzer-deadcode.DeadStores)
         CHECK_EQ(unsigned_dump.value(), 166u);
         CHECK_EQ(unsigned_dump.to_string(), "166");
     }
@@ -850,7 +864,7 @@ TEST_SUITE("verilator_utils/wrapper")
         ::CData valid_data{0b10u};
         ::CData invalid_data{0b11u};
         ::verilator_utils::vector_slice<::CData> valid_value{valid_data, 2, format};
-        ::verilator_utils::vector_slice<::CData> invalid_value{invalid_data, 2, format};
+        const ::verilator_utils::vector_slice<::CData> invalid_value{invalid_data, 2, format};
 
         CHECK_EQ(::std::get<::std::uint64_t>(valid_value.to_underlying()), 2u);
         CHECK(valid_value.is_valid());
@@ -867,7 +881,7 @@ TEST_SUITE("verilator_utils/wrapper")
             {"idle", "read", "write", "done"}
         };
         ::CData data{0b11u};
-        ::verilator_utils::vector_slice<::CData> value{data, 2, format};
+        const ::verilator_utils::vector_slice<::CData> value{data, 2, format};
 
         CHECK_EQ(format.min_width(), 2u);
         CHECK(value.is_valid());
@@ -878,8 +892,8 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         using enum_format = ::verilator_utils::data_format::fsm_enum_t;
         ::CData data{0b101u};
-        ::verilator_utils::vector_slice<::CData> value{data, 3, enum_format{{"idle", "read", "write", "done"}}};
-        auto nested{value[1, 0]};
+        const ::verilator_utils::vector_slice<::CData> value{data, 3, enum_format{{"idle", "read", "write", "done"}}};
+        const auto nested{value[1, 0]};
 
         CHECK_EQ(nested.width(), 2u);
         CHECK(nested.is_valid());
@@ -890,8 +904,10 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::CData unsigned_data{42u};
         ::CData signed_data{0xf6u};
-        ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
+        const ::verilator_utils::vector_slice<::CData> unsigned_value{unsigned_data,
+                                                                      8,
+                                                                      ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
 
         CHECK_LT(unsigned_value, ::std::uint64_t{43});
         CHECK_LE(unsigned_value, ::std::uint64_t{42});
@@ -905,8 +921,10 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::IData finite_data{::std::bit_cast<::std::uint32_t>(1.5F)};
         ::IData nan_data{::std::bit_cast<::std::uint32_t>(::std::numeric_limits<float>::quiet_NaN())};
-        ::verilator_utils::vector_slice<::IData> finite_value{finite_data, 32, ::verilator_utils::data_format::real_float()};
-        ::verilator_utils::vector_slice<::IData> nan_value{nan_data, 32, ::verilator_utils::data_format::real_float()};
+        const ::verilator_utils::vector_slice<::IData> finite_value{finite_data,
+                                                                    32,
+                                                                    ::verilator_utils::data_format::real_float()};
+        const ::verilator_utils::vector_slice<::IData> nan_value{nan_data, 32, ::verilator_utils::data_format::real_float()};
 
         CHECK_LT(finite_value, 2.0F);
         CHECK_GT(finite_value, 1.0F);
@@ -920,10 +938,10 @@ TEST_SUITE("verilator_utils/wrapper")
         ::CData equal_data{10u};
         ::CData higher_data{11u};
         ::CData signed_data{0xffu};
-        ::verilator_utils::vector_slice<::CData> lower{lower_data, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::vector_slice<::CData> equal{equal_data, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::vector_slice<::CData> higher{higher_data, 8, ::verilator_utils::data_format::dec_unsigned};
-        ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
+        const ::verilator_utils::vector_slice<::CData> lower{lower_data, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::vector_slice<::CData> equal{equal_data, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::vector_slice<::CData> higher{higher_data, 8, ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::vector_slice<::CData> signed_value{signed_data, 8, ::verilator_utils::data_format::dec_signed};
 
         CHECK_LT(lower, higher);
         CHECK_GT(higher, lower);
@@ -951,15 +969,15 @@ TEST_SUITE("verilator_utils/wrapper")
 
         // VlWide向量切片与位切片比较
         ::VlWide<2> wide_vector_data{0x0000'0001u, 0u};
-        ::verilator_utils::vector_slice<::VlWide<2>> wide_one_value{wide_vector_data,
-                                                                    64,
-                                                                    ::verilator_utils::data_format::dec_unsigned};
+        const ::verilator_utils::vector_slice<::VlWide<2>> wide_one_value{wide_vector_data,
+                                                                          64,
+                                                                          ::verilator_utils::data_format::dec_unsigned};
         CHECK_EQ(wide_one_value <=> one_bit, ::std::partial_ordering::equivalent);
         CHECK(wide_one_value == one_bit);
 
         // 布尔格式不能用于三路比较，但相等比较可用
         ::CData boolean_data{1u};
-        ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
+        const ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
         ::verilator_utils::bit_slice<::CData> boolean_bit{boolean_data, 0, ::verilator_utils::data_format::boolean};
         CHECK_THROWS_AS((void)(boolean_value <=> one_bit), ::verilator_utils::assertion_error);
         CHECK_THROWS_AS((void)(one_value <=> boolean_bit), ::verilator_utils::assertion_error);
@@ -970,9 +988,9 @@ TEST_SUITE("verilator_utils/wrapper")
     {
         ::CData data{0xau};
         ::CData boolean_data{1u};
-        ::verilator_utils::vector_slice<::CData> hex_value{data, 4, ::verilator_utils::data_format::hex};
-        ::verilator_utils::vector_slice<::CData> bin_value{data, 4, ::verilator_utils::data_format::bin};
-        ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
+        const ::verilator_utils::vector_slice<::CData> hex_value{data, 4, ::verilator_utils::data_format::hex};
+        const ::verilator_utils::vector_slice<::CData> bin_value{data, 4, ::verilator_utils::data_format::bin};
+        const ::verilator_utils::vector_slice<::CData> boolean_value{boolean_data, 1, ::verilator_utils::data_format::boolean};
 
         CHECK_THROWS_AS((void)(hex_value <=> ::std::uint64_t{10}), ::verilator_utils::assertion_error);
         CHECK_THROWS_AS((void)(bin_value <=> ::std::uint64_t{10}), ::verilator_utils::assertion_error);
@@ -986,10 +1004,10 @@ TEST_SUITE("verilator_utils/wrapper")
     TEST_CASE("vector slice conversion changes format and preserves range")
     {
         ::IData data{0x0000'00a6u};
-        ::verilator_utils::vector_slice<::IData> value{data, 7, 0};
-        auto converted{value.convert(::verilator_utils::data_format::dec_unsigned)};
-        auto nested{value[3, 0]};
-        auto nested_with_format{value[3, 0, ::verilator_utils::data_format::dec_unsigned]};
+        const ::verilator_utils::vector_slice<::IData> value{data, 7, 0};
+        const auto converted{value.convert(::verilator_utils::data_format::dec_unsigned)};
+        const auto nested{value[3, 0]};
+        const auto nested_with_format{value[3, 0, ::verilator_utils::data_format::dec_unsigned]};
 
         CHECK_EQ(converted.width(), 8u);
         CHECK(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(converted.format()));
@@ -1005,9 +1023,9 @@ TEST_SUITE("verilator_utils/wrapper")
         ::SData sdata{0x12abu};
         ::QData qdata{0x0123'4567'89ab'cdefu};
 
-        ::verilator_utils::vector_slice<::CData> cdata_slice{cdata, 7, 4};
-        ::verilator_utils::vector_slice<::SData> sdata_slice{sdata, 11, 4};
-        ::verilator_utils::vector_slice<::QData> qdata_slice{qdata, 39, 8};
+        const ::verilator_utils::vector_slice<::CData> cdata_slice{cdata, 7, 4};
+        const ::verilator_utils::vector_slice<::SData> sdata_slice{sdata, 11, 4};
+        const ::verilator_utils::vector_slice<::QData> qdata_slice{qdata, 39, 8};
 
         CHECK_EQ(cdata_slice.width(), 4u);
         CHECK_EQ(static_cast<::std::uint64_t>(cdata_slice), 0xau);
@@ -1021,9 +1039,9 @@ TEST_SUITE("verilator_utils/wrapper")
     TEST_CASE("vector slice reads wide ranges across words")
     {
         ::VlWide<3> data{0x89ab'cdefu, 0x0123'4567u, 0x0000'00f0u};
-        ::verilator_utils::vector_slice<::VlWide<3>> full_slice{data, 72};
-        ::verilator_utils::vector_slice<::VlWide<3>> cross_word_slice{data, 39, 28};
-        ::verilator_utils::vector_slice<::VlWide<3>> high_slice{data, 71, 64};
+        const ::verilator_utils::vector_slice<::VlWide<3>> full_slice{data, 72};
+        const ::verilator_utils::vector_slice<::VlWide<3>> cross_word_slice{data, 39, 28};
+        const ::verilator_utils::vector_slice<::VlWide<3>> high_slice{data, 71, 64};
 
         auto full_value{static_cast<::VlWide<3>>(full_slice)};
         auto cross_word_value{static_cast<::VlWide<3>>(cross_word_slice)};
@@ -1046,12 +1064,12 @@ TEST_SUITE("verilator_utils/wrapper")
     TEST_CASE("wide vector slice dumps aligned value and format")
     {
         ::VlWide<3> data{0x89ab'cdefu, 0x0123'4567u, 0x0000'00f0u};
-        ::verilator_utils::vector_slice<::VlWide<3>> value{data, 67, 12, ::verilator_utils::data_format::bin};
+        const ::verilator_utils::vector_slice<::VlWide<3>> value{data, 67, 12, ::verilator_utils::data_format::bin};
 
-        auto dump{value.dump()};
+        const auto dump{value.dump()};
         auto [width, format]{value.dump_format()};
 
-        static_assert(::std::same_as<decltype(dump), ::verilator_utils::format_wrapper<::VlWide<3>>>);
+        static_assert(::std::same_as<decltype(dump), const ::verilator_utils::format_wrapper<::VlWide<3>>>);
         CHECK_EQ(dump.value().at(0), 0x5678'9abcu);
         CHECK_EQ(dump.value().at(1), 0x0000'1234u);
         CHECK_EQ(dump.value().at(2), 0u);
@@ -1096,7 +1114,7 @@ TEST_SUITE("verilator_utils/wrapper")
     TEST_CASE("vector slice assigns wide value without touching surrounding bits")
     {
         ::VlWide<3> data{0xffff'ffffu, 0xffff'ffffu, 0x0000'00ffu};
-        ::VlWide<3> value{0x89ab'cdefu, 0x0000'0123u, 0u};
+        const ::VlWide<3> value{0x89ab'cdefu, 0x0000'0123u, 0u};
         ::verilator_utils::vector_slice<::VlWide<3>> middle_bits{data, 67, 12};
 
         middle_bits = value;
@@ -1112,7 +1130,7 @@ TEST_SUITE("verilator_utils/wrapper")
         ::IData destination{0xffff'0000u};
         ::SData source{0x12abu};
         ::verilator_utils::vector_slice<::IData> destination_byte{destination, 15, 8};
-        ::verilator_utils::vector_slice<::SData> source_byte{source, 7, 0};
+        const ::verilator_utils::vector_slice<::SData> source_byte{source, 7, 0};
 
         destination_byte = source_byte;
         CHECK_EQ(destination, 0xffff'ab00u);
@@ -1124,7 +1142,7 @@ TEST_SUITE("verilator_utils/wrapper")
         ::VlWide<2> destination{0xffff'ffffu, 0xffff'ffffu};
         ::QData source{0x0000'0123'89ab'cdefu};
         ::verilator_utils::vector_slice<::VlWide<2>> destination_bits{destination, 55, 8};
-        ::verilator_utils::vector_slice<::QData> source_bits{source, 47, 0};
+        const ::verilator_utils::vector_slice<::QData> source_bits{source, 47, 0};
 
         destination_bits = source_bits;
 
@@ -1139,7 +1157,7 @@ TEST_SUITE("verilator_utils/wrapper")
         ::QData destination{0xffff'ffff'ffff'ffffu};
         ::VlWide<2> source{0x89ab'cdefu, 0x0000'0123u};
         ::verilator_utils::vector_slice<::QData> destination_bits{destination, 47, 0};
-        ::verilator_utils::vector_slice<::VlWide<2>> source_bits{source, 47, 0};
+        const ::verilator_utils::vector_slice<::VlWide<2>> source_bits{source, 47, 0};
 
         destination_bits = source_bits;
 
@@ -1196,7 +1214,7 @@ TEST_SUITE("verilator_utils/wrapper")
         source_data[0] = ::VlWide<2>{0x89ab'cdefu, 0x0000'0123u};
         source_data[1] = ::VlWide<2>{0x7654'3210u, 0x0000'fedcu};
         ::verilator_utils::unpacked_array<::VlWide<2>, 2> destination{destination_data, 48};
-        ::verilator_utils::unpacked_array<::VlWide<2>, 2> source{source_data, 48};
+        const ::verilator_utils::unpacked_array<::VlWide<2>, 2> source{source_data, 48};
 
         destination = source;
 
@@ -1212,8 +1230,8 @@ TEST_SUITE("verilator_utils/wrapper")
     TEST_CASE("make unpacked array recursively wraps multidimensional arrays")
     {
         ::VlUnpacked<::CData, 4> one_dimensional_data{};
-        auto one_dimensional_wrapper{::verilator_utils::make_unpacked_array(one_dimensional_data, 8)};
-        static_assert(::std::same_as<decltype(one_dimensional_wrapper), ::verilator_utils::unpacked_array<::CData, 4>>);
+        const auto one_dimensional_wrapper{::verilator_utils::make_unpacked_array(one_dimensional_data, 8)};
+        static_assert(::std::same_as<decltype(one_dimensional_wrapper), const ::verilator_utils::unpacked_array<::CData, 4>>);
 
         ::VlUnpacked<::VlUnpacked<::VlUnpacked<::CData, 4>, 3>, 2> data{};
         data[0][0][0] = 0x12u;
@@ -1256,10 +1274,10 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_THROWS_AS((::verilator_utils::format_wrapper<bool>{false, 9, ::verilator_utils::data_format::boolean}),
                         ::verilator_utils::assertion_error);
 
-        ::VlWide<2> two_words{};
+        const ::VlWide<2> two_words{};
         CHECK_THROWS_AS((::verilator_utils::format_wrapper<::VlWide<2>>{two_words, 65, ::verilator_utils::data_format::hex}),
                         ::verilator_utils::assertion_error);
-        ::VlWide<3> three_words{};
+        const ::VlWide<3> three_words{};
         CHECK_THROWS_AS((::verilator_utils::format_wrapper<::VlWide<3>>{three_words, 97, ::verilator_utils::data_format::hex}),
                         ::verilator_utils::assertion_error);
 
@@ -1277,15 +1295,9 @@ TEST_SUITE("verilator_utils/wrapper")
                         ::verilator_utils::assertion_error);
 
         // 错误消息携带宽度和上限
-        try
-        {
-            ::verilator_utils::format_wrapper<::std::uint64_t> invalid{0u, 65, ::verilator_utils::data_format::hex};
-            FAIL("expected assertion_error for oversized width"sv);
-        }
-        catch(const ::verilator_utils::assertion_error& error)
-        {
-            CHECK_EQ(error.message(), "数据宽度65超出上限64"sv);
-        }
+        CHECK_THROWS_WITH_AS((::verilator_utils::format_wrapper{0zu, 65, ::verilator_utils::data_format::hex}),
+                             ::doctest::Contains{"数据宽度65超出上限64"},
+                             ::verilator_utils::assertion_error);
     }
 
     TEST_CASE("bit slice rejects index exceeding storage capacity")
@@ -1310,26 +1322,19 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(static_cast<::std::uint64_t>(highest_cdata_bit), 0u);
         highest_cdata_bit = 1;
         CHECK_EQ(cdata, 0x80u);
-        ::verilator_utils::bit_slice<::VlWide<2>> highest_wide_bit{wide_data, 63};
+        const ::verilator_utils::bit_slice<::VlWide<2>> highest_wide_bit{wide_data, 63};
         CHECK_EQ(static_cast<::std::uint64_t>(highest_wide_bit), 0u);
 
         // 错误消息携带位索引和上限
-        try
-        {
-            ::CData data{0u};
-            ::verilator_utils::bit_slice<::CData> invalid{data, 8};
-            FAIL("expected assertion_error for out of range bit index"sv);
-        }
-        catch(const ::verilator_utils::assertion_error& error)
-        {
-            CHECK_EQ(error.message(), "位索引8超出上限8"sv);
-        }
+        CHECK_THROWS_WITH_AS((::verilator_utils::bit_slice{cdata, 8}),
+                             ::doctest::Contains{"位索引8超出上限8"},
+                             ::verilator_utils::assertion_error);
     }
 
     TEST_CASE("vector slice rejects upper bound exceeding storage capacity")
     {
-        ::CData cdata{0u};
-        ::QData qdata{0u};
+        ::CData cdata{};
+        ::QData qdata{};
 
         // 切片上界必须严格小于 value_type 的存储位宽
         CHECK_THROWS_AS((::verilator_utils::vector_slice<::CData>{cdata, 8, 0}), ::verilator_utils::assertion_error);
@@ -1341,23 +1346,16 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_THROWS_AS((::verilator_utils::vector_slice<::VlWide<3>>{wide_data, 1024, 0}), ::verilator_utils::assertion_error);
 
         // 边界值：上界恰好为存储位宽减一时仍然合法
-        ::verilator_utils::vector_slice<::CData> full_cdata{cdata, 7, 0};
+        const ::verilator_utils::vector_slice<::CData> full_cdata{cdata, 7, 0};
         CHECK_EQ(full_cdata.width(), 8u);
         CHECK_EQ(static_cast<::std::uint64_t>(full_cdata), 0u);
-        ::verilator_utils::vector_slice<::VlWide<3>> full_wide{wide_data, 95, 0};
+        const ::verilator_utils::vector_slice<::VlWide<3>> full_wide{wide_data, 95, 0};
         CHECK_EQ(full_wide.width(), 96u);
         CHECK_EQ(static_cast<::VlWide<3>>(full_wide) == ::VlWide<3>{}, true);
 
         // 错误消息携带切片上界和上限
-        try
-        {
-            ::CData data{0u};
-            ::verilator_utils::vector_slice<::CData> invalid{data, 8, 0};
-            FAIL("expected assertion_error for out of range slice upper bound"sv);
-        }
-        catch(const ::verilator_utils::assertion_error& error)
-        {
-            CHECK_EQ(error.message(), "切片上界8超出上限8"sv);
-        }
+        CHECK_THROWS_WITH_AS((::verilator_utils::vector_slice{cdata, 8, 0}),
+                             ::doctest::Contains{"切片上界8超出上限8"},
+                             ::verilator_utils::assertion_error);
     }
 }

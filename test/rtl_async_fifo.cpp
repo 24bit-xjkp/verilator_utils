@@ -4,7 +4,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_async_fifo_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("async_fifo")
+namespace
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_async_fifo_verilator;
@@ -77,18 +77,18 @@ TEST_SUITE("async_fifo")
             co_await wait_reset_finish(port.rst);
             while(true)
             {
-                auto triggered{co_await clk};
-                auto posedge_i_clk{triggered[0]};
-                auto posedge_o_clk{triggered[1]};
+                const auto triggered{co_await clk};
+                const auto posedge_i_clk{triggered[0]};
+                const auto posedge_o_clk{triggered[1]};
 
                 // 组合逻辑
-                auto i_enable{i_ready() && port.i_valid == 1};
-                auto i_index_d{i_enable ? i_index_r + 1 & index_mask : i_index_r};
+                const auto i_enable{i_ready() && port.i_valid == 1};
+                const auto i_index_d{i_enable ? i_index_r + 1 & index_mask : i_index_r};
                 auto&& i_ram_ref{ram[i_index_r & address_mask]};
-                auto o_valid_d{synced_i_index_r != o_index_r};
-                auto o_enable{o_valid_d && port.o_ready == 1};
-                auto o_index_d{o_enable ? o_index_r + 1 & index_mask : o_index_r};
-                wrapper_t o_data_d{ram[o_index_r & address_mask], port_t::width};
+                const auto o_valid_d{synced_i_index_r != o_index_r};
+                const auto o_enable{o_valid_d && port.o_ready == 1};
+                const auto o_index_d{o_enable ? o_index_r + 1 & index_mask : o_index_r};
+                const wrapper_t o_data_d{ram[o_index_r & address_mask], port_t::width};
 
                 // 时序逻辑
                 synced_o_index_r = o_delay_line.update(o_index_r, posedge_i_clk).value_or(default_index).value();
@@ -110,7 +110,7 @@ TEST_SUITE("async_fifo")
 
     constexpr auto iters{port_t::depth * 2 * 3};
 
-    task<void> do_write(port_t & port, reference_module & ref)
+    task<void> do_write(port_t& port, reference_module& ref)
     {
         port.i_valid = 0;
         co_await wait_reset_finish(port.rst);
@@ -137,7 +137,7 @@ TEST_SUITE("async_fifo")
         port.i_valid = 0;
     }
 
-    task<void> do_read(port_t & port, reference_module & ref)
+    task<void> do_read(port_t& port, reference_module& ref)
     {
         port.o_ready = 0;
         co_await wait_reset_finish(port.rst);
@@ -173,7 +173,7 @@ TEST_SUITE("async_fifo")
         port.o_ready = 0;
     }
 
-    task<void> do_verify(port_t & port)
+    task<void> do_verify(port_t& port)
     {
         reference_module ref{port};
         co_await add_task(ref.eval());
@@ -192,32 +192,9 @@ TEST_SUITE("async_fifo")
     constexpr auto rst_period{2_ns * 7zu * 13zu};
     constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
 
-    TEST_CASE("write_slow_read_fast")
-    {
-        dut_context_t ctx{option};
-        port_t port{ctx.get_dut()};
-
-        ctx.add_task(generate_async_reset(port.rst, rst_period));
-        ctx.add_task(generate_clock(port.i_clk, slow_period));
-        ctx.add_task(generate_clock(port.o_clk, fast_period));
-        ctx.add_task(do_verify(port));
-        ctx.loop_until_finish(5_us);
-    }
-
-    TEST_CASE("write_fast_read_slow")
-    {
-        dut_context_t ctx{option};
-        port_t port{ctx.get_dut()};
-
-        ctx.add_task(generate_async_reset(port.rst, rst_period));
-        ctx.add_task(generate_clock(port.i_clk, fast_period));
-        ctx.add_task(generate_clock(port.o_clk, slow_period));
-        ctx.add_task(do_verify(port));
-        ctx.loop_until_finish(5_us);
-    }
-
     using dist_t = std::uniform_int_distribution<std::size_t>;
-    task<void> do_verify_random(dut_context_t & ctx, port_t & port, dist_t i_dist, dist_t o_dist)
+
+    task<void> do_verify_random(dut_context_t& ctx, port_t& port, dist_t i_dist, dist_t o_dist)
     {
         auto seed{ctx.get_seed()};
         std::mt19937_64 engin{seed};
@@ -233,7 +210,7 @@ TEST_SUITE("async_fifo")
             for(; i != iters; ++i)
             {
                 co_await wait_stimulate(port.i_clk);
-                auto i_valid{i_dist(engin) == 1};
+                const auto i_valid{i_dist(engin) == 1};
                 port.i_valid = i_valid;
                 port.i_data = (cnt += i_valid);
 
@@ -262,6 +239,33 @@ TEST_SUITE("async_fifo")
         co_await wait_verify(port.i_clk);
         co_await wait_verify(port.o_clk);
         co_await eval_finish();
+    }
+}  // namespace
+
+TEST_SUITE("async_fifo")
+{
+    TEST_CASE("write_slow_read_fast")
+    {
+        dut_context_t ctx{option};
+        port_t port{ctx.get_dut()};
+
+        ctx.add_task(generate_async_reset(port.rst, rst_period));
+        ctx.add_task(generate_clock(port.i_clk, slow_period));
+        ctx.add_task(generate_clock(port.o_clk, fast_period));
+        ctx.add_task(do_verify(port));
+        ctx.loop_until_finish(5_us);
+    }
+
+    TEST_CASE("write_fast_read_slow")
+    {
+        dut_context_t ctx{option};
+        port_t port{ctx.get_dut()};
+
+        ctx.add_task(generate_async_reset(port.rst, rst_period));
+        ctx.add_task(generate_clock(port.i_clk, fast_period));
+        ctx.add_task(generate_clock(port.o_clk, slow_period));
+        ctx.add_task(do_verify(port));
+        ctx.loop_until_finish(5_us);
     }
 
     TEST_CASE("write_slow_read_fast_random")

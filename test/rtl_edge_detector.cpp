@@ -4,7 +4,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_edge_detector_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("edge_detector")
+namespace
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_edge_detector_verilator;
@@ -19,18 +19,21 @@ TEST_SUITE("edge_detector")
         bit_slice<CData> falling;
         bit_slice<CData> both;
 
-        inline explicit port_t(dut_t& dut) :
+        explicit port_t(dut_t& dut) :
             clk{dut.clk}, rst{dut.rst}, signal{dut.signal}, rising{dut.rising, boolean}, falling{dut.falling, boolean},
             both{dut.both, boolean}
         {
         }
     };
+}  // namespace
 
-    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ps_10};
-
+TEST_SUITE("edge_detector")
+{
     TEST_CASE("edge_detector")
     {
-        dut_context_t ctx{option};
+        dut_context_t ctx{
+            {.coverage = true, .time_precision = verilator_time_unit::ps_10}
+        };
         port_t port{ctx.get_dut()};
 
         constexpr static auto period{1_ns};

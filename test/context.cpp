@@ -64,7 +64,7 @@ namespace
         const auto dot{speed_str.rfind('.')};
         if(dot == ::std::string_view::npos || dot + fraction_digits + 1zu >= speed_str.size()) { return false; }
         const auto suffix_start{dot + fraction_digits + 1zu};
-        const auto* const number_end{speed_str.data() + suffix_start};
+        const auto* const number_end{&speed_str[suffix_start]};
         double value{};
         const auto conversion{::std::from_chars(speed_str.data(), number_end, value)};
         // 只用具名枚举值判断失败：errc{}会被clang-tidy误报为无效的枚举默认初始化
@@ -122,6 +122,7 @@ namespace
     struct stats_fixture
     {
         stats_context ctx;
+        bool started{};
 
         explicit stats_fixture(::verilator_utils::dut_context_option option = {}) : ctx{option} {}
 
@@ -144,9 +145,6 @@ namespace
             while(!ctx.get_scheduler().empty() && !ctx.get_scheduler().is_finish()) { ctx.loop_once(); }
             return ctx.get_stats();
         }
-
-    private:
-        bool started{};
     };
 
     using namespace ::verilator_utils::verilator;

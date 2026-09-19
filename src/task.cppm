@@ -83,7 +83,7 @@ namespace verilator_utils::detail
      */
     struct get_scheduler_awaiter : ::verilator_utils::detail::no_suspend_awaiter
     {
-        ::verilator_utils::eval_scheduler* scheduler;
+        ::verilator_utils::eval_scheduler* scheduler{};
 
         template <::verilator_utils::is_coroutine_promise promise_type>
         void set_handle_impl(::std::coroutine_handle<promise_type> handle)
@@ -116,7 +116,7 @@ namespace verilator_utils::detail
      */
     struct get_time_in_string_awaiter : ::verilator_utils::detail::no_suspend_awaiter
     {
-        ::verilator_utils::eval_scheduler* scheduler;
+        ::verilator_utils::eval_scheduler* scheduler{};
 
         template <::verilator_utils::is_coroutine_promise promise_type>
         void set_handle_impl(::std::coroutine_handle<promise_type> handle)
@@ -131,7 +131,7 @@ namespace verilator_utils::detail
      */
     struct get_time_in_time_unit_awaiter : ::verilator_utils::detail::no_suspend_awaiter
     {
-        ::verilator_utils::eval_scheduler* scheduler;
+        ::verilator_utils::eval_scheduler* scheduler{};
 
         template <::verilator_utils::is_coroutine_promise promise_type>
         void set_handle_impl(::std::coroutine_handle<promise_type> handle)
@@ -146,7 +146,7 @@ namespace verilator_utils::detail
      */
     struct get_time_in_time_precision_awaiter : ::verilator_utils::detail::no_suspend_awaiter
     {
-        ::verilator_utils::eval_scheduler* scheduler;
+        ::verilator_utils::eval_scheduler* scheduler{};
 
         template <::verilator_utils::is_coroutine_promise promise_type>
         void set_handle_impl(::std::coroutine_handle<promise_type> handle)
@@ -261,7 +261,7 @@ namespace verilator_utils::detail
         /// 调度器指针，自动绑定
         scheduler_t* scheduler{};
         /// 事件回调，用于判断事件是否触发
-        ::verilator_utils::default_event_callback event_callback{};
+        ::verilator_utils::default_event_callback event_callback;
 
         /**
          * @brief 构造可等待体
@@ -269,7 +269,8 @@ namespace verilator_utils::detail
          * @note 目标评估阶段需要可等待，否则断言失败
          * @param eval_stage 目标评估阶段
          */
-        explicit eval_stage_awaiter(scheduler_t::eval_stage_enum eval_stage) : eval_stage{eval_stage}
+        explicit eval_stage_awaiter(scheduler_t::eval_stage_enum eval_stage) :
+            eval_stage{eval_stage}, event_callback{[this] { return scheduler->get_eval_stage() >= this->eval_stage; }}
         { ::verilator_utils::check{}(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv); }
 
         /**
@@ -279,10 +280,7 @@ namespace verilator_utils::detail
          */
         template <::verilator_utils::is_coroutine_promise promise_type>
         void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        {
-            scheduler = handle.promise().check_scheduler();
-            event_callback = [this] { return scheduler->get_eval_stage() >= eval_stage; };
-        }
+        { scheduler = handle.promise().check_scheduler(); }
 
         /**
          * @brief 判断是否立即就绪
@@ -817,8 +815,8 @@ export namespace verilator_utils
         ::verilator_utils::check{}(duty_ratio > 0. && duty_ratio < 1., "时钟占空比{}超出取值范围(0, 1)"sv, duty_ratio);
         clk = 0;
         if(delay != 0_fs) { co_await ::verilator_utils::wait_time(delay); }
-        auto positive_duration{period * duty_ratio};
-        auto negative_duration{period - positive_duration};
+        const auto positive_duration{period * duty_ratio};
+        const auto negative_duration{period - positive_duration};
         while(true)
         {
             clk = 0;
@@ -838,7 +836,7 @@ export namespace verilator_utils
      * @return 生成复位信号的任务
      */
     [[nodiscard]] ::verilator_utils::task<void> generate_reset(::verilator_utils::bit_slice<::CData>& reset,
-                                                               ::verilator_utils::bit_slice<::CData>& clk,
+                                                               const ::verilator_utils::bit_slice<::CData>& clk,
                                                                ::size_t cycle = 3,
                                                                bool active_high = true)
     {
@@ -896,7 +894,7 @@ export namespace verilator_utils
      * @return 同步任务
      * @note 等待到复位信号无效且初始评估完成
      */
-    [[nodiscard]] ::verilator_utils::task<void> wait_reset_finish(::verilator_utils::bit_slice<::CData> rst,
+    [[nodiscard]] ::verilator_utils::task<void> wait_reset_finish(const ::verilator_utils::bit_slice<::CData>& rst,
                                                                   bool active_high = true)
     {
         co_await ::verilator_utils::wait_event([rst, active_high] { return rst != active_high; });
@@ -938,9 +936,9 @@ export namespace verilator_utils
         ::std::uint64_t value{initial_value};
         while(true)
         {
-            auto out{value & 1zu};
+            const auto out{value & 1zu};
             co_yield static_cast<bool>(out);
-            auto masked_broadcast_out{(0zu - out) & feedback_mask};
+            const auto masked_broadcast_out{(0zu - out) & feedback_mask};
             value = (value ^ masked_broadcast_out) >> 1zu | out << (width - 1);
         }
     }
@@ -1351,7 +1349,7 @@ export namespace verilator_utils
                         self->pool.pop_back();
                     },
                 };
-                ::std::unique_ptr<join_any_awaiter, decltype(deleter)> _{this, deleter};
+                const ::std::unique_ptr<join_any_awaiter, decltype(deleter)> _{this, deleter};
                 auto&& promise{ptr->get_promise()};
                 promise.scheduler->throw_if_finish();
                 promise.rethrow_exception();
@@ -1365,7 +1363,7 @@ export namespace verilator_utils
              */
             bool any_tasks_done()
             {
-                auto iter{::std::ranges::find(pool, true, [](::verilator_utils::async_task& task) { return task.done(); })};
+                const auto iter{::std::ranges::find(pool, true, [](::verilator_utils::async_task& task) { return task.done(); })};
                 if(iter != pool.end()) { ptr = ::std::to_address(iter); }
                 return ptr != nullptr;
             }
@@ -1621,7 +1619,7 @@ export namespace verilator_utils
          */
         void shrink_to_fit()
         {
-            auto iter{wait_queue.begin() + static_cast<::std::ptrdiff_t>(head_index)};
+            const auto iter{wait_queue.begin() + static_cast<::std::ptrdiff_t>(head_index)};
             wait_queue.erase(wait_queue.begin(), iter);
             head_index = 0;
             wait_queue.shrink_to_fit();
@@ -1909,8 +1907,8 @@ export namespace verilator_utils
             count += update;
             while(!empty() && count >= suspend_queue[head_index])
             {
-                auto begin{suspend_queue.begin()};
-                auto iter{begin + static_cast<::std::ptrdiff_t>(head_index)};
+                const auto begin{suspend_queue.begin()};
+                const auto iter{begin + static_cast<::std::ptrdiff_t>(head_index)};
                 event.notify_one();
                 // 在此处更新内部计数器使得结果立即对外部可见，避免虚假唤醒
                 count -= *iter;
@@ -1965,10 +1963,7 @@ export namespace verilator_utils
                 count -= update;
                 return true;
             }
-            else
-            {
-                return false;
-            }
+            return false;
         }
 
     private:
@@ -2102,25 +2097,17 @@ export namespace std
                                             value.max_count,
                                             value.as_range_infty_capicity() | transform);
                 }
-                else
-                {
-                    return ::std::format_to(ctx.out(),
-                                            "{{max_count: {}, value: {}}}"sv,
-                                            value.max_count,
-                                            value.as_range() | transform);
-                }
+                return ::std::format_to(ctx.out(),
+                                        "{{max_count: {}, value: {}}}"sv,
+                                        value.max_count,
+                                        value.as_range() | transform);
             }
-            else
+
+            if(value.infty_capicity())
             {
-                if(value.infty_capicity())
-                {
-                    return ::std::format_to(ctx.out(), "{}"sv, value.as_range_infty_capicity() | transform);
-                }
-                else
-                {
-                    return ::std::format_to(ctx.out(), "{}"sv, value.as_range() | transform);
-                }
+                return ::std::format_to(ctx.out(), "{}"sv, value.as_range_infty_capicity() | transform);
             }
+            return ::std::format_to(ctx.out(), "{}"sv, value.as_range() | transform);
         }
     };
 
@@ -2148,10 +2135,7 @@ export namespace std
         auto format(const ::verilator_utils::shift_register<type>& value, ::std::basic_format_context<iter_t, char>& ctx) const
         {
             if(with_detail) { return ::std::format_to(ctx.out(), "{{depth: {}, reg: {}}}"sv, value.depth, value.reg); }
-            else
-            {
-                return ::std::format_to(ctx.out(), "{}"sv, value.reg);
-            }
+            return ::std::format_to(ctx.out(), "{}"sv, value.reg);
         }
     };
 
@@ -2260,10 +2244,7 @@ export namespace doctest
         static ::doctest::String convert(const ::verilator_utils::coroutine_stacktrace::stacktrace_frame& value)
         {
             if(::verilator_utils::detail::should_colorize_assertion_message()) { return ::std::format("{:#}"sv, value); }
-            else
-            {
-                return ::std::format("{}"sv, value);
-            }
+            return ::std::format("{}"sv, value);
         }
     };
 
@@ -2273,10 +2254,7 @@ export namespace doctest
         static ::doctest::String convert(const ::verilator_utils::coroutine_stacktrace& value)
         {
             if(::verilator_utils::detail::should_colorize_assertion_message()) { return ::std::format("{:#}"sv, value); }
-            else
-            {
-                return ::std::format("{}"sv, value);
-            }
+            return ::std::format("{}"sv, value);
         }
     };
 }  // namespace doctest

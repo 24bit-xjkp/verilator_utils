@@ -4,7 +4,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_counter_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("counter")
+namespace
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_counter_verilator;
@@ -19,18 +19,21 @@ TEST_SUITE("counter")
         vector_slice<CData> count;
         bit_slice<CData> overflow;
 
-        inline explicit port_t(dut_t& dut) :
+        explicit port_t(dut_t& dut) :
             clk{dut.clk}, rst{dut.rst}, enable{dut.enable, boolean}, count{dut.count, 4, dec_unsigned},
             overflow{dut.overflow, boolean}
         {
         }
     };
+}  // namespace
 
-    constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
-
+TEST_SUITE("counter")
+{
     TEST_CASE("counter")
     {
-        dut_context_t ctx{option};
+        dut_context_t ctx{
+            {.coverage = true, .time_precision = verilator_time_unit::ns}
+        };
         port_t port{ctx.get_dut()};
 
         ctx.add_task(generate_clock(port.clk, 2_ns));
@@ -42,8 +45,8 @@ TEST_SUITE("counter")
                 port.enable = true;
                 const auto expected{views::iota(1zu) | views::transform([&](std::uint64_t value) {
                                         constexpr static auto mask{(1zu << 4zu) - 1zu};
-                                        auto count{value & mask};
-                                        auto overflow{value >> 4zu != 0 && count == 0};
+                                        const auto count{value & mask};
+                                        const auto overflow{value >> 4zu != 0 && count == 0};
                                         return std::pair{
                                             format_wrapper{count,    port.count.dump_format()   },
                                             format_wrapper{overflow, port.overflow.dump_format()},
@@ -51,7 +54,7 @@ TEST_SUITE("counter")
                                     }) |
                                     views::take(period * 3)};
 
-                for(auto&& [count, overflow]: expected)
+                for(const auto& [count, overflow]: expected)
                 {
                     co_await verify_at(port.clk, [&] {
                         CHECK_EQ(port.count, count);
@@ -59,9 +62,9 @@ TEST_SUITE("counter")
                     });
                 }
 
-                auto previous_count{port.count.dump()};
-                auto previous_overflow{port.overflow.dump<bool>()};
-                for(auto _: views::iota(0zu, period))
+                const auto previous_count{port.count.dump()};
+                const auto previous_overflow{port.overflow.dump<bool>()};
+                for(const auto _: views::iota(0zu, period))
                 {
                     co_await wait_stimulate(port.clk);
                     port.enable = false;

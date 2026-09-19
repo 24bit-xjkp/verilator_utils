@@ -4,14 +4,13 @@ import verilator_utils.full;
 #include <unit_test_rtl_lfsr_m7_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("lfsr_m7")
+namespace
 {
     using namespace verilator_utils;
     using namespace std::literals;
     namespace views = std::views;
     using dut_t = unit_test_rtl_lfsr_m7_verilator;
     using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
-
     enum class lfsr_feedback_t : std::uint64_t
     {
         fibonacci,
@@ -28,7 +27,7 @@ TEST_SUITE("lfsr_m7")
         bit_slice<CData> result;
         constexpr static auto lfsr_width{7zu};
 
-        inline explicit port_t(dut_t& dut) :
+        explicit port_t(dut_t& dut) :
             clk{dut.clk}, rst{dut.rst}, enable{dut.enable}, initial_value{dut.initial_value, lfsr_width, dec_unsigned},
             lfsr_feedback{dut.lfsr_feedback, fsm_enum({"fibonacci"s, "galois"s})}, result{dut.result}
         {
@@ -36,7 +35,10 @@ TEST_SUITE("lfsr_m7")
     };
 
     constexpr dut_context_option option{.coverage = true, .time_precision = verilator_time_unit::ns};
+}  // namespace
 
+TEST_SUITE("lfsr_m7")
+{
     TEST_CASE("lfsr_m7")
     {
         constexpr static auto initial_value_table{
@@ -65,9 +67,9 @@ TEST_SUITE("lfsr_m7")
                 auto&& ref{port.lfsr_feedback == std::to_underlying(lfsr_feedback_t::fibonacci) ? fibonacci_lfsr_generator
                                                                                                 : galois_lfsr_generator};
 
-                for(auto unwrapped_initial_value: initial_value_table)
+                for(const auto unwrapped_initial_value: initial_value_table)
                 {
-                    format_wrapper initial_value{unwrapped_initial_value, port.initial_value.dump_format()};
+                    const format_wrapper initial_value{unwrapped_initial_value, port.initial_value.dump_format()};
                     CAPTURE(initial_value);
                     co_await wait_stimulate(port.clk);
                     port.initial_value = initial_value;
@@ -79,16 +81,16 @@ TEST_SUITE("lfsr_m7")
                     for(std::uint64_t unwrapped_result: ref(port.lfsr_width, 0, initial_value.value()) | views::take(period * 2))
                     {
                         co_await verify_at(port.clk, [&] {
-                            format_wrapper result{unwrapped_result, port.result.dump_format()};
+                            const format_wrapper result{unwrapped_result, port.result.dump_format()};
                             CHECK_EQ(result, port.result);
                         });
                     }
 
                     // 验证失能后模型输出不变
-                    auto current_result{port.result.dump()};
+                    const auto current_result{port.result.dump()};
                     co_await wait_stimulate(port.clk);
                     port.enable = false;
-                    for(auto _: views::iota(0zu, 4zu))
+                    for(const auto _: views::iota(0zu, 4zu))
                     {
                         co_await verify_at(port.clk, [&] { CHECK_EQ(current_result, port.result); });
                     }

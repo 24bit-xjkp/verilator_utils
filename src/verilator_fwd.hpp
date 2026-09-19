@@ -1,5 +1,7 @@
 // NOLINTBEGIN(modernize-deprecated-headers)
-#pragma once
+// 允许通过宏定义使该头文件失效
+#ifndef VERILATOR_FWD_H
+#define VERILATOR_FWD_H
 #include <string.h>
 #include <cassert>
 #ifdef __CYGWIN__
@@ -21,5 +23,6 @@
     #pragma clang diagnostic ignored "-Wdeprecated-missing-comma-variadic-parameter"
     #pragma clang diagnostic ignored "-Wunused-parameter"
     #pragma clang diagnostic ignored "-Wsign-compare"
+#endif
 #endif
 // NOLINTEND(modernize-deprecated-headers)

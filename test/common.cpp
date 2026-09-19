@@ -7,7 +7,7 @@ export namespace verilator_utils
 {
     // 简化单元测试内使用
     using ::verilator_utils::detail::check;
-}
+}  // namespace verilator_utils
 
 export {
     using namespace ::verilator_utils;
@@ -35,17 +35,10 @@ struct verilator_version_t
     {
         const char* iter{version.begin()};
         const char* end{version.end()};
-        if(auto [new_iter, ec]{::std::from_chars(iter, end, major)};
-           // NOLINTNEXTLINE(bugprone-invalid-enum-default-initialization)
-           ec != ::std::errc{} || *new_iter++ != '.')
-        {
-            throw ::std::invalid_argument("版本解析失败");
-        }
-        else
-        {
-            iter = new_iter;
-        }
-        if(!::std::from_chars(iter, end, minor)) { throw ::std::invalid_argument("版本解析失败"); }
+        const auto result{::std::from_chars(iter, end, major)};
+        if(!result || *result.ptr != '.') { throw ::std::invalid_argument{"版本解析失败"}; }
+        iter = ::std::next(result.ptr, 1);
+        if(!::std::from_chars(iter, end, minor)) { throw ::std::invalid_argument{"版本解析失败"}; }
     }
 
     constexpr friend bool operator== (verilator_version_t lhs, verilator_version_t rhs) noexcept = default;

@@ -222,10 +222,7 @@ namespace verilator_utils::detail
         {
             using enum coroutine_type_enum;
             if(this->is_async) { return async_coroutine; }
-            else
-            {
-                return parent == nullptr ? root_coroutine : sub_coroutine;
-            }
+            return parent == nullptr ? root_coroutine : sub_coroutine;
         }
 
         /**
@@ -740,8 +737,8 @@ export namespace verilator_utils
          */
         bool operator() ()
         {
-            bool current_value{callback()};
-            bool previous_value{::std::exchange(this->previous_value, current_value)};
+            const bool current_value{callback()};
+            const bool previous_value{::std::exchange(this->previous_value, current_value)};
             switch(edge_to_detect)
             {
                 case rising: return !previous_value && current_value;
@@ -925,7 +922,7 @@ export namespace verilator_utils
             eval_end,
 
             /// 非法状态，可用于默认参数等场合
-            invalid = -1zu
+            invalid
         };
 
     private:
@@ -963,15 +960,16 @@ export namespace verilator_utils
          */
         static void resume_coroutine(::verilator_utils::detail::coroutine_pair pair)
         {
-            auto [handle, promise]{pair};
-            auto is_root{promise->classify() == ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine};
+            const auto [handle, promise]{pair};
+            const auto is_root{promise->classify() ==
+                               ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine};
             handle.resume();
             // 协程为根协程时执行销毁和异常传播
             if(is_root && handle.done())
             {
                 // 利用raii确保在异常时销毁handle
-                constexpr static auto deleter{[](::std::coroutine_handle<>* handle) static noexcept { handle->destroy(); }};
-                std::unique_ptr<::std::coroutine_handle<>, decltype(deleter)> _{&handle};
+                constexpr static auto deleter{[](const ::std::coroutine_handle<>* handle) static noexcept { handle->destroy(); }};
+                const ::std::unique_ptr<const ::std::coroutine_handle<>, decltype(deleter)> _{&handle};
                 promise->rethrow_exception();
             }
         }
@@ -1035,7 +1033,7 @@ export namespace verilator_utils
          */
         bool ready_queue_eval()
         {
-            bool any_coroutine_run{!ready_queue.empty()};
+            const bool any_coroutine_run{!ready_queue.empty()};
             auto i{0zu};
             try
             {
@@ -1043,7 +1041,7 @@ export namespace verilator_utils
             }
             catch(...)
             {
-                auto begin{ready_queue.begin()};
+                const auto begin{ready_queue.begin()};
                 ready_queue.erase(begin, begin + static_cast<::std::ptrdiff_t>(i) + 1);
                 throw;
             }
@@ -1210,12 +1208,9 @@ export namespace verilator_utils
                             }
                             break;
                         }
-                        else
-                        {
-                            // 回溯到上一层
-                            handle = promise->parent;
-                            promise = promise->parent_promise;
-                        }
+                        // 回溯到上一层
+                        handle = promise->parent;
+                        promise = promise->parent_promise;
                     }
                 },
             };
@@ -1226,10 +1221,10 @@ export namespace verilator_utils
                 wait_queue.pop();
             }
 
-            for(auto&& [_, pair]: event_queue) { do_destroy(pair); }
+            for(const auto& [_, pair]: event_queue) { do_destroy(pair); }
             event_queue.clear();
 
-            for(auto pair: suspend_queue.keys()) { do_destroy(pair); }
+            for(const auto pair: suspend_queue.keys()) { do_destroy(pair); }
             suspend_queue.clear();
 
             for(auto i{0zu}; i != ready_queue.size(); ++i) { do_destroy(ready_queue[i]); }
@@ -1316,10 +1311,10 @@ export namespace verilator_utils
         void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
         {
             ::verilator_utils::check{}(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
-            auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
+            const auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
             ::verilator_utils::check{}(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
-            auto current_time{dut->contextp()->time()};
-            auto target_time{time_to_wait_in_time_precision + current_time};
+            const auto current_time{dut->contextp()->time()};
+            const auto target_time{time_to_wait_in_time_precision + current_time};
             ::verilator_utils::check{}(target_time > current_time, "Verilator仿真计时器溢出"sv);
             wait_queue.emplace(target_time, pair);
         }
@@ -1360,7 +1355,7 @@ export namespace verilator_utils
          */
         void remove_suspend(::verilator_utils::detail::coroutine_pair pair)
         {
-            auto iter{suspend_queue.find(pair)};
+            const auto iter{suspend_queue.find(pair)};
             ::verilator_utils::check{}(iter != suspend_queue.end(),
                                        "要取消的协程在挂起队列中不存在，协程柄为: {}",
                                        pair.handle.address());
@@ -1391,22 +1386,16 @@ export namespace verilator_utils
                 promise.status = status_enum::final_suspend;
                 // 无父协程则不进行回溯
                 if(promise.parent == nullptr) { return ::std::noop_coroutine(); }
-                else
+                if(promise.parent_promise->classify() ==
+                   ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine)
                 {
-                    if(promise.parent_promise->classify() ==
-                       ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine)
-                    {
-                        // 父协程为根协程时需要调度器进行异常传播
-                        // 因此将父协程放入调度器就绪队列
-                        promise.scheduler->register_ready(promise);
-                        return ::std::noop_coroutine();
-                    }
-                    else
-                    {
-                        // 父协程为非根协程直接回溯
-                        return promise.parent;
-                    }
+                    // 父协程为根协程时需要调度器进行异常传播
+                    // 因此将父协程放入调度器就绪队列
+                    promise.scheduler->register_ready(promise);
+                    return ::std::noop_coroutine();
                 }
+                // 父协程为非根协程直接回溯
+                return promise.parent;
             }
         };
 

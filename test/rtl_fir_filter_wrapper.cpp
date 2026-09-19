@@ -5,7 +5,7 @@ import verilator_utils.full;
 #include <unit_test_rtl_fir_filter_wrapper_verilator.h>
 #include <verilator_bwd.hpp>
 
-TEST_SUITE("fir_filter")
+namespace
 {
     using namespace verilator_utils;
     using dut_t = unit_test_rtl_fir_filter_wrapper_verilator;
@@ -40,7 +40,10 @@ TEST_SUITE("fir_filter")
         {
         }
     };
+}  // namespace
 
+TEST_SUITE("fir_filter")
+{
     TEST_CASE("fir_filter")
     {
         dut_context_t ctx{
@@ -49,20 +52,20 @@ TEST_SUITE("fir_filter")
         port_t port{ctx.get_dut()};
         npy::npzfilereader reader{ctx.get_binary_path().parent_path() / "fir_filter.npz"sv};
         using tensor_t = npy::tensor<port_t::data_t>;
-        auto origin_signal{reader.read<tensor_t>("x.npy")};
-        auto filtered_signal{reader.read<tensor_t>("y.npy")};
-        auto shifted_filtered_signal{reader.read<tensor_t>("shifted_y.npy")};
+        const auto origin_signal{reader.read<tensor_t>("x.npy")};
+        const auto filtered_signal{reader.read<tensor_t>("y.npy")};
+        const auto shifted_filtered_signal{reader.read<tensor_t>("shifted_y.npy")};
 
         ctx.add_task(generate_clock(port.clk, 2_ns));
         ctx.add_task(generate_reset(port.rst, port.clk));
         const auto do_stimulate{[&] -> task<void> {
             co_await wait_reset_finish(port.rst);
-            for(std::int16_t input: origin_signal)
+            for(const std::int16_t input: origin_signal)
             {
                 co_await wait_stimulate(port.clk);
                 port.i_valid = 1;
                 port.in = width_cast(input, port_t::width);
-                for(auto _: std::views::iota(0zu, port_t::cycles - 1))
+                for(const auto _: std::views::iota(0zu, port_t::cycles - 1))
                 {
                     co_await wait_stimulate(port.clk);
                     port.i_valid = 0;
@@ -73,8 +76,8 @@ TEST_SUITE("fir_filter")
 
         const auto verify_a_port{[&](std::size_t filter_index) -> task<void> {
             co_await wait_reset_finish(port.rst);
-            auto&& ref{filter_index >= 2 ? shifted_filtered_signal : filtered_signal};
-            for(std::int64_t output: ref)
+            const auto& ref{filter_index >= 2 ? shifted_filtered_signal : filtered_signal};
+            for(const std::int64_t output: ref)
             {
                 // o_valid是一个脉冲信号，将其作为检查的触发源
                 co_await verify_at(port.o_valid[filter_index][0], [&] {
@@ -85,7 +88,7 @@ TEST_SUITE("fir_filter")
         }};
         const auto do_verify{[&] -> task<void> {
             auto pool{co_await get_spawn_pool()};
-            for(auto i: std::views::iota(0zu, port_t::filter_num)) { pool.add_task(verify_a_port(i)); }
+            for(const auto i: std::views::iota(0zu, port_t::filter_num)) { pool.add_task(verify_a_port(i)); }
             co_await pool.join_all();
 
             co_await wait_stimulate(port.clk);
