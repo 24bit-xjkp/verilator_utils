@@ -45,6 +45,20 @@ namespace
         { return ::verilator_utils::eval_scheduler{dut}; }
     };
 
+    /// 推进一个时钟周期：等待1ns后将时钟驱动到给定电平并执行评估
+    ///
+    /// @note 先推进时间再翻转电平，使边沿检测器在同一轮评估中观察到信号变化
+    void step_clock(::verilator_utils::eval_scheduler& scheduler, signal_state& clk, ::CData value = 1u)
+    {
+        const auto advance{
+            [&] -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ns); },
+        };
+        scheduler.add_task(advance());
+        scheduler.loop_once();
+        clk.value = value;
+        scheduler.loop_once();
+    }
+
     /// 协程栈回溯测试辅助协程，用于构建根协程→子协程→孙协程的同步调用链
 
     /// 根协程：仅执行一次协程栈回溯，不产生子任务
@@ -1848,6 +1862,139 @@ TEST_SUITE("verilator_utils/task")
 
         consumer_async.get_promise().rethrow_exception();
         producer_async.get_promise().rethrow_exception();
+    }
+
+    TEST_CASE("verify_at keeps polling the event callback at each clock edge until it reports ready")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state clk{};
+        ::verilator_utils::bit_slice<::CData> clk_ref{clk.value};
+        // 事件回调在第2个上升沿才报告就绪，因此该用例同时覆盖首个边沿未就绪的路径
+        constexpr static ::std::size_t ready_at_edge{2};
+        ::std::size_t edge_count{};
+        ::std::size_t verify_count{};
+        ::std::string verify_time{};
+        ::std::vector<::CData> event_clock_values;
+
+        const auto&& task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::verify_at(
+                    clk_ref,
+                    [&] {
+                        ++edge_count;
+                        event_clock_values.push_back(clk.value);
+                        return edge_count >= ready_at_edge;
+                    },
+                    [&] {
+                        ++verify_count;
+                        verify_time = scheduler.time_in_string();
+                    });
+            },
+        };
+
+        scheduler.add_task(task());
+        CHECK_EQ(verify_count, 0u);
+
+        // 第1个上升沿：事件回调未就绪，验证不应执行，任务继续等待
+        step_clock(scheduler, clk);
+        CHECK_EQ(edge_count, 1u);
+        CHECK_EQ(verify_count, 0u);
+        CHECK_FALSE(scheduler.empty());
+
+        // 第2个上升沿：事件回调报告就绪，验证在该边沿执行
+        step_clock(scheduler, clk, 0u);
+        step_clock(scheduler, clk);
+        CHECK_EQ(edge_count, 2u);
+        CHECK_EQ(verify_count, 1u);
+        CHECK_EQ(verify_time, "3ns"sv);
+        CHECK(scheduler.empty());
+
+        // 验证只执行一次，任务结束后信号继续变化也不再触发
+        step_clock(scheduler, clk, 0u);
+        step_clock(scheduler, clk);
+        CHECK_EQ(verify_count, 1u);
+
+        // 事件回调只在上升沿求值，且每个边沿至多一次
+        CHECK_EQ(event_clock_values, (::std::vector<::CData>{1u, 1u}));
+    }
+
+    TEST_CASE("verify_at waits for a clock edge before evaluating the event callback")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state clk{};
+        ::verilator_utils::bit_slice<::CData> clk_ref{clk.value};
+        ::std::size_t event_count{};
+        ::std::size_t verify_count{};
+        bool clock_high_during_verify{};
+        ::verilator_utils::eval_scheduler::eval_stage_enum verify_stage{};
+
+        const auto&& task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::verify_at(
+                    clk_ref,
+                    [&] {
+                        ++event_count;
+                        return true;
+                    },
+                    [&] {
+                        ++verify_count;
+                        clock_high_during_verify = clk.value == 1;
+                        verify_stage = scheduler.get_eval_stage();
+                    });
+            },
+        };
+
+        scheduler.add_task(task());
+
+        // 即使事件回调立即就绪，也必须先等待一个时钟边沿
+        CHECK_EQ(event_count, 0u);
+        CHECK_EQ(verify_count, 0u);
+        step_clock(scheduler, clk);
+        CHECK_EQ(event_count, 1u);
+        CHECK_EQ(verify_count, 1u);
+        CHECK(clock_high_during_verify);
+        // 验证发生在电路评估完成后，即默认评估阶段
+        CHECK_EQ(verify_stage, ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
+        CHECK(scheduler.empty());
+
+        // 任务结束后不再重复触发
+        step_clock(scheduler, clk, 0u);
+        step_clock(scheduler, clk);
+        CHECK_EQ(verify_count, 1u);
+    }
+
+    TEST_CASE("verify_at honors the requested edge polarity for a level signal")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state clk{};
+        clk.value = 1;
+        ::verilator_utils::bit_slice<::CData> clk_ref{clk.value};
+        ::std::vector<::CData> sampled_clock;
+
+        const auto&& task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::verify_at(
+                    clk_ref,
+                    [] { return true; },
+                    [&] { sampled_clock.push_back(clk.value); },
+                    ::verilator_utils::edge_enum::falling);
+            },
+        };
+
+        scheduler.add_task(task());
+        CHECK(sampled_clock.empty());
+
+        // 下降沿才是该重载的触发时机，验证在时钟处于低电平时执行
+        step_clock(scheduler, clk, 0u);
+        CHECK_EQ(sampled_clock, ::std::vector<::CData>{0u});
+        CHECK(scheduler.empty());
+
+        step_clock(scheduler, clk);
+        step_clock(scheduler, clk, 0u);
+        CHECK_EQ(sampled_clock, ::std::vector<::CData>{0u});
     }
 
     // NOLINTEND(bugprone-unchecked-optional-access)
