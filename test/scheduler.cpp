@@ -251,7 +251,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const ::verilator_utils::task<void> moved{::std::move(task)};
         // The moved-from state is part of task's move-construction contract.
-        // NOLINTNEXTLINE(bugprone-use-after-move,hicpp-invalid-access-moved)
+        // NOLINTNEXTLINE(bugprone-use-after-move)
         CHECK_FALSE(task);
         CHECK(moved);
         CHECK_EQ(moved.get_handle(), original_handle);
@@ -275,7 +275,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         CHECK(owner.joinable());
         // 移动后源对象不再绑定协程，需要协程的访问器都触发断言而不是解引用空句柄
-        // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+        // NOLINTBEGIN(bugprone-use-after-move)
         CHECK_FALSE(source.joinable());
         CHECK_THROWS_WITH_AS(static_cast<void>(source.done()),
                              ::doctest::Contains{"不能检查是否完成"},
@@ -295,7 +295,7 @@ TEST_SUITE("verilator_utils/scheduler")
                              ::doctest::Contains{"不能检查取消状态"},
                              ::verilator_utils::assertion_error);
         CHECK_THROWS_WITH_AS(source.cancel(), ::doctest::Contains{"不能取消"}, ::verilator_utils::assertion_error);
-        // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+        // NOLINTEND(bugprone-use-after-move)
     }
 
     TEST_CASE("task accessors reject a detached or destroyed task")
