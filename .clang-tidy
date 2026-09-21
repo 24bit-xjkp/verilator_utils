@@ -35,7 +35,6 @@ Checks: >
   misc-*,
   -misc-include-cleaner,
   performance-*,
-  -performance-enum-size,
   boost-use-ranges,
   portability-*,
   fuchsia-virtual-inheritance

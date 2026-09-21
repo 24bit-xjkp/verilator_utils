@@ -11,7 +11,7 @@ namespace
     namespace views = std::views;
     using dut_t = unit_test_rtl_lfsr_m7_verilator;
     using dut_context_t = dut_context<dut_t, VERILATOR_TRACER>;
-    enum class lfsr_feedback_t : std::uint64_t
+    enum class lfsr_feedback_t : std::uint8_t
     {
         fibonacci,
         galois
@@ -52,7 +52,7 @@ TEST_SUITE("lfsr_m7")
         dut_context_t ctx{option};
         port_t port{ctx.get_dut()};
 
-        format_wrapper lfsr_feedback{
+        format_wrapper<std::uint64_t> lfsr_feedback{
             std::to_underlying(GENERATE(lfsr_feedback_t::fibonacci, lfsr_feedback_t::galois)),
             port.lfsr_feedback.width(),
             port.lfsr_feedback.format(),

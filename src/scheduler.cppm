@@ -898,7 +898,7 @@ export namespace verilator_utils
          * @brief 评估阶段枚举
          *
          */
-        enum class eval_stage_enum : ::std::size_t
+        enum class eval_stage_enum : ::std::uint8_t
         {
             // 未注明的阶段可进行等待
             // --- 初始化阶段 ---
