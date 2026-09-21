@@ -268,6 +268,66 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_FALSE(destroy_task);
     }
 
+    TEST_CASE("task accessors reject a task that was moved from")
+    {
+        auto source{[] -> ::verilator_utils::task<void> { co_return; }()};
+        const auto owner{::std::move(source)};
+
+        CHECK(owner.joinable());
+        // 移动后源对象不再绑定协程，需要协程的访问器都触发断言而不是解引用空句柄
+        // NOLINTBEGIN(bugprone-use-after-move,hicpp-invalid-access-moved)
+        CHECK_FALSE(source.joinable());
+        CHECK_THROWS_WITH_AS(static_cast<void>(source.done()),
+                             ::doctest::Contains{"不能检查是否完成"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(source.resume(), ::doctest::Contains{"不能恢复执行"}, ::verilator_utils::assertion_error);
+        // rethrow_exception转发给get_promise，因此报告的是承诺体的检查
+        CHECK_THROWS_WITH_AS(source.rethrow_exception(),
+                             ::doctest::Contains{"不能获取承诺体"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(static_cast<void>(source.get_promise()),
+                             ::doctest::Contains{"不能获取承诺体"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(static_cast<void>(source.cancel_possible()),
+                             ::doctest::Contains{"不能检查取消状态"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(static_cast<void>(source.cancel_requested()),
+                             ::doctest::Contains{"不能检查取消状态"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(source.cancel(), ::doctest::Contains{"不能取消"}, ::verilator_utils::assertion_error);
+        // NOLINTEND(bugprone-use-after-move,hicpp-invalid-access-moved)
+    }
+
+    TEST_CASE("task accessors reject a detached or destroyed task")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+
+        auto detached{[] -> ::verilator_utils::task<void> { co_return; }()};
+        const auto handle{detached.detach()};
+        // 句柄所有权转移后任务不再绑定协程
+        CHECK_FALSE(detached.joinable());
+        CHECK_THROWS_WITH_AS(static_cast<void>(detached.cancel_requested()),
+                             ::doctest::Contains{"不能检查取消状态"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(detached.resume(), ::doctest::Contains{"不能恢复执行"}, ::verilator_utils::assertion_error);
+        handle.destroy();
+
+        auto destroyed{[] -> ::verilator_utils::task<void> { co_return; }()};
+        destroyed.destroy();
+        CHECK_FALSE(destroyed.joinable());
+        CHECK_THROWS_WITH_AS(static_cast<void>(destroyed.done()),
+                             ::doctest::Contains{"不能检查是否完成"},
+                             ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(destroyed.rethrow_exception(),
+                             ::doctest::Contains{"不能获取承诺体"},
+                             ::verilator_utils::assertion_error);
+        // 调度器入口同样依赖该检查拒绝空任务
+        CHECK_THROWS_WITH_AS(scheduler.add_task(::std::move(destroyed)),
+                             ::doctest::Contains{"不能获取承诺体"},
+                             ::verilator_utils::assertion_error);
+    }
+
     TEST_CASE("task records regular exceptions and ignores finish exceptions when rethrowing")
     {
         scheduler_fixture fixture{};
@@ -1708,6 +1768,247 @@ TEST_SUITE("verilator_utils/scheduler")
         static_assert(!::std::is_move_assignable_v<::verilator_utils::mailbox<int>>);
         // 事件不可复制/移动，保证挂起时持有的等待队列引用不会悬垂
     }
+
+    // --- 任务取消 (cancel) ---
+
+    TEST_CASE("cancellation request is accepted before the task starts running")
+    {
+        const auto never_started{[] -> ::verilator_utils::task<void> { co_return; }()};
+
+        // 尚未执行的任务处于initial_suspend，属于可取消状态
+        CHECK(never_started.cancel_possible());
+        CHECK_FALSE(never_started.cancel_requested());
+
+        never_started.cancel();
+        CHECK(never_started.cancel_requested());
+        CHECK_EQ(never_started.get_promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+        // 已收到取消请求的任务不在可取消状态，重复请求触发断言
+        CHECK_FALSE(never_started.cancel_possible());
+        CHECK_THROWS_WITH_AS(never_started.cancel(), ::doctest::Contains{"不可取消"}, ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("cancellation request is rejected while the task runs or after it finished")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool running_rejected{};
+
+        const auto running_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                CHECK_EQ(handle.promise().status, ::verilator_utils::task<void>::status_enum::running);
+                CHECK_FALSE(handle.promise().cancel_possible());
+                CHECK_THROWS_WITH_AS(handle.promise().cancel(),
+                                     ::doctest::Contains{"不可取消"},
+                                     ::verilator_utils::assertion_error);
+                running_rejected = true;
+            },
+        };
+        scheduler.add_task(running_lambda());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        CHECK(running_rejected);
+
+        // 已执行完的任务同样不可取消
+        auto finished_task{[] -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }()};
+        const auto finished_parent{[&] -> ::verilator_utils::task<void> { co_await finished_task; }};
+        scheduler.add_task(finished_parent());
+        scheduler.loop_until_finish();
+
+        REQUIRE(finished_task.done());
+        CHECK_FALSE(finished_task.cancel_possible());
+        CHECK_FALSE(finished_task.cancel_requested());
+        CHECK_THROWS_WITH_AS(finished_task.cancel(), ::doctest::Contains{"不可取消"}, ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("canceling a suspended subtask reports cancellation to its parent")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state signal{};
+        bool resumed_after_wait{};
+        bool parent_caught{};
+        bool parent_finished{};
+
+        // 子任务由外部持有，从而可以在其挂起期间发起取消请求
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
+                resumed_after_wait = true;
+            },
+        };
+        auto child_task{child_lambda()};
+        const auto parent_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                try
+                {
+                    co_await child_task;
+                }
+                catch(const ::verilator_utils::subtask_cancel_exception&)
+                {
+                    parent_caught = true;
+                }
+                parent_finished = true;
+            },
+        };
+
+        scheduler.add_task(parent_lambda());
+        scheduler.loop_once();
+        // 父任务等待子任务，子任务挂起在事件上：此时子任务处于可取消状态
+        REQUIRE_FALSE(child_task.done());
+        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::suspended);
+        CHECK(child_task.cancel_possible());
+
+        child_task.cancel();
+        CHECK(child_task.cancel_requested());
+        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+        CHECK_FALSE(child_task.cancel_possible());
+
+        signal.value = 1;
+        scheduler.loop_until_finish();
+
+        // 取消请求在恢复点生效：子任务不再继续执行，父任务收到子任务取消异常而不是子任务的结果
+        CHECK_FALSE(resumed_after_wait);
+        CHECK(parent_caught);
+        CHECK(parent_finished);
+        REQUIRE(child_task.done());
+        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::canceled);
+        CHECK(child_task.get_promise().is_coroutine_exited());
+        CHECK_FALSE(child_task.get_promise().is_coroutine_finished());
+        CHECK_FALSE(child_task.get_promise().cancel_requested());
+        // 取消不是异常退出：协程中没有未处理的异常，重新抛出时也不产生异常
+        CHECK_FALSE(child_task.get_promise().with_unhandled_exception());
+        CHECK_NOTHROW(child_task.rethrow_exception());
+        // 被取消的子任务没有结果可消费，父任务只能通过subtask_cancel_exception感知取消
+        CHECK_THROWS_WITH_AS(static_cast<void>(child_task.get_promise().get_result()),
+                             ::doctest::Contains{"不能获取结果"},
+                             ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("canceling a subtask before it starts skips its coroutine body")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool body_ran{};
+        bool parent_caught{};
+        bool parent_finished{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                body_ran = true;
+                co_return;
+            },
+        };
+        auto child_task{child_lambda()};
+        CHECK(child_task.cancel_possible());
+        child_task.cancel();
+
+        const auto parent_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                try
+                {
+                    co_await child_task;
+                }
+                catch(const ::verilator_utils::subtask_cancel_exception&)
+                {
+                    parent_caught = true;
+                }
+                parent_finished = true;
+            },
+        };
+        scheduler.add_task(parent_lambda());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+
+        // 从未开始执行的协程体一次都不会运行
+        CHECK_FALSE(body_ran);
+        CHECK(parent_caught);
+        CHECK(parent_finished);
+        REQUIRE(child_task.done());
+        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::canceled);
+    }
+
+    TEST_CASE("canceling a root task waiting on time reclaims its frame")
+    {
+        ::std::size_t destroyed{};
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool resumed_after_wait{};
+
+        const auto waiter_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
+                co_await ::verilator_utils::wait_time(1_ns);
+                resumed_after_wait = true;
+            },
+        };
+        auto root{waiter_lambda()};
+        const auto handle{root.get_handle()};
+        scheduler.add_task(::std::move(root));
+        // 只执行就绪队列，让根任务挂起在等待队列上而不推进仿真时间
+        scheduler.initial_eval();
+        REQUIRE_FALSE(handle.done());
+        CHECK_EQ(handle.promise().status, ::verilator_utils::task<void>::status_enum::suspended);
+        CHECK(handle.promise().cancel_possible());
+
+        handle.promise().cancel();
+        CHECK(handle.promise().cancel_requested());
+
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        CHECK_FALSE(resumed_after_wait);
+        // 等待时间到达后任务被恢复，取消请求在恢复点生效；根任务由调度器回收协程帧
+        CHECK_EQ(destroyed, 1zu);
+        // 取消是正常退出，不标记仿真错误
+        CHECK_FALSE(scheduler.is_error());
+    }
+
+    TEST_CASE("uncaught subtask cancellation propagates out of the scheduler")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state signal{};
+        bool resumed_after_wait{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
+                resumed_after_wait = true;
+            },
+        };
+        auto child_task{child_lambda()};
+        // 父任务不捕获子任务取消异常，异常应沿调用链向上传播
+        const auto parent_lambda{[&] -> ::verilator_utils::task<void> { co_await child_task; }};
+
+        scheduler.add_task(parent_lambda());
+        scheduler.loop_once();
+        REQUIRE(child_task.cancel_possible());
+
+        child_task.cancel();
+        signal.value = 1;
+        CHECK_THROWS_WITH_AS(scheduler.loop_until_finish(),
+                             ::doctest::Contains{"子任务取消"},
+                             ::verilator_utils::subtask_cancel_exception);
+        CHECK_FALSE(resumed_after_wait);
+        REQUIRE(child_task.done());
+        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::canceled);
+    }
+
+    TEST_CASE("cancellation exceptions are distinct from the simulation finish exception")
+    {
+        static_assert(::std::derived_from<::verilator_utils::task_cancel_exception, ::std::runtime_error>);
+        static_assert(::std::derived_from<::verilator_utils::subtask_cancel_exception, ::std::runtime_error>);
+        // 两种取消异常互不派生：父任务捕获的subtask_cancel_exception不会吞掉自身的取消
+        static_assert(
+            !::std::derived_from<::verilator_utils::subtask_cancel_exception, ::verilator_utils::task_cancel_exception>);
+        static_assert(
+            !::std::derived_from<::verilator_utils::task_cancel_exception, ::verilator_utils::subtask_cancel_exception>);
+        // 取消异常与仿真结束异常互不派生
+        static_assert(!::std::derived_from<::verilator_utils::task_cancel_exception, ::verilator_utils::eval_finish_exception>);
+        static_assert(
+            !::std::derived_from<::verilator_utils::subtask_cancel_exception, ::verilator_utils::eval_finish_exception>);
+
+        CHECK_EQ(::std::string_view{::verilator_utils::task_cancel_exception{}.what()}, "任务取消"sv);
+        CHECK_EQ(::std::string_view{::verilator_utils::subtask_cancel_exception{}.what()}, "子任务取消"sv);
+    }
+
     TEST_CASE("coroutine_pair compares by coroutine identity")
     {
         const auto first_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
