@@ -1991,6 +1991,229 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::canceled);
     }
 
+    TEST_CASE("async_task reports coroutine ownership and completion state")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool parent_finished{};
+
+        // 子任务立即执行完毕，父任务恢复时即可观察到完成状态
+        const auto child_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto child{co_await ::verilator_utils::to_async(child_lambda())};
+                CHECK(child.joinable());
+                CHECK(static_cast<bool>(child));
+                CHECK_FALSE(child.done());
+                CHECK_EQ(child.get_promise().is_async, true);
+
+                // 让出执行权，使异步子任务运行到完成
+                co_await ::verilator_utils::wait_time(1_ps);
+                CHECK(child.done());
+                CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::finished);
+
+                // 已完成的异步任务立即就绪，等待后对象不再持有协程
+                co_await child;
+                CHECK_FALSE(child.joinable());
+                parent_finished = true;
+            },
+        };
+
+        scheduler.add_task(parent());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        CHECK(parent_finished);
+    }
+
+    TEST_CASE("canceling an async task before it starts skips its coroutine body")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool child_body_ran{};
+        bool child_awaited{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                child_body_ran = true;
+                co_return;
+            },
+        };
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto child{co_await ::verilator_utils::to_async(child_lambda())};
+                // 异步任务创建后立即进入调度器就绪队列，此时处于从未执行的initial_suspend状态
+                CHECK(child.cancel_possible());
+                CHECK_FALSE(child.cancel_requested());
+
+                child.cancel();
+                CHECK(child.cancel_requested());
+                CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+                CHECK_FALSE(child.cancel_possible());
+
+                // 异步任务的取消不通过异常传播：等待被取消的任务不会抛出异常
+                co_await child;
+                child_awaited = true;
+            },
+        };
+
+        scheduler.add_task(parent());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        // 取消请求在恢复点生效：协程体一次都不会运行
+        CHECK_FALSE(child_body_ran);
+        CHECK(child_awaited);
+    }
+
+    TEST_CASE("canceling a suspended async task drops the remainder of its body")
+    {
+        ::std::size_t destroyed{};
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool child_started{};
+        bool resumed_after_wait{};
+        bool child_awaited{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
+                child_started = true;
+                co_await ::verilator_utils::wait_time(5_ps);
+                resumed_after_wait = true;
+            },
+        };
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto child{co_await ::verilator_utils::to_async(child_lambda())};
+                CHECK(child.cancel_possible());
+                CHECK_FALSE(child.cancel_requested());
+
+                // 让出执行权，使异步子任务开始执行并挂起在等待队列上
+                co_await ::verilator_utils::wait_time(1_ps);
+                CHECK(child_started);
+                CHECK_FALSE(child.done());
+                CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::suspended);
+                CHECK(child.cancel_possible());
+
+                child.cancel();
+                CHECK(child.cancel_requested());
+                CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+                // 已收到取消请求的任务不在可取消状态，重复请求触发断言
+                CHECK_FALSE(child.cancel_possible());
+                CHECK_THROWS_WITH_AS(child.cancel(), ::doctest::Contains{"不可取消"}, ::verilator_utils::assertion_error);
+
+                // 取消不产生未处理异常，等待被取消的任务同样不会抛出异常
+                co_await child;
+                child_awaited = true;
+            },
+        };
+
+        scheduler.add_task(parent());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        // 取消请求在恢复点生效：子任务不再继续执行
+        CHECK(child_started);
+        CHECK_FALSE(resumed_after_wait);
+        CHECK(child_awaited);
+        // 被取消的异步任务在等待完成后回收协程帧
+        CHECK_EQ(destroyed, 1zu);
+    }
+
+    TEST_CASE("async_task accessors reject a task that no longer owns a coroutine")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool move_checked{};
+        bool await_checked{};
+
+        const auto child_lambda{[] -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }};
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto child{co_await ::verilator_utils::to_async(child_lambda())};
+                auto owner{::std::move(child)};
+                CHECK(owner.joinable());
+                // 移动后源对象不再绑定协程，需要协程的访问器都触发断言而不是解引用空句柄
+                // NOLINTBEGIN(bugprone-use-after-move)
+                CHECK_FALSE(child.joinable());
+                CHECK_FALSE(static_cast<bool>(child));
+                CHECK_THROWS_WITH_AS(static_cast<void>(child.get_promise()),
+                                     ::doctest::Contains{"不能获取承诺体"},
+                                     ::verilator_utils::assertion_error);
+                CHECK_THROWS_WITH_AS(static_cast<void>(child.done()),
+                                     ::doctest::Contains{"不能检查是否完成"},
+                                     ::verilator_utils::assertion_error);
+                CHECK_THROWS_WITH_AS(static_cast<void>(child.cancel_possible()),
+                                     ::doctest::Contains{"不能检查取消状态"},
+                                     ::verilator_utils::assertion_error);
+                CHECK_THROWS_WITH_AS(static_cast<void>(child.cancel_requested()),
+                                     ::doctest::Contains{"不能检查取消状态"},
+                                     ::verilator_utils::assertion_error);
+                CHECK_THROWS_WITH_AS(child.cancel(), ::doctest::Contains{"不能取消"}, ::verilator_utils::assertion_error);
+                // 不可等待：co_await未绑定协程的任务在operator co_await处触发断言
+                CHECK_THROWS_WITH_AS(child.operator co_await(),
+                                     ::doctest::Contains{"不能等待"},
+                                     ::verilator_utils::assertion_error);
+                // NOLINTEND(bugprone-use-after-move)
+                move_checked = true;
+
+                // 等待后异步任务把协程交给可等待体，对象同样不再绑定协程
+                co_await owner;
+                CHECK_FALSE(owner.joinable());
+                CHECK_THROWS_WITH_AS(static_cast<void>(owner.get_promise()),
+                                     ::doctest::Contains{"不能获取承诺体"},
+                                     ::verilator_utils::assertion_error);
+                await_checked = true;
+            },
+        };
+
+        scheduler.add_task(parent());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        CHECK(move_checked);
+        CHECK(await_checked);
+    }
+
+    TEST_CASE("spawn_pool rejects a task that does not carry a coroutine")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool rejected{};
+        bool joined{};
+
+        const auto child_lambda{[] -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }};
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                CHECK(pool.empty());
+                CHECK_FALSE(pool.joinable());
+
+                auto source{child_lambda()};
+                auto owner{::std::move(source)};
+                // NOLINTBEGIN(bugprone-use-after-move)
+                CHECK_THROWS_WITH_AS(pool.add_task(::std::move(source)),
+                                     ::doctest::Contains{"任务未绑定协程，不能转化为异步任务"},
+                                     ::verilator_utils::assertion_error);
+                // NOLINTEND(bugprone-use-after-move)
+                rejected = true;
+                // 被拒绝的任务不会进入任务池
+                CHECK(pool.empty());
+                CHECK_FALSE(pool.joinable());
+
+                // 检查失败后任务池仍然可用
+                pool.add_task(::std::move(owner));
+                CHECK(pool.joinable());
+                co_await pool.join_all();
+                CHECK(pool.empty());
+                joined = true;
+            },
+        };
+
+        scheduler.add_task(parent());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        CHECK(rejected);
+        CHECK(joined);
+    }
+
     TEST_CASE("cancellation exceptions are distinct from the simulation finish exception")
     {
         static_assert(::std::derived_from<::verilator_utils::task_cancel_exception, ::std::runtime_error>);
