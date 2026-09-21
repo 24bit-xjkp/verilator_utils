@@ -3,24 +3,6 @@ import unit_test;
 
 namespace
 {
-    struct scheduler_fixture
-    {
-        ::VerilatedContext context{};
-        ::fake_dut dut{context};
-
-        explicit scheduler_fixture(::std::int32_t time_unit = -9, ::std::int32_t time_precision = -12)
-        {
-            context.timeunit(time_unit);
-            context.timeprecision(time_precision);
-        }
-
-        [[nodiscard]] ::verilator_utils::eval_scheduler make_scheduler() noexcept
-        { return ::verilator_utils::eval_scheduler{dut}; }
-    };
-
-    struct signal_state
-    { ::CData value{}; };
-
     /**
      * @brief 返回bool值的可等待体，用于测试await_suspend的bool分支
      *
@@ -42,19 +24,6 @@ namespace
      */
     [[nodiscard]] bool is_default_suspend_location(::std::source_location location) noexcept
     { return location.line() == 0u && location.column() == 0u && ::std::string_view{location.file_name()}.empty(); }
-
-    /**
-     * @brief 协程帧析构计数器
-     *
-     * 作为协程体中的局部对象使用：协程帧被销毁时，帧内局部对象的析构函数会执行。
-     * 通过统计析构次数即可观察调度器在析构时是否回收了挂起在事件上的协程帧
-     */
-    struct frame_destruction_counter  // NOLINT(cppcoreguidelines-special-member-functions)
-    {
-        ::std::size_t* count;
-
-        ~frame_destruction_counter() noexcept { ++*count; }
-    };
 
 }  // namespace
 

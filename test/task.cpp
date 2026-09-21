@@ -5,9 +5,6 @@ namespace
 {
     auto to_vector(::std::size_t n) noexcept { return ::std::views::take(n) | ::std::ranges::to<::std::vector<bool>>(); }
 
-    struct signal_state
-    { ::CData value{}; };
-
     /// 带静态存活计数的move-only类型，用于验证mailbox对元素的析构平衡
     struct lifecycle_counter
     {
@@ -32,21 +29,6 @@ namespace
 
     constinit ::std::size_t lifecycle_counter::live_count{};
 
-    struct scheduler_fixture
-    {
-        ::VerilatedContext context{};
-        ::fake_dut dut{context};
-
-        scheduler_fixture()
-        {
-            context.timeunit(-9);
-            context.timeprecision(-12);
-        }
-
-        [[nodiscard]] ::verilator_utils::eval_scheduler make_scheduler() noexcept
-        { return ::verilator_utils::eval_scheduler{dut}; }
-    };
-
     /// 推进一个时钟周期：等待1ns后将时钟驱动到给定电平并执行评估
     ///
     /// @note 先推进时间再翻转电平，使边沿检测器在同一轮评估中观察到信号变化
@@ -60,19 +42,6 @@ namespace
         clk.value = value;
         scheduler.loop_once();
     }
-
-    /**
-     * @brief 协程帧析构计数器
-     *
-     * 作为协程体中的局部对象使用：协程帧被销毁时，帧内局部对象的析构函数会执行。
-     * 通过统计析构次数即可观察被等待或被取消的异步任务是否回收了协程帧
-     */
-    struct frame_destruction_counter  // NOLINT(cppcoreguidelines-special-member-functions)
-    {
-        ::std::size_t* count;
-
-        ~frame_destruction_counter() noexcept { ++*count; }
-    };
 
     /// 非std::exception派生的异常类型，用于验证join_all_exception对未知异常的描述
     struct non_standard_error

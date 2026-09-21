@@ -65,28 +65,17 @@ TEST_SUITE("<name>")
 
 ### 调度器测试夹具
 
+`scheduler_fixture`、`signal_state`、`frame_destruction_counter` 由 `test/common.cpp` 定义并随 `unit_test` 模块导出，测试文件**不要**再自行定义（匿名命名空间中的同名定义会与模块导出的实体产生二义性）。
+
 ```cpp
-namespace
-{
-    struct scheduler_fixture
-    {
-        ::VerilatedContext context{};
-        ::fake_dut dut{context};
-
-        explicit scheduler_fixture(::std::int32_t time_unit = -9, ::std::int32_t time_precision = -12)
-        {
-            context.timeunit(time_unit);
-            context.timeprecision(time_precision);
-        }
-
-        [[nodiscard]] ::verilator_utils::eval_scheduler make_scheduler() noexcept
-        { return ::verilator_utils::eval_scheduler{dut}; }
-    };
-}
+scheduler_fixture fixture{};                     // 默认 -9/-12，即ns/ps
+const scheduler_fixture slow_fixture{-6, -12};   // 自定义时间单位与精度
+auto scheduler{fixture.make_scheduler()};
 ```
 
 - `eval_scheduler` 构造时缓存时间单位与精度，所以必须先配置 `VerilatedContext` 再创建调度器。
 - 夹具接收负指数（`-9` 表示 ns）而不是枚举，便于同一个用例覆盖多组单位/精度。
+- `signal_state` 是测试用单比特信号（成员 `::CData value`）；`frame_destruction_counter` 在协程体内构造局部对象，用于统计协程帧的析构次数。
 
 ### 协程任务测试
 

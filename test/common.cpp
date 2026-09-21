@@ -132,4 +132,52 @@ export {
 
         void atClone() const { contextp()->threadPoolpOnClone(); }
     };
+
+    /// 测试用单比特信号
+    struct signal_state
+    { ::CData value{}; };
+
+    /**
+     * @brief 协程帧析构计数器
+     *
+     * 作为协程体中的局部对象使用：协程帧被销毁时，帧内局部对象的析构函数会执行。
+     * 通过统计析构次数即可观察调度器在析构时是否回收了挂起在事件或等待队列上的协程帧，
+     * 以及被等待或被取消的异步任务是否回收了协程帧
+     *
+     * @note 用法限定为在协程帧或栈上就地构造的RAII计数器：复制会多出一个析构点、
+     *       移动会让移出对象仍然自增，二者都会破坏"每个计数器恰好自增一次"的前提，
+     *       因此显式删除全部复制与移动操作
+     */
+    struct frame_destruction_counter
+    {
+        ::std::size_t* count;
+
+        explicit frame_destruction_counter(::std::size_t* count) noexcept : count{count} {}
+
+        frame_destruction_counter(const frame_destruction_counter&) = delete;
+        frame_destruction_counter& operator= (const frame_destruction_counter&) = delete;
+        frame_destruction_counter(frame_destruction_counter&&) = delete;
+        frame_destruction_counter& operator= (frame_destruction_counter&&) = delete;
+
+        ~frame_destruction_counter() noexcept { ++*count; }
+    };
+
+    /// 调度器测试夹具：提供已配置时间单位与精度的仿真上下文
+    struct scheduler_fixture
+    {
+        ::VerilatedContext context{};
+        ::fake_dut dut{context};
+
+        /// @param time_unit 时间单位（负指数，-9表示ns）
+        /// @param time_precision 时间精度（负指数，-12表示ps）
+        /// @note eval_scheduler在构造时缓存时间单位与精度，因此必须先配置VerilatedContext再创建调度器
+        explicit scheduler_fixture(::std::int32_t time_unit = -9, ::std::int32_t time_precision = -12)
+        {
+            context.timeunit(time_unit);
+            context.timeprecision(time_precision);
+        }
+
+        [[nodiscard]] ::verilator_utils::eval_scheduler make_scheduler() noexcept
+        { return ::verilator_utils::eval_scheduler{dut}; }
+    };
 }
