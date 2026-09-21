@@ -13,6 +13,9 @@ rule("enable_sanitizer", function ()
         if get_config("use_sanitizer") then
             target:set("policy", "build.sanitizer.address", true)
             target:set("policy", "build.sanitizer.undefined", true)
+            if get_config("asan support uas") then
+                target:add("cxflags", "-fsanitize-address-use-after-scope")
+            end
         end
     end)
 end)

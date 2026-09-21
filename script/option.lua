@@ -64,7 +64,16 @@ option("enable_test", function ()
     set_description("Enable unit test for the project.")
 end)
 
-option("visualize", function()
+option("visualize", function ()
     set_default(true)
     set_description("Enable visualization functions in python scripts.")
+end)
+
+option("asan support uas", function ()
+    set_showmenu(false)
+    set_description("Enable use after scope check in asan.")
+
+    on_check(function (option)
+        option:enable(import("core.tool.compiler").has_flags("cxx", "-fsanitize-address-use-after-scope"))
+    end)
 end)
