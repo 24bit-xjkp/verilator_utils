@@ -1032,21 +1032,75 @@ export namespace verilator_utils
          *
          * @return 任务的协程句柄
          */
-        [[nodiscard]] handle_t get_handle() const { return subhandle; }
+        [[nodiscard]] handle_t get_handle() const noexcept { return subhandle; }
+
+        /**
+         * @brief 检查任务对象是否绑定了协程柄
+         *
+         * @return 是否绑定了协程柄
+         */
+        explicit operator bool() const noexcept { return static_cast<bool>(subhandle); }
+
+        /**
+         * @brief 检查任务对象是否可等待
+         *
+         * @return 是否可等待
+         */
+        [[nodiscard]] bool joinable() const noexcept { return static_cast<bool>(subhandle); }
 
         /**
          * @brief 获取任务的promise引用
          *
          * @return 任务的promise引用
          */
-        [[nodiscard]] ::verilator_utils::task<void>::promise_type& get_promise() const noexcept { return subhandle.promise(); }
+        [[nodiscard]] ::verilator_utils::task<void>::promise_type& get_promise() const
+        {
+            ::verilator_utils::check{}(joinable(), "异步任务未绑定协程，不能获取承诺体"sv);
+            return subhandle.promise();
+        }
 
         /**
-         * @brief 判断子任务是否执行完
+         * @brief 判断任务是否执行完
          *
-         * @return 子任务是否执行完
+         * @return 任务是否执行完
          */
-        [[nodiscard]] bool done() const noexcept { return subhandle.done(); }
+        [[nodiscard]] bool done() const
+        {
+            ::verilator_utils::check{}(joinable(), "异步任务未绑定协程，不能检查是否完成"sv);
+            return subhandle.done();
+        }
+
+        /**
+         * @brief 判断任务是否可取消
+         *
+         * @return 是否可取消
+         */
+        [[nodiscard]] bool cancel_possible() const
+        {
+            ::verilator_utils::check{}(joinable(), "异步任务未绑定协程，不能检查取消状态"sv);
+            return subhandle.promise().cancel_possible();
+        }
+
+        /**
+         * @brief 取消任务
+         *
+         */
+        void cancel() const
+        {
+            ::verilator_utils::check{}(joinable(), "异步任务未绑定协程，不能取消"sv);
+            subhandle.promise().cancel();
+        }
+
+        /**
+         * @brief 判断任务是否收到取消请求
+         *
+         * @return 是否收到取消请求
+         */
+        [[nodiscard]] bool cancel_requested() const
+        {
+            ::verilator_utils::check{}(joinable(), "异步任务未绑定协程，不能检查取消状态"sv);
+            return subhandle.promise().cancel_requested();
+        }
 
         /**
          * @brief 分离异步任务的协程柄，此后异步任务不再持有该协程柄
@@ -1068,20 +1122,6 @@ export namespace verilator_utils
                 subhandle = nullptr;
             }
         }
-
-        /**
-         * @brief 检查任务对象是否绑定了协程柄
-         *
-         * @return 是否绑定了协程柄
-         */
-        explicit operator bool() const noexcept { return static_cast<bool>(subhandle); }
-
-        /**
-         * @brief 检查任务对象是否可等待
-         *
-         * @return 是否可等待
-         */
-        [[nodiscard]] bool joinable() const noexcept { return static_cast<bool>(subhandle); }
 
         /**
          * @brief 实现异步子任务的可等待体
@@ -1322,15 +1362,17 @@ export namespace verilator_utils
              * @brief 搜索就绪的任务
              *
              */
-            void search_finish_task()
+            void search_finish_task() noexcept
             {
                 // 没有子任务立即就绪，需要遍历任务池查找就绪任务
                 if(ptr == nullptr)
                 {
                     for(auto&& subtask: *pool)
                     {
-                        subtask.get_promise().is_async = true;
-                        if(subtask.done()) { ptr = ::std::addressof(subtask); }
+                        // 在task进入pool时已经进行过检查
+                        // 使用无检查的get_handle()以避免重复的断言
+                        subtask.get_handle().promise().is_async = true;
+                        if(subtask.get_handle().done()) { ptr = ::std::addressof(subtask); }
                     }
 
                     // 标记ptr为空的情况不可达以消除静态分析警告
@@ -1363,7 +1405,11 @@ export namespace verilator_utils
          *
          * @param task 同步任务
          */
-        void add_task(task_t task) { pool.emplace_back(pair, ::std::move(task)); }
+        void add_task(task_t task)
+        {
+            ::verilator_utils::check{}(task.joinable(), "任务未绑定协程，不能转化为异步任务"sv);
+            pool.emplace_back(pair, ::std::move(task));
+        }
 
         /**
          * @brief 判断任务池是否为空
