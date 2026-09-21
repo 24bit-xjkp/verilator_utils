@@ -1,4 +1,5 @@
 module;
+#include <doctest_macros.hpp>
 #include <clear_all_cpp_std_headers.h>
 #ifdef __clang__
     #pragma clang diagnostic push
@@ -8,6 +9,7 @@ module;
 export module verilator_utils:assert;
 import std;
 import std.compat;
+import doctest;
 
 extern "C++"
 {
@@ -129,7 +131,7 @@ namespace verilator_utils::detail
                 "verilator_utils::assertion_error"sv,
                 "verilator_utils::detail::assert_fail"sv,
                 "verilator_utils::detail::generate_assertion_trace"sv,
-                "verilator_utils::check"sv,
+                "verilator_utils::detail::check"sv,
             };
             const auto erase_begin{
                 ::std::ranges::find_if(trace.frames, [](const ::verilator_utils::trace::stacktrace_frame& frame) {
@@ -347,6 +349,68 @@ namespace verilator_utils
             {
                 if(condition) [[likely]] { return; }
                 ::verilator_utils::detail::assert_fail(location, fmt, ::std::forward<args_t>(args)...);
+            }
+
+            /**
+             * @brief 断言检查函数
+             *
+             * 检查条件是否成立，不成立时通知测试框架然后终止程序。这是与单元测试框架的集成点。
+             * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
+             * @param condition 断言条件
+             */
+            constexpr void operator() (::std::nothrow_t, bool condition) const noexcept
+            {
+                if consteval
+                {
+                    try
+                    {
+                        (*this)(condition);
+                    }
+                    catch(...)
+                    {
+                        ::std::terminate();
+                    }
+                }
+                else
+                {
+                    // 通知单元测试框架
+                    CHECK_NOTHROW((*this)(condition));
+                    // 终止程序避免进入不确定状态
+                    if(!condition) [[unlikely]] { ::std::terminate(); }
+                }
+            }
+
+            /**
+             * @brief 断言检查函数
+             *
+             * 检查条件是否成立，不成立时通知测试框架然后终止程序。这是与单元测试框架的集成点。
+             * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
+             * @param condition 断言条件
+             */
+            template <typename... args_t>
+            constexpr void operator() (::std::nothrow_t,
+                                       bool condition,
+                                       ::std::format_string<args_t...> fmt,
+                                       args_t&&... args) const noexcept
+            {
+                if consteval
+                {
+                    try
+                    {
+                        (*this)(condition, fmt, ::std::forward<args_t>(args)...);
+                    }
+                    catch(...)
+                    {
+                        ::std::terminate();
+                    }
+                }
+                else
+                {
+                    // 通知单元测试框架
+                    CHECK_NOTHROW((*this)(condition, fmt, ::std::forward<args_t>(args)...));
+                    // 终止程序避免进入不确定状态
+                    if(!condition) [[unlikely]] { ::std::terminate(); }
+                }
             }
 
         private:
