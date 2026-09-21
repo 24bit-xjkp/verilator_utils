@@ -344,7 +344,7 @@ export namespace verilator_utils
          * @param task 要添加的任务
          * @note 相当于在绑定的调度器对象scheduler上调用add_task
          */
-        void add_task(::verilator_utils::task<void> task) noexcept { scheduler->add_task(::std::move(task)); }
+        void add_task(::verilator_utils::task<void> task) { scheduler->add_task(::std::move(task)); }
 
         /**
          * @brief 获取统计信息

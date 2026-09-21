@@ -20,6 +20,26 @@ export namespace verilator_utils
     };
 
     /**
+     * @brief 任务取消异常类，用于实现协作式取消
+     *
+     * @note 该异常在框架中使用，不要在框架外捕获它
+     */
+    struct task_cancel_exception : ::std::runtime_error
+    {
+        task_cancel_exception() noexcept : ::std::runtime_error{"任务取消"} {}
+    };
+
+    /**
+     * @brief 子任务取消，用于向父任务报告子任务已取消
+     *
+     * @note 未捕获时，该异常会沿调用链向上传播
+     */
+    struct subtask_cancel_exception : ::std::runtime_error
+    {
+        subtask_cancel_exception() noexcept : ::std::runtime_error{"子任务取消"} {}
+    };
+
+    /**
      * @brief 仿真超时异常类
      *
      */
@@ -115,8 +135,12 @@ namespace verilator_utils::detail
         running,
         /// 协程已挂起，等待调度执行
         suspended,
+        /// 协程收到取消请求
+        cancel_requested,
         /// 协程收到评估结束请求
         eval_finish_requested,
+        /// 协程已取消
+        canceled,
         /// 协程异常退出
         aborted,
         /// 协程执行完毕
@@ -319,6 +343,11 @@ namespace verilator_utils::detail
             {
                 status = status_enum::eval_finish_requested;
             }
+            catch(const ::verilator_utils::task_cancel_exception&)  // NOLINT(bugprone-empty-catch)
+            {
+                // 保持取消请求，以便final_suspend将状态置为canceled而不是aborted
+                status = status_enum::cancel_requested;
+            }
             catch(...)
             {
                 exception = ::std::current_exception();
@@ -355,7 +384,7 @@ namespace verilator_utils::detail
          * @return 协程是否退出
          */
         [[nodiscard]] bool is_coroutine_exited() const noexcept
-        { return status == status_enum::finished || status == status_enum::aborted; }
+        { return status == status_enum::finished || status == status_enum::aborted || status == status_enum::canceled; }
 
         /**
          * @brief 转发可等待体
@@ -401,6 +430,31 @@ namespace verilator_utils::detail
                 return ::std::suspend_never{};
             }
         }
+
+        /**
+         * @brief 判断任务是否可取消
+         *
+         * @return 是否可取消
+         */
+        [[nodiscard]] bool cancel_possible() const noexcept
+        { return status == status_enum::initial_suspend || status == status_enum::suspended; }
+
+        /**
+         * @brief 取消任务
+         *
+         */
+        void cancel()
+        {
+            ::verilator_utils::check{}(cancel_possible(), "当前任务状态为{}，不可取消"sv, ::std::to_underlying(status));
+            status = status_enum::cancel_requested;
+        }
+
+        /**
+         * @brief 判断任务是否收到取消请求
+         *
+         * @return 是否收到取消请求
+         */
+        [[nodiscard]] bool cancel_requested() const noexcept { return status == status_enum::cancel_requested; }
     };
 
     ::verilator_utils::detail::coroutine_pair::coroutine_pair(
@@ -696,20 +750,28 @@ export namespace verilator_utils
          *
          * @return 任务是否完成
          */
-        [[nodiscard]] bool done() const noexcept { return handle.done(); }
+        [[nodiscard]] bool done() const
+        {
+            ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能检查是否完成"sv);
+            return handle.done();
+        }
 
         /**
          * @brief 恢复任务执行
          *
          */
-        void resume() noexcept { handle.resume(); }
+        void resume()
+        {
+            ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能恢复执行"sv);
+            handle.resume();
+        }
 
         /**
          * @brief 重新抛出任务中抛出的异常
          *
          * @note 若任务是通过抛出仿真结束异常结束的，则不重新抛出异常
          */
-        void rethrow_exception() const { handle.promise().rethrow_exception(); }
+        void rethrow_exception() const { get_promise().rethrow_exception(); }
 
         /**
          * @brief 分离任务的协程句柄，此后任务不再持有该句柄
@@ -730,7 +792,11 @@ export namespace verilator_utils
          *
          * @return 任务的promise对象引用
          */
-        [[nodiscard]] promise_type& get_promise() const noexcept { return handle.promise(); }
+        [[nodiscard]] promise_type& get_promise() const
+        {
+            ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能获取承诺体"sv);
+            return handle.promise();
+        }
 
         /**
          * @brief 销毁任务的协程句柄
@@ -739,6 +805,38 @@ export namespace verilator_utils
         void destroy() noexcept
         {
             if(handle) { ::std::exchange(handle, nullptr).destroy(); }
+        }
+
+        /**
+         * @brief 判断任务是否可取消
+         *
+         * @return 是否可取消
+         */
+        [[nodiscard]] bool cancel_possible() const
+        {
+            ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能检查取消状态"sv);
+            return handle.promise().cancel_possible();
+        }
+
+        /**
+         * @brief 取消任务
+         *
+         */
+        void cancel() const
+        {
+            ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能取消"sv);
+            handle.promise().cancel();
+        }
+
+        /**
+         * @brief 判断任务是否收到取消请求
+         *
+         * @return 是否收到取消请求
+         */
+        [[nodiscard]] bool cancel_requested() const
+        {
+            ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能检查取消状态"sv);
+            return handle.promise().cancel_requested();
         }
 
         /**
@@ -1405,7 +1503,7 @@ namespace verilator_utils
          *
          * @param task 要添加的任务
          */
-        void add_task(::verilator_utils::task<void> task) noexcept
+        void add_task(::verilator_utils::task<void> task)
         {
             // 向task中添加调度器
             task.get_promise().scheduler = this;
@@ -1421,6 +1519,8 @@ namespace verilator_utils
         if(promise.scheduler == nullptr) [[unlikely]] { ::std::unreachable(); }
         // 协作式取消的优先级更高
         promise.scheduler->throw_if_finish();
+        // 检查是否需要取消
+        if(promise.status == cancel_requested) { throw ::verilator_utils::task_cancel_exception{}; }
         promise.status = running;
     }
 
@@ -1442,6 +1542,7 @@ namespace verilator_utils
         {
             promise.status = status_enum::aborted;
         }
+        else if(promise.status == status_enum::cancel_requested) { promise.status = status_enum::canceled; }
         else
         {
             promise.status = status_enum::finished;
@@ -1470,6 +1571,10 @@ namespace verilator_utils
         ::verilator_utils::check{}(subhandle.done(), "子任务尚未完成，不能获取结果"sv);
         subhandle.promise().scheduler->throw_if_finish();
         subhandle.promise().rethrow_exception();  // 已处理aborted
+        if(subhandle.promise().status == ::verilator_utils::detail::status_enum::canceled)
+        {
+            throw ::verilator_utils::subtask_cancel_exception{};  // 处理canceled
+        }
         return subhandle.promise().get_result();  // 处理finished
     }
 }  // namespace verilator_utils
