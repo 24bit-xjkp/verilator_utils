@@ -24,9 +24,13 @@ Running:
 ```bash
 xmake test                         # run all tests
 xmake test app_test/default        # run one case
-xmake test -v                      # show output
+xmake test -v app_test/default     # show output of the given cases
 xmake test -jN                     # parallel
 ```
+
+Test names are positional arguments, so they must come last: write `xmake test -v app_test/default`, never `xmake test app_test/default -v` — trailing arguments after the test names are forwarded to the test binary instead.
+
+To run a target's binary directly (one case with framework-specific flags, a debugger, a manual reproduction), use `xmake run <target> [arguments]` rather than the built binary path: it builds the target and applies its run environment (`runenvs`, package library paths). `xmake test` swallows the test output, so `xmake run` and `xmake test -v tests` are the way to see a failing case in detail.
 
 Options per case:
 

@@ -47,6 +47,8 @@ xmake run app arg1 arg2    # pass arguments
 xmake run -d app           # run under debugger (gdb/lldb/cdb)
 ```
 
+Options come before the target, arguments after it. `xmake run` builds the target and applies its run environment (`runenvs`, package library paths such as `LD_LIBRARY_PATH`), so prefer it over launching the built binary path by hand.
+
 ## Clean
 
 ```bash
