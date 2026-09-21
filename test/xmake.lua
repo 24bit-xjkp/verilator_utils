@@ -8,8 +8,8 @@ target("unit_test", function ()
     set_group("unit_test")
     add_deps("verilator_utils_main")
     set_default(false)
-    local regex = "*.cpp|rtl_*.cpp|common.cpp|asan_option.cpp"
-    add_files(regex, "common.cpp", "asan_option.cpp")
+    local regex = "*.cpp|rtl_*.cpp|common.cpp|sanitizer_option.cpp"
+    add_files(regex, "common.cpp", "sanitizer_option.cpp")
     for _, file in ipairs(os.files(regex)) do
         local name = path.basename(file)
         add_tests(name, { runargs = { "-ts=verilator_utils/" .. name, "-fc" } })
@@ -36,7 +36,7 @@ for name, _ in pairs(rtl_verilator_target) do
         end
         add_packages("libnpy-matajoh")
         set_default(false)
-        add_files(format("rtl_%s*.cpp", name), "asan_option.cpp")
+        add_files(format("rtl_%s*.cpp", name), "sanitizer_option.cpp")
         add_defines("VERILATOR_TRACER=" .. (get_config("trace_support_fst") and "VerilatedFstC" or "VerilatedVcdC"))
         add_tests("rtl", { runargs = { "+verilator+rand+reset+2", "-fc" } })
         on_load(function (target)
