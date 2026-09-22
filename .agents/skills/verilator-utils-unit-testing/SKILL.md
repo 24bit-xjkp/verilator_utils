@@ -208,7 +208,7 @@ CHECK_THROWS_WITH_AS_MESSAGE((::verilator_utils::approx<::std::int64_t>{-1z, 0.5
                              "负的绝对误差应当被拒绝");
 ```
 
-- **对 `verilator_utils::assertion_error` 断言消息时用 `Contains`，不要用整串比较**：`what()` 由 `compose_assertion_message` 生成，格式为 `At <file>:<line>:<col>: <func>: <message>\n<trace>`（开启着色时还会插入 ANSI 转义），自定义消息只是其中一个片段。
+- **对 `verilator_utils::assertion_error` 断言消息时用 `Contains`，不要用整串比较**：`what()` 由 `generate_message` 生成，格式为 `At <file>:<line>:<col>: <func>: <message>\n<trace>`（开启着色时还会插入 ANSI 转义），自定义消息只是其中一个片段。
 - `doctest::Contains` 的构造函数是 `explicit Contains(const String&)`，不能隐式转换：必须显式构造 `::doctest::Contains{"文本"}`；把裸字面量当 `Contains` 参数传会因缺少隐式转换而编译失败。
 - `Contains` 也能当普通断言的匹配器使用，但只与 `::doctest::String` 重载了比较运算符：`CHECK(::std::string{...} == ::doctest::Contains{"片段"})` 可用（`const char*`、`::std::string` 都可以），`"..."sv` 会因 `std::string_view` 无法转成 `String` 而编译失败——先用 `::std::string{view}` 转换。
 - `CHECK_THROWS_WITH_AS_MESSAGE` 的 INFO 参数**必须非空**：空 `__VA_ARGS__` 会让 `DOCTEST_INFO` 展开成 `mb_name *;` 而编译失败。只校验异常类型与文本时用三参数的 `CHECK_THROWS_WITH_AS`。

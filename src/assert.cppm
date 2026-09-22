@@ -81,42 +81,6 @@ namespace verilator_utils::detail
     }  // namespace assertion_color
 
     /**
-     * @brief 组合断言失败消息和源代码位置为异常描述字符串
-     *
-     * 根据全局颜色配置和标准错误输出是否为控制台自适应用色：
-     * 控制台默认使用彩色输出，非控制台默认不使用彩色输出，
-     * 也可通过set_assertion_color_config强制启用或禁用
-     * @param message 断言失败消息
-     * @param location 源代码位置
-     * @param trace 栈回溯信息
-     * @return 异常描述字符串
-     */
-    ::std::string compose_assertion_message(::std::string_view message,
-                                            const ::std::source_location& location,
-                                            const ::verilator_utils::trace::stacktrace& trace)
-    {
-        const auto use_color{::verilator_utils::detail::should_colorize_assertion_message()};
-        using namespace ::verilator_utils::detail::assertion_color;
-        return ::std::format("{}At {}{}:{}{}{}:{}{}{}: {}{}{}: {}{}{}\n{}"sv,
-                             use_color ? reset : none,
-                             use_color ? green : none,
-                             location.file_name(),
-                             use_color ? blue : none,
-                             location.line(),
-                             use_color ? reset : none,
-                             use_color ? blue : none,
-                             location.column(),
-                             use_color ? reset : none,
-                             use_color ? yellow : none,
-                             location.function_name(),
-                             use_color ? reset : none,
-                             use_color ? red : none,
-                             message,
-                             use_color ? reset : none,
-                             trace.to_string(use_color));
-    }
-
-    /**
      * @brief 生成断言失败时的调用栈
      *
      * 生成调用栈并过滤掉断言机制自身的栈帧，使调用栈从断言调用处开始
@@ -203,7 +167,48 @@ export namespace verilator_utils
         /// 断言失败时的调用栈
         ::verilator_utils::trace::stacktrace trace_;
         /// 根据失败消息、源代码位置和调用栈组合成的完整错误信息
-        ::std::string composed_message;
+        mutable ::std::string composed_message{};
+
+        /**
+         * @brief 组合断言失败消息和源代码位置为异常描述字符串
+         *
+         * 根据全局颜色配置和标准错误输出是否为控制台自适应用色：
+         * 控制台默认使用彩色输出，非控制台默认不使用彩色输出，
+         * 也可通过set_assertion_color_config强制启用或禁用
+         * @param message 断言失败消息
+         * @param location 源代码位置
+         * @param trace 栈回溯信息
+         * @return 异常描述字符串
+         */
+        [[nodiscard]] ::std::string generate_message() const noexcept
+        {
+            const auto use_color{::verilator_utils::detail::should_colorize_assertion_message()};
+            using namespace ::verilator_utils::detail::assertion_color;
+            try
+            {
+                return ::std::format("{}At {}{}:{}{}{}:{}{}{}: {}{}{}: {}{}{}\n{}"sv,
+                                     use_color ? reset : none,
+                                     use_color ? green : none,
+                                     location_.file_name(),
+                                     use_color ? blue : none,
+                                     location_.line(),
+                                     use_color ? reset : none,
+                                     use_color ? blue : none,
+                                     location_.column(),
+                                     use_color ? reset : none,
+                                     use_color ? yellow : none,
+                                     location_.function_name(),
+                                     use_color ? reset : none,
+                                     use_color ? red : none,
+                                     message_,
+                                     use_color ? reset : none,
+                                     trace_.to_string(use_color));
+            }
+            catch(...)
+            {
+                ::std::terminate();
+            }
+        }
 
     public:
         /**
@@ -213,8 +218,7 @@ export namespace verilator_utils
          * @param location 断言失败的源代码位置
          */
         assertion_error(::std::string message, ::std::source_location location) :
-            message_{::std::move(message)}, location_{location}, trace_{::verilator_utils::detail::generate_assertion_trace()},
-            composed_message{::verilator_utils::detail::compose_assertion_message(message_, location_, trace_)}
+            message_{::std::move(message)}, location_{location}, trace_{::verilator_utils::detail::generate_assertion_trace()}
         {
         }
 
@@ -250,7 +254,11 @@ export namespace verilator_utils
          *
          * @return 异常描述字符串
          */
-        [[nodiscard]] const char* what() const noexcept override { return composed_message.c_str(); }
+        [[nodiscard]] const char* what() const noexcept override
+        {
+            if(composed_message.empty()) { composed_message = generate_message(); }
+            return composed_message.c_str();
+        }
     };
 
     /**

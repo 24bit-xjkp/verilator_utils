@@ -322,8 +322,7 @@ export namespace verilator_utils
          */
         explicit coroutine_exception(::std::exception_ptr exception,
                                      ::verilator_utils::coroutine_stacktrace stacktrace = {}) noexcept :
-            exception_{::std::move(exception)}, stacktrace_{::std::move(stacktrace)},
-            message{generate_message()}
+            exception_{::std::move(exception)}, stacktrace_{::std::move(stacktrace)}
         {
         }
 
@@ -347,14 +346,18 @@ export namespace verilator_utils
          */
         void rethrow_exception() const { ::std::rethrow_exception(exception_); }
 
-        [[nodiscard]] const char* what() const noexcept override { return message.c_str(); }
+        [[nodiscard]] const char* what() const noexcept override
+        {
+            if(message.empty()) { message = generate_message(); }
+            return message.c_str();
+        }
 
     private:
         ::std::exception_ptr exception_;
         ::verilator_utils::coroutine_stacktrace stacktrace_;
-        ::std::string message;
+        mutable ::std::string message{};
 
-        ::std::string generate_message() noexcept;
+        ::std::string generate_message() const noexcept;
     };
 }  // namespace verilator_utils
 
@@ -940,7 +943,7 @@ namespace verilator_utils
         while(pair != nullptr) { co_yield frame{::std::exchange(pair, pair.promise->parent)}; }
     }
 
-    auto ::verilator_utils::coroutine_exception::generate_message() noexcept -> ::std::string
+    auto ::verilator_utils::coroutine_exception::generate_message() const noexcept -> ::std::string
     {
         try
         {
@@ -964,7 +967,7 @@ namespace verilator_utils
         }
         catch(...)
         {
-            return {};
+            ::std::terminate();
         }
     }
 }  // namespace verilator_utils
