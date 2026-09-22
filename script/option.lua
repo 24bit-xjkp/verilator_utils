@@ -3,6 +3,40 @@ option("use_sanitizer", function ()
     set_description("Enable sanitizer for unit tests.")
 end)
 
+option("type sanitizer support", function ()
+    set_showmenu(false)
+    set_description("Whether the toolchain supports TypeSanitizer (-fsanitize=type).")
+
+    on_check(function (option)
+        option:enable(import("core.tool.compiler").has_flags("cxx", "-fsanitize=type"))
+    end)
+end)
+
+option("use_type_sanitizer", function ()
+    set_default(false)
+    set_description("Enable TypeSanitizer for unit tests if possible.")
+end)
+
+option("enable tysan", function ()
+    set_showmenu(false)
+    add_deps("type sanitizer support")
+    set_description("Whether to use tysan in unit test.")
+
+    on_check(function (option)
+        if get_config("use_type_sanitizer") then
+            option:enable(true)
+            if not get_config("type sanitizer support") then
+                cprint("${color.warning}TypeSanitizer is not supported by the current toolchain, ignore.")
+                option:enable(false)
+            end
+            if not get_config("use_sanitizer") then
+                cprint([[${color.warning}Option "use_type_sanitizer" is enabled but "use_sanitizer" is not, ignore.]])
+                option:enable(false)
+            end
+        end
+    end)
+end)
+
 std_harden_defines = {
     "_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_" .. (is_mode("debug") and "DEBUG" or "FAST"), "_GLIBCXX_ASSERTIONS"
 }
@@ -69,7 +103,7 @@ option("visualize", function ()
     set_description("Enable visualization functions in python scripts.")
 end)
 
-option("asan support uas", function ()
+option("asan uas support", function ()
     set_showmenu(false)
     set_description("Enable use after scope check in asan.")
 

@@ -13,10 +13,22 @@ rule("enable_sanitizer", function ()
         if get_config("use_sanitizer") then
             target:set("policy", "build.sanitizer.address", true)
             target:set("policy", "build.sanitizer.undefined", true)
-            if get_config("asan support uas") then
+            if get_config("asan uas support") then
                 target:add("cxflags", "-fsanitize-address-use-after-scope")
             end
         end
+    end)
+end)
+
+-- TypeSanitizer使用独占的构建配置：它不能与address/leak清洁器同时启用，
+-- 因此只在type_sanitizer目标组中使用本规则。
+rule("enable_type_sanitizer", function ()
+    on_load(function (target)
+        -- 复用未插桩的模块BMI会丢掉类型信息，导致type sanitizer无法正常工作
+        -- target:set("policy", "build.c++.modules.reuse", false)
+        target:add("cxflags", "-fsanitize=type", { force = true })
+        target:add("ldflags", "-fsanitize=type", { force = true })
+        target:add("shflags", "-fsanitize=type", { force = true })
     end)
 end)
 
