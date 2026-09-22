@@ -8,56 +8,6 @@ namespace
     using namespace ::std::string_view_literals;
 }
 
-export namespace verilator_utils
-{
-    /**
-     * @brief 协程栈回溯
-     *
-     */
-    struct coroutine_stacktrace
-    {
-        /// 协程栈帧
-        struct stacktrace_frame
-        {
-            /// 指向协程帧的指针
-            void* coroutine_frame_ptr{};
-            /// 协程挂起位置
-            ::std::source_location location{};
-            /// 协程类型
-            ::verilator_utils::detail::promise_base::coroutine_type_enum type{};
-        };
-
-        /// 协程栈帧数组
-        ::std::vector<stacktrace_frame> frames;
-
-        /**
-         * @brief 创建一个协程栈回溯对象
-         *
-         * @param pair 协程状态对
-         */
-        explicit coroutine_stacktrace(::verilator_utils::detail::coroutine_pair pair) :
-            frames{backtrace(pair) | ::std::ranges::to<::std::vector>()}
-        {
-        }
-
-        /**
-         * @brief 开始协程栈回溯
-         *
-         * @param pair 协程状态对
-         * @return 协程栈帧生成器
-         */
-        static ::verilator_utils::generator<stacktrace_frame> backtrace(::verilator_utils::detail::coroutine_pair pair)
-        {
-            while(pair != nullptr)
-            {
-                const auto& [handle, promise]{pair};
-                co_yield stacktrace_frame{handle.address(), promise->suspend_location, promise->classify()};
-                pair = promise->parent;
-            }
-        }
-    };
-}  // namespace verilator_utils
-
 namespace verilator_utils::detail
 {
     /**
@@ -2267,89 +2217,6 @@ export namespace std
             return ::std::format_to(ctx.out(), "{}"sv, value.reg);
         }
     };
-
-    /**
-     * @brief 协程栈帧格式化支持
-     *
-     * 支持的格式符：
-     * - #: 输出带ANSI颜色的协程栈帧，颜色使用方式与断言消息一致
-     */
-    template <>
-    struct formatter<::verilator_utils::coroutine_stacktrace::stacktrace_frame>
-    {
-        bool with_color{};
-
-        constexpr auto parse(::std::format_parse_context& ctx)
-        {
-            return ::verilator_utils::detail::parse_format_string_with_detail_flag(
-                ctx,
-                "无效的verilator_utils::coroutine_stacktrace::stacktrace_frame格式符"sv,
-                with_color);
-        }
-
-        template <typename iter_t>
-        auto format(const ::verilator_utils::coroutine_stacktrace::stacktrace_frame& value,
-                    ::std::basic_format_context<iter_t, char>& ctx) const
-        {
-            if(with_color)
-            {
-                return ::std::format_to(ctx.out(),
-                                        "{}{}({}){}: {}{}{} at {}{}:{}:{}{}"sv,
-                                        ::verilator_utils::detail::assertion_color::cyan,
-                                        value.coroutine_frame_ptr,
-                                        value.type,
-                                        ::verilator_utils::detail::assertion_color::reset,
-                                        ::verilator_utils::detail::assertion_color::yellow,
-                                        value.location.function_name(),
-                                        ::verilator_utils::detail::assertion_color::reset,
-                                        ::verilator_utils::detail::assertion_color::cyan,
-                                        value.location.file_name(),
-                                        value.location.line(),
-                                        value.location.column(),
-                                        ::verilator_utils::detail::assertion_color::reset);
-            }
-            return ::std::format_to(ctx.out(),
-                                    "{}({}): {} at {}:{}:{}"sv,
-                                    value.coroutine_frame_ptr,
-                                    value.type,
-                                    value.location.function_name(),
-                                    value.location.file_name(),
-                                    value.location.line(),
-                                    value.location.column());
-        }
-    };
-
-    /**
-     * @brief 协程栈回溯格式化支持
-     *
-     * 支持的格式符：
-     * - #: 输出带ANSI颜色的协程栈回溯，颜色使用方式与断言消息一致
-     */
-    template <>
-    struct formatter<::verilator_utils::coroutine_stacktrace>
-    {
-        bool with_color{};
-
-        constexpr auto parse(::std::format_parse_context& ctx)
-        {
-            return ::verilator_utils::detail::parse_format_string_with_detail_flag(
-                ctx,
-                "无效的verilator_utils::coroutine_stacktrace格式符"sv,
-                with_color);
-        }
-
-        template <typename iter_t>
-        auto format(const ::verilator_utils::coroutine_stacktrace& value, ::std::basic_format_context<iter_t, char>& ctx) const
-        {
-            auto out{::std::format_to(ctx.out(), "Coroutine Stacktrace:\n"sv)};
-            for(auto&& [i, frame]: value.frames | ::std::views::enumerate)
-            {
-                out = with_color ? ::std::format_to(out, "[{}] {:#}\n"sv, i, frame)
-                                 : ::std::format_to(out, "[{}] {}\n"sv, i, frame);
-            }
-            return out;
-        }
-    };
 }  // namespace std
 
 export namespace doctest
@@ -2365,25 +2232,5 @@ export namespace doctest
     {
         static ::doctest::String convert(const ::verilator_utils::shift_register<type>& value)
         { return ::std::format("{:#}"sv, value); }
-    };
-
-    template <>
-    struct StringMaker<::verilator_utils::coroutine_stacktrace::stacktrace_frame>
-    {
-        static ::doctest::String convert(const ::verilator_utils::coroutine_stacktrace::stacktrace_frame& value)
-        {
-            if(::verilator_utils::detail::should_colorize_assertion_message()) { return ::std::format("{:#}"sv, value); }
-            return ::std::format("{}"sv, value);
-        }
-    };
-
-    template <>
-    struct StringMaker<::verilator_utils::coroutine_stacktrace>
-    {
-        static ::doctest::String convert(const ::verilator_utils::coroutine_stacktrace& value)
-        {
-            if(::verilator_utils::detail::should_colorize_assertion_message()) { return ::std::format("{:#}"sv, value); }
-            return ::std::format("{}"sv, value);
-        }
     };
 }  // namespace doctest

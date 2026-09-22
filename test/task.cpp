@@ -56,23 +56,27 @@ namespace
      * @param exception_ptr 异常指针
      * @return "类型: 消息"形式的字符串
      */
-    [[nodiscard]] ::std::string describe_exception(const ::std::exception_ptr& exception_ptr)
+    [[nodiscard]] ::std::string describe_exception(const ::std::exception_ptr& exception_ptr)  // NOLINT(misc-no-recursion)
     {
         try
         {
             ::std::rethrow_exception(exception_ptr);
         }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            return ::describe_exception(exception.exception());
+        }
         catch(const ::std::runtime_error& exception)
         {
-            return ::std::format("runtime_error: {}", exception.what());
+            return ::std::format("runtime_error: {}"sv, exception.what());
         }
         catch(const ::std::logic_error& exception)
         {
-            return ::std::format("logic_error: {}", exception.what());
+            return ::std::format("logic_error: {}"sv, exception.what());
         }
         catch(const ::std::exception& exception)
         {
-            return ::std::format("exception: {}", exception.what());
+            return ::std::format("exception: {}"sv, exception.what());
         }
         catch(...)
         {
@@ -480,7 +484,7 @@ TEST_SUITE("verilator_utils/task")
         auto scheduler{fixture.make_scheduler()};
 
         scheduler.add_task(::verilator_utils::max_eval_time(4_ps));
-        CHECK_THROWS_AS(scheduler.loop_until_finish(), ::verilator_utils::eval_timeout_exception);
+        CHECK_THROWS_AS(scheduler.loop_until_finish(), ::verilator_utils::coroutine_exception);
 
         CHECK_EQ(scheduler.time_in_time_precision(), 4u);
         CHECK(scheduler.is_error());
@@ -841,42 +845,72 @@ TEST_SUITE("verilator_utils/task")
 
     TEST_CASE("stacktrace_frame formatter renders coroutine role, function and location")
     {
-        using frame_t = ::verilator_utils::coroutine_stacktrace::stacktrace_frame;
+        using frame_t = ::verilator_utils::coroutine_stacktrace::frame;
         static_assert(::std::formattable<frame_t, char>);
 
         const auto location{::std::source_location::current()};
         const frame_t frame{nullptr, location, ::verilator_utils::detail::promise_base::coroutine_type_enum::sub_coroutine};
 
         const auto plain{::std::format("{}"sv, frame)};
-        CHECK(plain.contains("子协程"sv));
+        CHECK(plain.contains("sub"sv));
         CHECK(plain.contains(location.function_name()));
         CHECK(plain.contains(location.file_name()));
         CHECK(plain.ends_with(::std::format(":{}:{}"sv, location.line(), location.column())));
 
         const auto colored{::std::format("{:#}"sv, frame)};
-        CHECK(colored.contains("\033[36m"sv));
-        CHECK(colored.contains("\033[33m"sv));
-        CHECK(colored.ends_with("\033[0m"sv));
-        CHECK(colored.contains(location.function_name()));
-        CHECK(colored.contains(location.file_name()));
+        using namespace ::verilator_utils::detail::assertion_color;
+        // 各字段的着色与Stack trace一致：指针和行列号为蓝色，函数名为黄色，文件路径为绿色
+        const auto pointer_text{::std::format("{:#0{}x}"sv, 0zu, 2 * sizeof(void*) + 2)};
+        CHECK(colored.contains(::std::format("{}{}{}"sv, blue, pointer_text, reset)));
+        CHECK(colored.contains(::std::format("{}{}{}"sv, yellow, location.function_name(), reset)));
+        CHECK(colored.contains(::std::format("{}{}{}"sv, green, location.file_name(), reset)));
+        CHECK(colored.contains(::std::format(":{}{}{}"sv, blue, location.line(), reset)));
+        CHECK(colored.contains(::std::format(":{}{}{}"sv, blue, location.column(), reset)));
+        CHECK(colored.ends_with(reset));
+        CHECK_FALSE(colored.contains(cyan));
     }
 
     TEST_CASE("stacktrace_frame formatter renders a default frame deterministically")
     {
-        using frame_t = ::verilator_utils::coroutine_stacktrace::stacktrace_frame;
+        using frame_t = ::verilator_utils::coroutine_stacktrace::frame;
 
         const frame_t frame{};
-        CHECK_EQ(::std::format("{}"sv, frame), "0x0(根协程):  at :0:0"sv);
+        CHECK_EQ(::std::format("{}"sv, frame), "0x0000000000000000 (root)  in  at :0:0"sv);
 
         // doctest的StringMaker会根据全局颜色配置决定是否输出ANSI转义序列，因此只校验内容而非精确字符串
         const auto converted{::doctest::StringMaker<frame_t>::convert(frame)};
         CHECK_NE(converted.size(), 0u);
-        CHECK(::std::string_view{converted.c_str()}.contains("根协程"sv));
+        CHECK(::std::string_view{converted.c_str()}.contains("root"sv));
+    }
+
+    TEST_CASE("stacktrace_frame formatter zero pads the pointer and aligns the coroutine type")
+    {
+        using frame_t = ::verilator_utils::coroutine_stacktrace::frame;
+        using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
+
+        const auto location{::std::source_location::current()};
+        const frame_t root{nullptr, location, type_t::root_coroutine};
+        const frame_t sub{nullptr, location, type_t::sub_coroutine};
+        const frame_t async{nullptr, location, type_t::async_coroutine};
+
+        // 指针值按指针的十六进制位数补0，使不同帧的指针字段等宽
+        const auto pointer_digits{2 * sizeof(void*)};
+        const auto plain_root{::std::format("{}"sv, root)};
+        CHECK(plain_root.starts_with(::std::format("0x{:0{}x} "sv, 0zu, pointer_digits)));
+
+        // 协程类型宽度不同，右侧补空格使各帧的in关键字对齐
+        const auto in_position{[](const ::std::string& rendered) { return rendered.find(" in "sv); }};
+        const auto sub_position{in_position(::std::format("{}"sv, sub))};
+        CHECK_NE(sub_position, ::std::string::npos);
+        CHECK_EQ(in_position(plain_root), sub_position);
+        CHECK_EQ(sub_position, in_position(::std::format("{}"sv, async)));
+        // 补空格不改变帧的其余内容
+        CHECK(plain_root.ends_with(::std::format(" at {}:{}:{}"sv, location.file_name(), location.line(), location.column())));
     }
 
     TEST_CASE("stacktrace_frame formatter rejects unsupported format specifiers")
     {
-        using frame_t = ::verilator_utils::coroutine_stacktrace::stacktrace_frame;
+        using frame_t = ::verilator_utils::coroutine_stacktrace::frame;
 
         frame_t frame{};
 
@@ -901,7 +935,7 @@ TEST_SUITE("verilator_utils/task")
         CHECK(::std::string_view{frame.location.function_name()}.contains("stacktrace_root_only"sv));
         // 当前帧的位置被覆盖为调用stacktrace()的源代码位置
         CHECK_EQ(static_cast<int>(frame.location.line()), expected_line);
-        CHECK_EQ(::std::format("{}"sv, frame.type), "根协程"sv);
+        CHECK_EQ(::std::format("{}"sv, frame.type), "root"sv);
     }
 
     TEST_CASE("stacktrace() walks the full nested sync parent chain")
@@ -1012,24 +1046,49 @@ TEST_SUITE("verilator_utils/task")
 
         static_assert(::std::formattable<::verilator_utils::coroutine_stacktrace, char>);
         const auto rendered{::std::format("{}"sv, *captured)};
-        CHECK(rendered.starts_with("Coroutine Stacktrace:\n[0] "sv));
-        CHECK(rendered.contains("根协程"sv));
+        CHECK(rendered.starts_with("Coroutine stack trace (most recent call first):\n#0 "sv));
+        // 单帧的编号宽度为1，帧编号与指针之间只有一个分隔空格
+        CHECK(rendered.contains("\n#0 0x"sv));
+        CHECK(rendered.contains("root"sv));
         CHECK(rendered.contains("stacktrace_root_only"sv));
         CHECK(rendered.ends_with('\n'));
         CHECK_FALSE(rendered.contains("\033["sv));
 
         const auto colored{::std::format("{:#}"sv, *captured)};
-        CHECK(colored.contains("\033[36m"sv));
-        CHECK(colored.contains("\033[33m"sv));
+        using namespace ::verilator_utils::detail::assertion_color;
+        // 着色与Stack trace一致：指针为蓝色，函数名为黄色，文件路径为绿色
+        CHECK(colored.contains(blue));
+        CHECK(colored.contains(green));
+        CHECK(colored.contains(yellow));
         CHECK(colored.contains("stacktrace_root_only"sv));
+    }
+
+    TEST_CASE("coroutine_stacktrace formatter widens the frame index to the total frame count")
+    {
+        using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        const auto location{::std::source_location::current()};
+
+        ::verilator_utils::coroutine_stacktrace trace{};
+        constexpr auto frame_count{11zu};
+        trace.frames.reserve(frame_count);
+        for(auto i{0zu}; i < frame_count; ++i)
+        {
+            // 最后一个帧为根协程，其余为同步子协程，覆盖宽度不同的协程类型
+            const auto type{i + 1 == frame_count ? type_t::root_coroutine : type_t::sub_coroutine};
+            trace.frames.emplace_back(nullptr, location, type);
+        }
+
+        // 帧编号按总条目数自适应宽度，个位编号补空格后与两位编号的指针字段对齐
+        const auto rendered{::std::format("{}"sv, trace)};
+        CHECK(rendered.contains("\n#0  0x"sv));
+        CHECK(rendered.contains("\n#10 0x"sv));
     }
 
     TEST_CASE("coroutine_type_enum formatter rejects unsupported format specifiers")
     {
         const auto type{::verilator_utils::detail::promise_base::coroutine_type_enum::sub_coroutine};
-        CHECK_EQ(::std::format("{}"sv, type), "子协程"sv);
-        CHECK_EQ(::std::format("{}"sv, ::verilator_utils::detail::promise_base::coroutine_type_enum::async_coroutine),
-                 "异步协程"sv);
+        CHECK_EQ(::std::format("{}"sv, type), "sub"sv);
+        CHECK_EQ(::std::format("{}"sv, ::verilator_utils::detail::promise_base::coroutine_type_enum::async_coroutine), "async"sv);
         CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(type))), ::std::format_error);
     }
 
@@ -1870,9 +1929,9 @@ TEST_SUITE("verilator_utils/task")
                 {
                     co_await pool.join_any();
                 }
-                catch(const ::std::runtime_error& exception)
+                catch(const ::verilator_utils::coroutine_exception& exception)
                 {
-                    caught = exception.what() == "async child failure"sv;
+                    caught = ::std::string_view{exception.what()}.contains("async child failure"sv);
                 }
             },
         };
@@ -2206,13 +2265,20 @@ TEST_SUITE("verilator_utils/task")
                 {
                     co_await pool.join_all();
                 }
-                catch(const ::verilator_utils::spawn_pool::join_all_exception& exception)
+                catch(const ::verilator_utils::coroutine_exception& exception)
                 {
-                    message = exception.what();
-                    exception_count = exception.exceptions().size();
-                    for(const auto& exception_ptr: exception.exceptions())
+                    try
                     {
-                        descriptions.emplace_back(::describe_exception(exception_ptr));
+                        exception.rethrow_exception();
+                    }
+                    catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
+                    {
+                        message = join_all_exception.what();
+                        exception_count = join_all_exception.exceptions().size();
+                        for(const auto& exception_ptr: join_all_exception.exceptions())
+                        {
+                            descriptions.emplace_back(::describe_exception(exception_ptr));
+                        }
                     }
                 }
                 joined = pool.empty();
@@ -2224,9 +2290,11 @@ TEST_SUITE("verilator_utils/task")
         CHECK(joined);
         // 异常按子任务加入任务池的顺序收集，与子任务的完成顺序无关
         CHECK_EQ(exception_count, 2u);
-        CHECK_EQ(descriptions, (::std::vector<::std::string>{"runtime_error: first failure", "logic_error: second failure"}));
+        CHECK_EQ(descriptions[0], ::doctest::Contains{"runtime_error: first failure"});
+        CHECK_EQ(descriptions[1], ::doctest::Contains{"logic_error: second failure"});
         // what()按"序号: 消息"逐行列出所有异常
-        CHECK_EQ(message, "1: first failure\n2: second failure\n"sv);
+        CHECK_EQ(message, ::doctest::Contains{"1: first failure\n"});
+        CHECK_EQ(message, ::doctest::Contains{"2: second failure\n"});
     }
 
     TEST_CASE("spawn_pool join_all exception is catchable as std::exception")
@@ -2262,10 +2330,17 @@ TEST_SUITE("verilator_utils/task")
                         // 重新抛出以验证通过基类捕获不会切掉派生类型
                         throw;
                     }
-                    catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
+                    catch(const ::verilator_utils::coroutine_exception& exception)
                     {
-                        caught_as_join_all = true;
-                        exception_count = join_all_exception.exceptions().size();
+                        try
+                        {
+                            exception.rethrow_exception();
+                        }
+                        catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
+                        {
+                            caught_as_join_all = true;
+                            exception_count = join_all_exception.exceptions().size();
+                        }
                     }
                 }
             },
@@ -2274,7 +2349,7 @@ TEST_SUITE("verilator_utils/task")
         scheduler.loop_until_finish();
         CHECK(caught_as_join_all);
         CHECK_EQ(exception_count, 1u);
-        CHECK_EQ(message, "1: single failure\n"sv);
+        CHECK_EQ(message, ::doctest::Contains{"1: single failure\n"});
     }
 
     TEST_CASE("spawn_pool join_all describes non-standard exceptions as unknown")
@@ -2302,20 +2377,34 @@ TEST_SUITE("verilator_utils/task")
                 {
                     co_await pool.join_all();
                 }
-                catch(const ::verilator_utils::spawn_pool::join_all_exception& exception)
+                catch(const ::verilator_utils::coroutine_exception& exception)
                 {
-                    message = exception.what();
-                    exception_count = exception.exceptions().size();
-                    for(const auto& exception_ptr: exception.exceptions())
+                    try
                     {
-                        descriptions.emplace_back(::describe_exception(exception_ptr));
-                        try
+                        exception.rethrow_exception();
+                    }
+                    catch(const ::verilator_utils::spawn_pool::join_all_exception& exception)
+                    {
+                        message = exception.what();
+                        exception_count = exception.exceptions().size();
+                        for(const auto& exception_ptr: exception.exceptions())
                         {
-                            ::std::rethrow_exception(exception_ptr);
-                        }
-                        catch(const ::non_standard_error&)
-                        {
-                            non_standard_rethrown = true;
+                            descriptions.emplace_back(::describe_exception(exception_ptr));
+                            try
+                            {
+                                ::std::rethrow_exception(exception_ptr);
+                            }
+                            catch(const ::verilator_utils::coroutine_exception& exception)
+                            {
+                                try
+                                {
+                                    exception.rethrow_exception();
+                                }
+                                catch(const ::non_standard_error&)
+                                {
+                                    non_standard_rethrown = true;
+                                }
+                            }
                         }
                     }
                 }
@@ -2326,8 +2415,8 @@ TEST_SUITE("verilator_utils/task")
         // 非std::exception异常仍保留原始类型，但无法提取消息
         CHECK(non_standard_rethrown);
         CHECK_EQ(exception_count, 1u);
-        CHECK_EQ(descriptions, (::std::vector<::std::string>{"non-standard"}));
-        CHECK_EQ(message, "1: unknown\n"sv);
+        CHECK_EQ(descriptions[0], ::doctest::Contains{"non-standard"});
+        CHECK_EQ(message, ::doctest::Contains{"1: unknown\n"});
     }
 
     TEST_CASE("spawn_pool join_any removes the completed child regardless of position")

@@ -164,9 +164,9 @@ TEST_SUITE("verilator_utils/scheduler")
                 static_cast<void>(co_await child);
                 consumed_result = true;
             }
-            catch(const ::std::runtime_error& exception)
+            catch(const ::verilator_utils::coroutine_exception& exception)
             {
-                observed_exception = ::std::string_view{exception.what()} == "value task failure"sv;
+                observed_exception = ::std::string_view{exception.what()}.contains("value task failure"sv);
             }
         }};
         scheduler.add_task(parent());
@@ -278,9 +278,9 @@ TEST_SUITE("verilator_utils/scheduler")
                 {
                     co_await failing_task;
                 }
-                catch(const ::std::runtime_error& exception)
+                catch(const ::verilator_utils::coroutine_exception& exception)
                 {
-                    caught_regular = ::std::string_view{exception.what()} == "regular failure"sv;
+                    caught_regular = ::std::string_view{exception.what()}.contains("regular failure"sv);
                 }
             },
         };
@@ -290,7 +290,7 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(caught_regular);
         CHECK(failing_task.done());
         CHECK(failing_task.promise().with_unhandled_exception());
-        CHECK_THROWS_AS(failing_task.rethrow_exception(), ::std::runtime_error);
+        CHECK_THROWS_AS(failing_task.rethrow_exception(), ::verilator_utils::coroutine_exception);
 
         // eval_finish_exception不会被记录为未处理异常，因此重新抛出时被忽略
         auto finish_task{[] -> ::verilator_utils::task<void> { co_await eval_finish(); }()};
@@ -1284,7 +1284,7 @@ TEST_SUITE("verilator_utils/scheduler")
         signal.value = 1;
         CHECK_THROWS_WITH_AS(scheduler.loop_until_finish(),
                              ::doctest::Contains{"子任务取消"},
-                             ::verilator_utils::subtask_cancel_exception);
+                             ::verilator_utils::coroutine_exception);
         CHECK_FALSE(resumed_after_wait);
         REQUIRE(child_task.done());
         CHECK_EQ(child_task.promise().status, ::verilator_utils::task<void>::status_enum::canceled);

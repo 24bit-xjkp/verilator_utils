@@ -241,7 +241,125 @@ namespace verilator_utils::detail
 
         // NOLINTEND(*-explicit-constructor)
     };
+}  // namespace verilator_utils::detail
 
+export namespace verilator_utils
+{
+    /**
+     * @brief 协程栈回溯
+     *
+     */
+    struct coroutine_stacktrace
+    {
+        /// 协程栈帧
+        struct frame
+        {
+            /// 指向协程帧的指针
+            void* coroutine_frame_ptr{};
+            /// 协程挂起位置
+            ::std::source_location location{};
+            /// 协程类型
+            ::verilator_utils::detail::coroutine_type_enum type{};
+
+            frame() noexcept = default;
+
+            explicit frame(::verilator_utils::detail::coroutine_pair pair) noexcept;
+
+            explicit frame(void* coroutine_frame_ptr,
+                           ::std::source_location location,
+                           ::verilator_utils::detail::coroutine_type_enum type) noexcept :
+                coroutine_frame_ptr{coroutine_frame_ptr}, location{location}, type{type}
+            {
+            }
+        };
+
+        /// 协程栈帧数组
+        ::std::vector<frame> frames{};
+
+        /**
+         * @brief 创建一个空的协程栈回溯对象
+         *
+         */
+        coroutine_stacktrace() noexcept = default;
+
+        /**
+         * @brief 创建一个协程栈回溯对象
+         *
+         * @param pair 协程状态对
+         */
+        explicit coroutine_stacktrace(::verilator_utils::detail::coroutine_pair pair) :
+            frames{backtrace(pair) | ::std::ranges::to<::std::vector>()}
+        {
+        }
+
+        /**
+         * @brief 判断栈帧数组是否为空
+         *
+         * @return 栈帧数组是否为空
+         */
+        [[nodiscard]] bool empty() const noexcept { return frames.empty(); }
+
+        /**
+         * @brief 开始协程栈回溯
+         *
+         * @param pair 协程状态对
+         * @return 协程栈帧生成器
+         */
+        static ::verilator_utils::generator<frame> backtrace(::verilator_utils::detail::coroutine_pair pair);
+    };
+
+    /**
+     * @brief 协程异常类型，带有协程栈回溯信息
+     *
+     */
+    struct coroutine_exception : ::std::exception
+    {
+        /**
+         * @brief 构造协程异常对象
+         *
+         * @param exception 原始异常指针
+         * @param stacktrace 协程栈回溯
+         */
+        explicit coroutine_exception(::std::exception_ptr exception,
+                                     ::verilator_utils::coroutine_stacktrace stacktrace = {}) noexcept :
+            exception_{::std::move(exception)}, stacktrace_{::std::move(stacktrace)},
+            message{generate_message()}
+        {
+        }
+
+        /**
+         * @brief 获取原始异常指针
+         *
+         * @return 原始异常指针的引用
+         */
+        [[nodiscard]] const ::std::exception_ptr& exception() const noexcept { return exception_; }
+
+        /**
+         * @brief 获取协程栈回溯
+         *
+         * @return 协程栈回溯引用
+         */
+        [[nodiscard]] const ::verilator_utils::coroutine_stacktrace& stacktrace() const noexcept { return stacktrace_; }
+
+        /**
+         * @brief 重新抛出原始异常
+         *
+         */
+        void rethrow_exception() const { ::std::rethrow_exception(exception_); }
+
+        [[nodiscard]] const char* what() const noexcept override { return message.c_str(); }
+
+    private:
+        ::std::exception_ptr exception_;
+        ::verilator_utils::coroutine_stacktrace stacktrace_;
+        ::std::string message;
+
+        ::std::string generate_message() noexcept;
+    };
+}  // namespace verilator_utils
+
+namespace verilator_utils::detail
+{
     /**
      * @brief 协程承诺类型的基类
      *
@@ -332,8 +450,10 @@ namespace verilator_utils::detail
          * @brief 将协程中抛出的异常存储到异常指针中
          *
          */
-        void unhandled_exception() noexcept
+        void unhandled_exception(::std::source_location location = ::std::source_location::current()) noexcept
         {
+            // 复用suspend_location来表示协程内异常抛出位置
+            suspend_location = location;
             try
             {
                 throw;
@@ -649,6 +769,228 @@ namespace verilator_utils::detail
         return_type await_resume();
     };
 }  // namespace verilator_utils::detail
+
+export namespace verilator_utils::detail
+{
+    /**
+     * @brief 协程栈帧指针字段的宽度
+     *
+     * 与Stack trace的地址字段一致，按指针的十六进制位数（含0x前缀）取固定宽度，
+     * 使得高位补0后各帧的指针字段等宽
+     */
+    constexpr inline ::std::size_t coroutine_frame_pointer_width{2 * sizeof(void*) + 2};
+
+    /**
+     * @brief 获取协程类型的名称
+     *
+     * @param type 协程类型
+     * @return 协程类型名称
+     */
+    [[nodiscard]] constexpr ::std::string_view
+        coroutine_type_name(::verilator_utils::detail::promise_base::coroutine_type_enum type) noexcept
+    {
+        using enum ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        switch(type)
+        {
+            case root_coroutine: return "root"sv;
+            case sub_coroutine: return "sub"sv;
+            case async_coroutine: return "async"sv;
+        }
+        ::std::unreachable();
+    }
+
+    /**
+     * @brief 协程类型字段的宽度，含括号
+     *
+     * 取所有协程类型名称中最宽者，格式化时在类型字段右侧补空格即可使各帧的in关键字对齐
+     * @return 协程类型字段的宽度
+     */
+    [[nodiscard]] consteval ::std::size_t coroutine_type_field_width() noexcept
+    {
+        using enum ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        ::std::size_t width{};
+        for(const auto type: {root_coroutine, sub_coroutine, async_coroutine})
+        {
+            width = ::std::max(width, coroutine_type_name(type).size() + 2);
+        }
+        return width;
+    }
+}  // namespace verilator_utils::detail
+
+export namespace std
+{
+    template <>
+    struct formatter<::verilator_utils::detail::promise_base::coroutine_type_enum>
+    {
+        constexpr static auto parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_without_flags(
+                ctx,
+                "无效的verilator_utils::detail::promise_base::coroutine_type_enum格式符"sv);
+        }
+
+        template <typename iter_t>
+        static auto format(::verilator_utils::detail::promise_base::coroutine_type_enum value,
+                           ::std::basic_format_context<iter_t, char>& ctx)
+        { return ::std::format_to(ctx.out(), "{}"sv, ::verilator_utils::detail::coroutine_type_name(value)); }
+    };
+
+    /**
+     * @brief 协程栈帧格式化支持
+     *
+     * 布局与Stack trace的栈帧一致：指针值按指针宽度补0，协程类型字段右侧补空格，
+     * 使得各帧的类型字段等宽、指针字段与in关键字对齐；
+     * 各字段的着色也与Stack trace一致：指针和行列号为蓝色，函数名为黄色，文件路径为绿色
+     * 支持的格式符：
+     * - #: 输出带ANSI颜色的协程栈帧，颜色使用方式与断言消息一致
+     */
+    template <>
+    struct formatter<::verilator_utils::coroutine_stacktrace::frame>
+    {
+        bool with_color{};
+
+        constexpr auto parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_with_detail_flag(
+                ctx,
+                "无效的verilator_utils::coroutine_stacktrace::stacktrace_frame格式符"sv,
+                with_color);
+        }
+
+        template <typename iter_t>
+        auto format(const ::verilator_utils::coroutine_stacktrace::frame& value,
+                    ::std::basic_format_context<iter_t, char>& ctx) const
+        {
+            using namespace ::verilator_utils::detail::assertion_color;
+            constexpr auto type_field_width{::verilator_utils::detail::coroutine_type_field_width()};
+            const auto type_name{::verilator_utils::detail::coroutine_type_name(value.type)};
+            const auto out{::std::format_to(ctx.out(),
+                                            "{}{:#0{}x}{} ({}){:{}}"sv,
+                                            with_color ? blue : none,
+                                            ::std::bit_cast<::std::uintptr_t>(value.coroutine_frame_ptr),
+                                            ::verilator_utils::detail::coroutine_frame_pointer_width,
+                                            with_color ? reset : none,
+                                            type_name,
+                                            ""sv,
+                                            type_field_width - (type_name.size() + 2))};
+            return ::std::format_to(out,
+                                    " in {}{}{} at {}{}{}:{}{}{}:{}{}{}"sv,
+                                    with_color ? yellow : none,
+                                    value.location.function_name(),
+                                    with_color ? reset : none,
+                                    with_color ? green : none,
+                                    value.location.file_name(),
+                                    with_color ? reset : none,
+                                    with_color ? blue : none,
+                                    value.location.line(),
+                                    with_color ? reset : none,
+                                    with_color ? blue : none,
+                                    value.location.column(),
+                                    with_color ? reset : none);
+        }
+    };
+
+    /**
+     * @brief 协程栈回溯格式化支持
+     *
+     * 支持的格式符：
+     * - #: 输出带ANSI颜色的协程栈回溯，颜色使用方式与断言消息一致
+     */
+    template <>
+    struct formatter<::verilator_utils::coroutine_stacktrace>
+    {
+        bool with_color{};
+
+        constexpr auto parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::parse_format_string_with_detail_flag(
+                ctx,
+                "无效的verilator_utils::coroutine_stacktrace格式符"sv,
+                with_color);
+        }
+
+        template <typename iter_t>
+        auto format(const ::verilator_utils::coroutine_stacktrace& value, ::std::basic_format_context<iter_t, char>& ctx) const
+        {
+            auto out{::std::format_to(ctx.out(),
+                                      "{}Coroutine stack trace (most recent call first):\n"sv,
+                                      with_color ? ::verilator_utils::detail::assertion_color::reset : ""sv)};
+            // 与Stack trace一致，帧编号按总条目数自适应宽度，使各帧的指针字段对齐
+            const auto number_width{value.frames.empty() ? 1zu : ::std::to_string(value.frames.size() - 1).size()};
+            for(auto&& [i, frame]: value.frames | ::std::views::enumerate)
+            {
+                out = with_color ? ::std::format_to(out, "#{:<{}} {:#}\n"sv, i, number_width, frame)
+                                 : ::std::format_to(out, "#{:<{}} {}\n"sv, i, number_width, frame);
+            }
+            return out;
+        }
+    };
+}  // namespace std
+
+namespace verilator_utils
+{
+    ::verilator_utils::coroutine_stacktrace::frame::frame(::verilator_utils::detail::coroutine_pair pair) noexcept :
+        coroutine_frame_ptr{pair.handle.address()}, location{pair.promise->suspend_location}, type{pair.promise->classify()}
+    {
+    }
+
+    auto ::verilator_utils::coroutine_stacktrace::backtrace(::verilator_utils::detail::coroutine_pair pair)
+        -> ::verilator_utils::generator<frame>
+    {
+        while(pair != nullptr) { co_yield frame{::std::exchange(pair, pair.promise->parent)}; }
+    }
+
+    auto ::verilator_utils::coroutine_exception::generate_message() noexcept -> ::std::string
+    {
+        try
+        {
+            ::std::string_view message{};
+            try
+            {
+                ::std::rethrow_exception(exception_);
+            }
+            catch(const ::std::exception& exception)
+            {
+                message = exception.what();
+            }
+            catch(...)
+            {
+                message = "unknown"sv;
+            }
+            if(stacktrace_.empty()) { return ::std::format("{}\nCoroutine stack trace unavailable"sv, message); }
+            const auto use_color{::verilator_utils::detail::should_colorize_assertion_message()};
+            if(use_color) { return ::std::format("{}\n{:#}"sv, message, stacktrace_); }
+            return ::std::format("{}\n{}"sv, message, stacktrace_);
+        }
+        catch(...)
+        {
+            return {};
+        }
+    }
+}  // namespace verilator_utils
+
+export namespace doctest
+{
+    template <>
+    struct StringMaker<::verilator_utils::coroutine_stacktrace::frame>
+    {
+        static ::doctest::String convert(const ::verilator_utils::coroutine_stacktrace::frame& value)
+        {
+            if(::verilator_utils::detail::should_colorize_assertion_message()) { return ::std::format("{:#}"sv, value); }
+            return ::std::format("{}"sv, value);
+        }
+    };
+
+    template <>
+    struct StringMaker<::verilator_utils::coroutine_stacktrace>
+    {
+        static ::doctest::String convert(const ::verilator_utils::coroutine_stacktrace& value)
+        {
+            if(::verilator_utils::detail::should_colorize_assertion_message()) { return ::std::format("{:#}"sv, value); }
+            return ::std::format("{}"sv, value);
+        }
+    };
+}  // namespace doctest
 
 export namespace verilator_utils
 {
@@ -1472,10 +1814,33 @@ namespace verilator_utils
     auto ::verilator_utils::detail::promise_base::final_awaiter::await_suspend(::std::coroutine_handle<> handle) const noexcept
         -> ::std::coroutine_handle<>
     {
-        if(promise.with_unhandled_exception() || promise.status == status_enum::eval_finish_requested)
+        if(promise.with_unhandled_exception())
         {
             promise.status = status_enum::aborted;
+            try
+            {
+                promise.rethrow_exception();
+            }
+            catch(const ::verilator_utils::coroutine_exception&)  // NOLINT(bugprone-empty-catch)
+            {
+                // 已经加入协程栈回溯信息，不进行处理
+            }
+            catch(...)
+            {
+                // 尝试注入协程栈回溯信息
+                try
+                {
+                    promise.exception = ::std::make_exception_ptr(
+                        ::verilator_utils::coroutine_exception{promise.exception,
+                                                               ::verilator_utils::coroutine_stacktrace{{handle, &promise}}});
+                }
+                catch(...)
+                {
+                    promise.exception = ::std::make_exception_ptr(::verilator_utils::coroutine_exception{promise.exception});
+                }
+            }
         }
+        else if(promise.status == status_enum::eval_finish_requested) { promise.status = status_enum::aborted; }
         else if(promise.status == status_enum::cancel_requested) { promise.status = status_enum::canceled; }
         else
         {
@@ -1512,31 +1877,3 @@ namespace verilator_utils
         return subhandle.promise().result();  // 处理finished
     }
 }  // namespace verilator_utils
-
-export namespace std
-{
-    template <>
-    struct formatter<::verilator_utils::detail::promise_base::coroutine_type_enum>
-    {
-        constexpr static auto parse(::std::format_parse_context& ctx)
-        {
-            return ::verilator_utils::detail::parse_format_string_without_flags(
-                ctx,
-                "无效的verilator_utils::detail::promise_base::coroutine_type_enum格式符"sv);
-        }
-
-        template <typename iter_t>
-        static auto format(::verilator_utils::detail::promise_base::coroutine_type_enum value,
-                           ::std::basic_format_context<iter_t, char>& ctx)
-        {
-            using enum verilator_utils::detail::promise_base::coroutine_type_enum;
-            switch(value)
-            {
-                case root_coroutine: return ::std::format_to(ctx.out(), "根协程"sv);
-                case sub_coroutine: return ::std::format_to(ctx.out(), "子协程"sv);
-                case async_coroutine: return ::std::format_to(ctx.out(), "异步协程"sv);
-                default: ::std::unreachable(); return ctx.out();
-            }
-        }
-    };
-}  // namespace std
