@@ -1,4 +1,3 @@
-module;
 export module verilator_utils:wrapper;
 import :utils;
 

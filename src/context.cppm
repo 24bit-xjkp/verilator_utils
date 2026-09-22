@@ -4,7 +4,7 @@ module;
 export module verilator_utils:context;
 import :task;
 
-extern "C++" int main(int, const char**);
+extern "C++" int main(int, const char*[]);
 
 namespace
 {
@@ -60,6 +60,10 @@ namespace verilator_utils::detail
                 if constexpr(::std::same_as<tracer_t, ::VerilatedVcdC>) { return "{}.vcd"sv; }
                 else if constexpr(::std::same_as<tracer_t, ::VerilatedFstC>) { return "{}.fst"sv; }
                 else if constexpr(::std::same_as<tracer_t, ::VerilatedSaifC>) { return "{}.saif"sv; }
+                else
+                {
+                    static_assert(false, "不支持的跟踪器类型");
+                }
             }()};
             tracer->open(::std::format(format_string, base_name).data());
         }

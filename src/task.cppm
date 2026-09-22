@@ -396,6 +396,80 @@ export namespace verilator_utils
     { return ::verilator_utils::detail::event_awaiter{::std::forward<callback_t>(callback)}; }
 
     /**
+     * @brief 边沿类型
+     *
+     */
+    enum class edge_enum : ::std::uint8_t
+    {
+        /// 上升沿
+        rising = 1,
+        /// 下降沿
+        falling = 2,
+        /// 双边沿
+        both = rising | falling,
+    };
+
+    /**
+     * @brief 边沿检测器
+     *
+     */
+    struct edge_detector
+    {
+        using enum ::verilator_utils::edge_enum;
+
+        /**
+         * @brief 构造边沿检测器对象
+         *
+         * @param bit 要检测的信号
+         * @param edge_to_detect 要检测的边沿
+         */
+        edge_detector(const ::verilator_utils::is_bit_slice auto& bit, ::verilator_utils::edge_enum edge_to_detect) :
+            callback{[bit] { return static_cast<bool>(bit); }}, previous_value{static_cast<bool>(bit)},
+            edge_to_detect{edge_to_detect}
+        {
+        }
+
+        /**
+         * @brief 获取边沿检测结果
+         *
+         * @return 是否出现要检测的边沿
+         */
+        bool operator() ()
+        {
+            const bool current_value{callback()};
+            const bool previous_value{::std::exchange(this->previous_value, current_value)};
+            switch(edge_to_detect)
+            {
+                case rising: return !previous_value && current_value;
+                case falling: return previous_value && !current_value;
+                case both: return previous_value != current_value;
+                default: ::std::unreachable();
+            }
+        }
+
+        /**
+         * @brief 获取要检测的边沿类型
+         *
+         * @return 要检测的边沿类型
+         */
+        [[nodiscard]] ::verilator_utils::edge_enum get_edge_to_detect() const { return edge_to_detect; }
+
+        /**
+         * @brief 设置要检测的边沿类型
+         *
+         * @param new_edge_to_detect 要检测的边沿类型
+         * @return 先前设置的边沿类型
+         */
+        ::verilator_utils::edge_enum set_edge_to_detect(::verilator_utils::edge_enum new_edge_to_detect)
+        { return ::std::exchange(edge_to_detect, new_edge_to_detect); }
+
+    private:
+        ::verilator_utils::default_event_callback callback;
+        bool previous_value;
+        ::verilator_utils::edge_enum edge_to_detect;
+    };
+
+    /**
      * @brief 等待上升沿
      *
      * @param bit 时钟信号
@@ -489,7 +563,7 @@ namespace verilator_utils::detail
      * @note 等待到n个给定时钟边沿后的给定评估阶段
      */
     [[nodiscard]] ::verilator_utils::task<void>
-        wait_edge_and_eval_stage(::verilator_utils::bit_slice<::CData> clk,
+        wait_edge_and_eval_stage(const ::verilator_utils::bit_slice<::CData>& clk,
                                  ::std::size_t edge_to_wait,
                                  ::verilator_utils::edge_enum edge,
                                  ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage)

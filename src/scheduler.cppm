@@ -1,4 +1,3 @@
-module;
 export module verilator_utils:scheduler;
 import :wrapper;
 
@@ -867,81 +866,6 @@ export namespace verilator_utils
     using default_event_callback = ::std::function<bool()>;
 
     /**
-     * @brief 边沿类型
-     *
-     */
-    enum class edge_enum : ::std::uint8_t
-    {
-        /// 上升沿
-        rising = 1,
-        /// 下降沿
-        falling = 2,
-        /// 双边沿
-        both = rising | falling,
-    };
-
-    /**
-     * @brief 边沿检测器
-     *
-     */
-    struct edge_detector
-    {
-    public:
-        using enum ::verilator_utils::edge_enum;
-
-        /**
-         * @brief 构造边沿检测器对象
-         *
-         * @param bit 要检测的信号
-         * @param edge_to_detect 要检测的边沿
-         */
-        edge_detector(const ::verilator_utils::is_bit_slice auto& bit, ::verilator_utils::edge_enum edge_to_detect) :
-            callback{[bit] { return static_cast<bool>(bit); }}, previous_value{static_cast<bool>(bit)},
-            edge_to_detect{edge_to_detect}
-        {
-        }
-
-        /**
-         * @brief 获取边沿检测结果
-         *
-         * @return 是否出现要检测的边沿
-         */
-        bool operator() ()
-        {
-            const bool current_value{callback()};
-            const bool previous_value{::std::exchange(this->previous_value, current_value)};
-            switch(edge_to_detect)
-            {
-                case rising: return !previous_value && current_value;
-                case falling: return previous_value && !current_value;
-                case both: return previous_value != current_value;
-                default: ::std::unreachable();
-            }
-        }
-
-        /**
-         * @brief 获取要检测的边沿类型
-         *
-         * @return 要检测的边沿类型
-         */
-        [[nodiscard]] ::verilator_utils::edge_enum get_edge_to_detect() const { return edge_to_detect; }
-
-        /**
-         * @brief 设置要检测的边沿类型
-         *
-         * @param new_edge_to_detect 要检测的边沿类型
-         * @return 先前设置的边沿类型
-         */
-        ::verilator_utils::edge_enum set_edge_to_detect(::verilator_utils::edge_enum new_edge_to_detect)
-        { return ::std::exchange(edge_to_detect, new_edge_to_detect); }
-
-    private:
-        ::verilator_utils::default_event_callback callback;
-        bool previous_value;
-        ::verilator_utils::edge_enum edge_to_detect;
-    };
-
-    /**
      * @brief 带有挂起队列的设施的基类
      *
      */
@@ -1064,9 +988,9 @@ namespace verilator_utils
 
     private:
         /// 指向VerilatedModel的指针，由dut类型擦除得到
-        ::VerilatedModel* dut;
+        ::VerilatedModel& dut;
         /// dut状态计算函数指针类型
-        using dut_eval_t = void (*)(::VerilatedModel*);
+        using dut_eval_t = void (*)(::VerilatedModel&);
         /// dut状态计算函数
         dut_eval_t dut_eval;
         /// 时间精度，单位为飞秒
@@ -1102,7 +1026,7 @@ namespace verilator_utils
             {
                 auto target_time{wait_queue.top().target_time};
                 // 推进时间步
-                dut->contextp()->time(target_time);
+                dut.contextp()->time(target_time);
                 // 将就绪协程放入就绪队列
                 while(!wait_queue.empty())
                 {
@@ -1205,22 +1129,19 @@ namespace verilator_utils
         /**
          * @brief 构造调度器对象
          *
-         * @tparam dut_t 待测模型类型，必须派生自VerilatedModel
-         * @param dut 指向待测模型对象的指针
+         * @param dut 待测模型对象引用
+         * @param dut_eval 回调函数，实现dut状态计算
          * @note 调度器会缓存time precision和time unit，因此在构造时需要确保二者已经设置
          */
-        template <::std::derived_from<::VerilatedModel> dut_t>
-        explicit eval_scheduler(dut_t& dut) noexcept
+        explicit eval_scheduler(::VerilatedModel& dut, dut_eval_t dut_eval) noexcept : dut{dut}, dut_eval{dut_eval}
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
-            this->dut = &dut;
-            dut_eval = [](::VerilatedModel* dut) { static_cast<dut_t*>(dut)->eval(); };
-            auto&& context{*dut.contextp()};
-            auto time_precision{context.timeprecision()};
-            auto time_unit{context.timeunit()};
+            const auto& context{*dut.contextp()};
+            const auto time_precision{context.timeprecision()};
+            const auto time_unit{context.timeunit()};
             time_precision_fs = static_cast<::std::uint64_t>(::std::pow(10, 15 + time_precision));
-            time_precision_per_time_unit = static_cast<::std::uint64_t>(::std::pow(10, time_unit - time_precision));
-            for(auto&& [unit_exponent, unit_fs, unit_suffix]: ::verilator_utils::detail::time_unit_table)
+            time_precision_per_time_unit = ::std::pow(10, time_unit - time_precision);
+            for(const auto& [unit_exponent, unit_fs, unit_suffix]: ::verilator_utils::detail::time_unit_table)
             {
                 if(time_unit >= unit_exponent)
                 {
@@ -1231,6 +1152,19 @@ namespace verilator_utils
             }
             ::std::unreachable();
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
+        }
+
+        /**
+         * @brief 构造调度器对象
+         *
+         * @tparam dut_t 待测模型类型，必须派生自VerilatedModel
+         * @param dut 指向待测模型对象的指针
+         * @note 调度器会缓存time precision和time unit，因此在构造时需要确保二者已经设置
+         */
+        template <::std::derived_from<::VerilatedModel> dut_t>
+        explicit eval_scheduler(dut_t& dut) noexcept :
+            eval_scheduler{dut, [](::VerilatedModel& dut) { static_cast<dut_t&>(dut).eval(); }}
+        {
         }
 
         eval_scheduler(const eval_scheduler&) = delete;
@@ -1252,26 +1186,26 @@ namespace verilator_utils
          *
          * @return 仿真是否结束
          */
-        [[nodiscard]] bool is_finish() const noexcept { return dut->contextp()->gotFinish(); }
+        [[nodiscard]] bool is_finish() const noexcept { return dut.contextp()->gotFinish(); }
 
         /**
          * @brief 检查仿真是否存在错误
          *
          * @return 仿真是否存在错误
          */
-        [[nodiscard]] bool is_error() const noexcept { return dut->contextp()->gotError(); }
+        [[nodiscard]] bool is_error() const noexcept { return dut.contextp()->gotError(); }
 
         /**
          * @brief 标记仿真结束
          *
          */
-        void finish() noexcept { dut->contextp()->gotFinish(true); }
+        void finish() noexcept { dut.contextp()->gotFinish(true); }
 
         /**
          * @brief 标记仿真中出现错误
          *
          */
-        void error() noexcept { dut->contextp()->gotError(true); }
+        void error() noexcept { dut.contextp()->gotError(true); }
 
         /**
          * @brief 仿真结束时抛出eval_finish_exception异常
@@ -1298,7 +1232,7 @@ namespace verilator_utils
          *
          * @return 当前时间
          */
-        [[nodiscard]] ::std::uint64_t time_in_time_precision() const noexcept { return dut->contextp()->time(); }
+        [[nodiscard]] ::std::uint64_t time_in_time_precision() const noexcept { return dut.contextp()->time(); }
 
         /**
          * @brief 获取当前时间，单位为dut时间单位
@@ -1443,7 +1377,7 @@ namespace verilator_utils
             ::verilator_utils::check{}(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
             const auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
             ::verilator_utils::check{}(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
-            const auto current_time{dut->contextp()->time()};
+            const auto current_time{dut.contextp()->time()};
             const auto target_time{time_to_wait_in_time_precision + current_time};
             ::verilator_utils::check{}(target_time > current_time, "Verilator仿真计时器溢出"sv);
             wait_queue.emplace(target_time, pair);
@@ -1525,7 +1459,7 @@ namespace verilator_utils
     }
 
     template <typename awaiter_t>
-    decltype(auto)::verilator_utils::detail::awaiter_wrapper<awaiter_t>::await_resume()
+    auto ::verilator_utils::detail::awaiter_wrapper<awaiter_t>::await_resume() -> decltype(auto)
     {
         promise.suspend_location = ::std::source_location{};
         ::verilator_utils::resume_coroutine(promise);
