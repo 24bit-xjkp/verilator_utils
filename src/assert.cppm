@@ -66,12 +66,18 @@ namespace verilator_utils::detail
     }
 
     /// ANSI颜色转义序列
-    namespace assertion_color
+    ///
+    /// @note green、yellow和blue与Stack trace(cpptrace)使用的颜色一致，
+    /// 用于保证协程栈回溯与Stack trace的同名字段着色相同
+    export namespace assertion_color
     {
         constexpr auto reset{"\033[0m"sv};
         constexpr auto cyan{"\033[36m"sv};
+        constexpr auto green{"\033[32m"sv};
         constexpr auto yellow{"\033[33m"sv};
+        constexpr auto blue{"\033[34m"sv};
         constexpr auto red{"\033[31m"sv};
+        constexpr auto none{""sv};
     }  // namespace assertion_color
 
     /**
@@ -89,30 +95,25 @@ namespace verilator_utils::detail
                                             const ::std::source_location& location,
                                             const ::verilator_utils::trace::stacktrace& trace)
     {
-        const auto use_colors{::verilator_utils::detail::should_colorize_assertion_message()};
-        if(use_colors)
-        {
-            return ::std::format("At {}{}:{}:{}{}: {}{}{}: {}{}{}\n{}"sv,
-                                 assertion_color::cyan,
-                                 location.file_name(),
-                                 location.line(),
-                                 location.column(),
-                                 assertion_color::reset,
-                                 assertion_color::yellow,
-                                 location.function_name(),
-                                 assertion_color::reset,
-                                 assertion_color::red,
-                                 message,
-                                 assertion_color::reset,
-                                 trace.to_string(true));
-        }
-        return ::std::format("At {}:{}:{}: {}: {}\n{}"sv,
+        const auto use_color{::verilator_utils::detail::should_colorize_assertion_message()};
+        using namespace ::verilator_utils::detail::assertion_color;
+        return ::std::format("{}At {}{}:{}{}{}:{}{}{}: {}{}{}: {}{}{}\n{}"sv,
+                             use_color ? reset : none,
+                             use_color ? green : none,
                              location.file_name(),
+                             use_color ? blue : none,
                              location.line(),
+                             use_color ? reset : none,
+                             use_color ? blue : none,
                              location.column(),
+                             use_color ? reset : none,
+                             use_color ? yellow : none,
                              location.function_name(),
+                             use_color ? reset : none,
+                             use_color ? red : none,
                              message,
-                             trace.to_string(false));
+                             use_color ? reset : none,
+                             trace.to_string(use_color));
     }
 
     /**

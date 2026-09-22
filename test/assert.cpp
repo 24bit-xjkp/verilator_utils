@@ -71,6 +71,7 @@ TEST_SUITE("verilator_utils/assert")
 
     TEST_CASE("assertion_error message colorization follows color configuration")
     {
+        const auto backup{::verilator_utils::assertion_color_config()};
         // 强制不使用彩色输出
         ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = true});
         try
@@ -96,6 +97,6 @@ TEST_SUITE("verilator_utils/assert")
         }
 
         // 恢复默认配置
-        ::verilator_utils::set_assertion_color_config({});
+        ::verilator_utils::set_assertion_color_config(backup);
     }
 }
