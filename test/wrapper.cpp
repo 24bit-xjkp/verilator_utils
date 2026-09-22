@@ -316,22 +316,22 @@ TEST_SUITE("verilator_utils/wrapper")
 
         // 构造函数与访问器一致地保存误差范围
         const ::verilator_utils::approx<::std::uint64_t> unsigned_tolerance{4zu, 0.25};
-        CHECK_EQ(unsigned_tolerance.get_atol(), 4zu);
-        CHECK_EQ(unsigned_tolerance.get_rtol(), 0.25);
+        CHECK_EQ(unsigned_tolerance.atol(), 4zu);
+        CHECK_EQ(unsigned_tolerance.rtol(), 0.25);
 
         ::verilator_utils::approx<::std::int64_t> signed_tolerance{4z, 0.5};
-        CHECK_EQ(signed_tolerance.get_atol(), 4z);
-        CHECK_EQ(signed_tolerance.get_rtol(), 0.5);
+        CHECK_EQ(signed_tolerance.atol(), 4z);
+        CHECK_EQ(signed_tolerance.rtol(), 0.5);
 
         constexpr ::verilator_utils::approx<double> real_tolerance{0.5, 0.125};
-        static_assert(real_tolerance.get_atol() == 0.5);
-        static_assert(real_tolerance.get_rtol() == 0.125);
+        static_assert(real_tolerance.atol() == 0.5);
+        static_assert(real_tolerance.rtol() == 0.125);
 
         // 误差范围可以修改，修改立即参与比较
         signed_tolerance.set_atol(0z);
         signed_tolerance.set_rtol(0.0);
-        CHECK_EQ(signed_tolerance.get_atol(), 0z);
-        CHECK_EQ(signed_tolerance.get_rtol(), 0.0);
+        CHECK_EQ(signed_tolerance.atol(), 0z);
+        CHECK_EQ(signed_tolerance.rtol(), 0.0);
         CHECK(signed_tolerance(10z) == 10z);
         CHECK_FALSE(signed_tolerance(10z) == 11z);
         signed_tolerance.set_atol(1z);
@@ -352,8 +352,8 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_THROWS_AS(mutable_tolerance.set_rtol(1.1), ::verilator_utils::assertion_error);
 
         // 边界值0和1合法
-        CHECK_EQ(::verilator_utils::approx<::std::uint64_t>{0zu, 0.0}.get_rtol(), 0.0);
-        CHECK_EQ(::verilator_utils::approx<::std::uint64_t>{0zu, 1.0}.get_rtol(), 1.0);
+        CHECK_EQ(::verilator_utils::approx<::std::uint64_t>{0zu, 0.0}.rtol(), 0.0);
+        CHECK_EQ(::verilator_utils::approx<::std::uint64_t>{0zu, 1.0}.rtol(), 1.0);
 
         // 未携带自定义消息的断言失败使用默认消息
         CHECK_THROWS_WITH_AS((::verilator_utils::approx<::std::int64_t>{-1z, 0.5}),

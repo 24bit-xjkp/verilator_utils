@@ -50,7 +50,7 @@ TEST_SUITE("lfsr_m7")
         };
 
         dut_context_t ctx{option};
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
 
         format_wrapper<std::uint64_t> lfsr_feedback{
             std::to_underlying(GENERATE(lfsr_feedback_t::fibonacci, lfsr_feedback_t::galois)),
@@ -104,6 +104,6 @@ TEST_SUITE("lfsr_m7")
         ctx.add_task(generate_clock(port.clk, 2_ns));
         ctx.add_task(do_verify());
         ctx.loop_until_finish();
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

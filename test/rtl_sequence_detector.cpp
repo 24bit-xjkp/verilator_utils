@@ -41,7 +41,7 @@ TEST_SUITE("sequence_detector")
     TEST_CASE("sequence_detector")
     {
         dut_context_t ctx{option};
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
 
         ctx.add_task(generate_clock(port.clk, 2_ns));
         const auto do_verify{
@@ -71,6 +71,6 @@ TEST_SUITE("sequence_detector")
         };
         ctx.add_task(do_verify());
         ctx.loop_until_finish();
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

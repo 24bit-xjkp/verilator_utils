@@ -142,8 +142,8 @@ namespace
                 ctx.initial_eval();
                 started = true;
             }
-            while(!ctx.get_scheduler().empty() && !ctx.get_scheduler().is_finish()) { ctx.loop_once(); }
-            return ctx.get_stats();
+            while(!ctx.scheduler().empty() && !ctx.scheduler().is_finish()) { ctx.loop_once(); }
+            return ctx.stats();
         }
     };
 
@@ -187,14 +187,14 @@ TEST_SUITE("verilator_utils/context")
 
             CHECK_EQ(stats.simtime, expected_simtime);
             CHECK_EQ(stats.simtime_str, expected_string);
-            check_speed_string(fixture.ctx.get_context().timeunit(), stats);
+            check_speed_string(fixture.ctx.context().timeunit(), stats);
         }
     }
 
     TEST_CASE("speed string matches the unscaled speed at every scale")
     {
         stats_fixture fixture{};
-        const auto time_unit_exponent{fixture.ctx.get_context().timeunit()};
+        const auto time_unit_exponent{fixture.ctx.context().timeunit()};
 
         // 逐步推进仿真时间，速度依次落在ns/us/ms/s量级上
         check_speed_string(time_unit_exponent, fixture.advance(1_ps));
@@ -211,7 +211,7 @@ TEST_SUITE("verilator_utils/context")
 
         // 1ms的仿真时间远大于上下文的挂钟时间，速度必须缩放ns以外的单位
         CHECK_NE(parsed.suffix, "ns"sv);
-        check_speed_string(fixture.ctx.get_context().timeunit(), stats);
+        check_speed_string(fixture.ctx.context().timeunit(), stats);
     }
 
     TEST_CASE("speed string scales down when the simulation is slower than the time unit")
@@ -224,20 +224,20 @@ TEST_SUITE("verilator_utils/context")
         CHECK_LT(stats.speed, 1.0);
         CHECK_NE(parsed.suffix, "us"sv);
         CHECK_GE(parsed.value, 1.0);
-        check_speed_string(fixture.ctx.get_context().timeunit(), stats);
+        check_speed_string(fixture.ctx.context().timeunit(), stats);
     }
 
     TEST_CASE("stats report a zero speed in femtoseconds per second")
     {
         stats_fixture fixture{};
-        const auto stats{fixture.ctx.get_stats()};
+        const auto stats{fixture.ctx.stats()};
 
         CHECK_EQ(stats.simtime, 0.0);
         CHECK_EQ(stats.simtime_str, "0ns"sv);
         CHECK_EQ(stats.speed, 0.0);
         // 未推进仿真时速度为0，只能缩放到最小的时间单位fs
         CHECK_EQ(stats.speed_str, "0.000fs/s"sv);
-        check_speed_string(fixture.ctx.get_context().timeunit(), stats);
+        check_speed_string(fixture.ctx.context().timeunit(), stats);
     }
 
     TEST_CASE("stats report the model thread count and the process memory peak")
@@ -247,12 +247,12 @@ TEST_SUITE("verilator_utils/context")
 
         // fake_dut声明自身使用1个线程，且上下文中只注册了一个模型
         CHECK_EQ(stats.threads, 1zu);
-        CHECK_EQ(stats.threads, static_cast<::std::size_t>(fixture.ctx.get_context().threadsInModels()));
+        CHECK_EQ(stats.threads, static_cast<::std::size_t>(fixture.ctx.context().threadsInModels()));
 
         ::std::uint64_t peak_before{};
         ::std::uint64_t current{};
         ::VlOs::memUsageBytes(peak_before, current);
-        const auto measured{fixture.ctx.get_stats()};
+        const auto measured{fixture.ctx.stats()};
         ::std::uint64_t peak_after{};
         ::VlOs::memUsageBytes(peak_after, current);
 
@@ -279,13 +279,13 @@ TEST_SUITE("verilator_utils/context")
         stats_fixture fixture{};
         CHECK_EQ(fixture.advance(7_ns).simtime_str, "7ns"sv);
 
-        const auto time_before{fixture.ctx.get_context().time()};
-        const auto stage_before{fixture.ctx.get_scheduler().get_eval_stage()};
-        const auto first{fixture.ctx.get_stats()};
-        const auto second{fixture.ctx.get_stats()};
+        const auto time_before{fixture.ctx.context().time()};
+        const auto stage_before{fixture.ctx.scheduler().eval_stage()};
+        const auto first{fixture.ctx.stats()};
+        const auto second{fixture.ctx.stats()};
 
-        CHECK_EQ(fixture.ctx.get_context().time(), time_before);
-        CHECK_EQ(fixture.ctx.get_scheduler().get_eval_stage(), stage_before);
+        CHECK_EQ(fixture.ctx.context().time(), time_before);
+        CHECK_EQ(fixture.ctx.scheduler().eval_stage(), stage_before);
         CHECK_EQ(first.simtime_str, "7ns"sv);
         CHECK_EQ(first.simtime, second.simtime);
         CHECK_EQ(first.simtime_str, second.simtime_str);

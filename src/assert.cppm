@@ -167,7 +167,7 @@ export namespace verilator_utils
      *
      * @return 彩色输出设置
      */
-    ::verilator_utils::assertion_color_config_t get_assertion_color_config() noexcept
+    ::verilator_utils::assertion_color_config_t assertion_color_config() noexcept
     {
         using config_t = ::verilator_utils::detail::assertion_color_config_t;
         return {config_t::force_colors, config_t::no_colors};
@@ -201,6 +201,7 @@ export namespace verilator_utils
         ::std::source_location location_;
         /// 断言失败时的调用栈
         ::verilator_utils::trace::stacktrace trace_;
+        /// 根据失败消息、源代码位置和调用栈组合成的完整错误信息
         ::std::string composed_message;
 
     public:
@@ -313,10 +314,10 @@ namespace verilator_utils
             /**
              * @brief 构造检查器对象
              *
-             * @param location 源代码位置
+             * @param location 断言调用处的源代码位置
              */
             explicit constexpr check(::std::source_location location = ::std::source_location::current()) noexcept :
-                location{location}
+                location_{location}
             {
             }
 
@@ -330,7 +331,7 @@ namespace verilator_utils
             constexpr void operator() (bool condition) const
             {
                 if(condition) [[likely]] { return; }
-                ::verilator_utils::detail::assert_fail(location);
+                ::verilator_utils::detail::assert_fail(location_);
             }
 
             /**
@@ -340,7 +341,6 @@ namespace verilator_utils
              * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
              * @tparam args_t 格式化参数类型
              * @param condition 断言条件
-             * @param location 断言调用处的源代码位置
              * @param fmt 格式化字符串
              * @param args 格式化参数
              */
@@ -348,7 +348,7 @@ namespace verilator_utils
             constexpr void operator() (bool condition, ::std::format_string<args_t...> fmt, args_t&&... args) const
             {
                 if(condition) [[likely]] { return; }
-                ::verilator_utils::detail::assert_fail(location, fmt, ::std::forward<args_t>(args)...);
+                ::verilator_utils::detail::assert_fail(location_, fmt, ::std::forward<args_t>(args)...);
             }
 
             /**
@@ -386,6 +386,8 @@ namespace verilator_utils
              * 检查条件是否成立，不成立时通知测试框架然后终止程序。这是与单元测试框架的集成点。
              * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
              * @param condition 断言条件
+             * @param fmt 格式化字符串
+             * @param args 格式化参数
              */
             template <typename... args_t>
             constexpr void operator() (::std::nothrow_t,
@@ -414,7 +416,7 @@ namespace verilator_utils
             }
 
         private:
-            ::std::source_location location;
+            ::std::source_location location_;
         };
     }  // namespace detail
 

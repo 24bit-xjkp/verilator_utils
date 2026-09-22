@@ -83,9 +83,9 @@ TEST_SUITE("sync_fifo")
         dut_context_t ctx{
             {.coverage = true, .time_precision = verilator_time_unit::ns}
         };
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
         reference_module ref{port};
-        auto seed{ctx.get_seed()};
+        auto seed{ctx.seed()};
         std::mt19937_64 engin{seed};
         std::uniform_int_distribution dist{0zu, 1zu};
 
@@ -118,6 +118,6 @@ TEST_SUITE("sync_fifo")
         ctx.add_task(do_verify());
 
         ctx.loop_until_finish(10_us);
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

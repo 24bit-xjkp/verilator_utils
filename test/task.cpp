@@ -96,7 +96,7 @@ namespace
                                                         ::verilator_utils::task<void>::handle_t& self_handle,
                                                         int& expected_line)
     {
-        self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
+        self_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
         const auto stacktrace_site{::std::source_location::current()};
         captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(co_await ::verilator_utils::stacktrace());
         expected_line = static_cast<int>(stacktrace_site.line()) + 1;
@@ -108,7 +108,7 @@ namespace
                                                    ::verilator_utils::task<void>::handle_t& grandchild_handle,
                                                    int& expected_line)
     {
-        self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
+        self_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
         co_await stacktrace_grandchild(captured, grandchild_handle, expected_line);
     }
 
@@ -124,7 +124,7 @@ namespace
                                                          ::verilator_utils::task<void>::handle_t& self_handle,
                                                          int& expected_line)
     {
-        self_handle = co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>();
+        self_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
         const auto stacktrace_site{::std::source_location::current()};
         captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(co_await ::verilator_utils::stacktrace());
         expected_line = static_cast<int>(stacktrace_site.line()) + 1;
@@ -235,10 +235,9 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::edge_detector detector{::verilator_utils::bit_slice<::CData>{signal.value},
                                                   ::verilator_utils::edge_detector::rising};
 
-        CHECK_EQ(detector.get_edge_to_detect(), ::verilator_utils::edge_detector::rising);
-        CHECK_EQ(detector.set_edge_to_detect(::verilator_utils::edge_detector::falling),
-                 ::verilator_utils::edge_detector::rising);
-        CHECK_EQ(detector.get_edge_to_detect(), ::verilator_utils::edge_detector::falling);
+        CHECK_EQ(detector.edge_to_detect(), ::verilator_utils::edge_detector::rising);
+        detector.set_edge_to_detect(::verilator_utils::edge_detector::falling);
+        CHECK_EQ(detector.edge_to_detect(), ::verilator_utils::edge_detector::falling);
 
         signal.value = 1u;
         CHECK_FALSE(detector());
@@ -283,13 +282,13 @@ TEST_SUITE("verilator_utils/task")
         const auto falling_task{
             [&] -> ::verilator_utils::task<void> {
                 co_await ::verilator_utils::wait_stimulate(clk_ref);
-                falling_stage = scheduler.get_eval_stage();
+                falling_stage = scheduler.eval_stage();
             },
         };
         const auto rising_task{
             [&] -> ::verilator_utils::task<void> {
                 co_await ::verilator_utils::wait_stimulate(clk_ref, 1, ::verilator_utils::edge_enum::rising);
-                rising_stage = scheduler.get_eval_stage();
+                rising_stage = scheduler.eval_stage();
             },
         };
         scheduler.add_task(falling_task());
@@ -915,7 +914,7 @@ TEST_SUITE("verilator_utils/task")
         int expected_line{};
 
         auto root_task{stacktrace_root(captured, child_handle, grandchild_handle, expected_line)};
-        const auto root_handle{root_task.get_handle()};
+        const auto root_handle{root_task.handle()};
         scheduler.add_task(::std::move(root_task));
         scheduler.loop_until_finish();
 
@@ -1861,7 +1860,7 @@ TEST_SUITE("verilator_utils/task")
 
         const auto& parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(successful_child());
                 co_await pool.join_any();
                 completed = true;
@@ -1899,12 +1898,12 @@ TEST_SUITE("verilator_utils/task")
                 CHECK(child.joinable());
                 CHECK(static_cast<bool>(child));
                 CHECK_FALSE(child.done());
-                CHECK_EQ(child.get_promise().is_async, true);
+                CHECK_EQ(child.promise().is_async, true);
 
                 // 让出执行权，使异步子任务运行到完成
                 co_await ::verilator_utils::wait_time(1_ps);
                 CHECK(child.done());
-                CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::finished);
+                CHECK_EQ(child.promise().status, ::verilator_utils::task<void>::status_enum::finished);
 
                 // 已完成的异步任务立即就绪，等待后对象不再持有协程
                 co_await child;
@@ -1936,7 +1935,7 @@ TEST_SUITE("verilator_utils/task")
                 // NOLINTBEGIN(bugprone-use-after-move)
                 CHECK_FALSE(child.joinable());
                 CHECK_FALSE(static_cast<bool>(child));
-                CHECK_THROWS_WITH_AS(static_cast<void>(child.get_promise()),
+                CHECK_THROWS_WITH_AS(static_cast<void>(child.promise()),
                                      ::doctest::Contains{"不能获取承诺体"},
                                      ::verilator_utils::assertion_error);
                 CHECK_THROWS_WITH_AS(static_cast<void>(child.done()),
@@ -1959,7 +1958,7 @@ TEST_SUITE("verilator_utils/task")
                 // 等待后异步任务把协程交给可等待体，对象同样不再绑定协程
                 co_await owner;
                 CHECK_FALSE(owner.joinable());
-                CHECK_THROWS_WITH_AS(static_cast<void>(owner.get_promise()),
+                CHECK_THROWS_WITH_AS(static_cast<void>(owner.promise()),
                                      ::doctest::Contains{"不能获取承诺体"},
                                      ::verilator_utils::assertion_error);
                 await_checked = true;
@@ -1995,7 +1994,7 @@ TEST_SUITE("verilator_utils/task")
 
                 child.cancel();
                 CHECK(child.cancel_requested());
-                CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+                CHECK_EQ(child.promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
                 CHECK_FALSE(child.cancel_possible());
 
                 // 异步任务的取消不通过异常传播：等待被取消的任务不会抛出异常
@@ -2039,12 +2038,12 @@ TEST_SUITE("verilator_utils/task")
                 co_await ::verilator_utils::wait_time(1_ps);
                 CHECK(child_started);
                 CHECK_FALSE(child.done());
-                CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::suspended);
+                CHECK_EQ(child.promise().status, ::verilator_utils::task<void>::status_enum::suspended);
                 CHECK(child.cancel_possible());
 
                 child.cancel();
                 CHECK(child.cancel_requested());
-                CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+                CHECK_EQ(child.promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
                 // 已收到取消请求的任务不在可取消状态，重复请求触发断言
                 CHECK_FALSE(child.cancel_possible());
                 CHECK_THROWS_WITH_AS(child.cancel(), ::doctest::Contains{"不可取消"}, ::verilator_utils::assertion_error);
@@ -2100,7 +2099,7 @@ TEST_SUITE("verilator_utils/task")
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
                 [[maybe_unused]] const auto handle{
-                    co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                    co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
                 co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
             },
         };
@@ -2113,7 +2112,7 @@ TEST_SUITE("verilator_utils/task")
             },
         };
         auto parent_task{parent()};
-        const auto& promise{parent_task.get_promise()};
+        const auto& promise{parent_task.promise()};
         scheduler.add_task(::std::move(parent_task));
 
         scheduler.loop_once();
@@ -2136,7 +2135,7 @@ TEST_SUITE("verilator_utils/task")
 
         const auto parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 CHECK(pool.empty());
                 CHECK_FALSE(pool.joinable());
 
@@ -2199,7 +2198,7 @@ TEST_SUITE("verilator_utils/task")
 
         const auto parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(successful_child());
                 pool.add_task(first_failing_child());
                 pool.add_task(second_failing_child());
@@ -2249,7 +2248,7 @@ TEST_SUITE("verilator_utils/task")
 
         const auto parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(failing_child());
                 try
                 {
@@ -2297,7 +2296,7 @@ TEST_SUITE("verilator_utils/task")
 
         const auto parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(failing_child());
                 try
                 {
@@ -2353,7 +2352,7 @@ TEST_SUITE("verilator_utils/task")
 
         const auto parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(first_child());
                 pool.add_task(second_child());
                 co_await pool.join_any();
@@ -2375,7 +2374,7 @@ TEST_SUITE("verilator_utils/task")
             auto scheduler{fixture.make_scheduler()};
             const auto parent_lambda{[&] -> ::verilator_utils::task<void> {
                 const frame_destruction_counter pool_counter{&destroyed};
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 ::verilator_utils::event event{};
                 const auto subtask{[&] -> ::verilator_utils::task<void> {
                     const frame_destruction_counter subtask_counter{&destroyed};
@@ -2404,7 +2403,7 @@ TEST_SUITE("verilator_utils/task")
         // join_none：子任务被托管给调度器，父协程继续等待
         const auto join_none_parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(just_wait());
                 pool.add_task(just_wait());
                 co_await pool.join_none();
@@ -2414,7 +2413,7 @@ TEST_SUITE("verilator_utils/task")
         // join_all：父协程等待所有子任务完成
         const auto join_all_parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(just_wait());
                 pool.add_task(just_wait());
                 co_await pool.join_all();
@@ -2423,7 +2422,7 @@ TEST_SUITE("verilator_utils/task")
         // join_any：父协程等待任一子任务完成
         const auto join_any_parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(just_wait());
                 pool.add_task(just_wait());
                 co_await pool.join_any();
@@ -2432,7 +2431,7 @@ TEST_SUITE("verilator_utils/task")
         // 不join：父协程析构任务池，子任务被分离给调度器
         const auto detached_parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 pool.add_task(just_wait());
                 pool.add_task(just_wait());
                 co_await ::verilator_utils::wait_time(1_ns);
@@ -2441,7 +2440,7 @@ TEST_SUITE("verilator_utils/task")
         // 子任务挂起在永不触发的事件上，由调度器通过挂起队列兜底回收
         const auto event_parent{
             [&] -> ::verilator_utils::task<void> {
-                auto pool{co_await ::verilator_utils::get_spawn_pool()};
+                auto pool{co_await ::verilator_utils::spawn_pool()};
                 ::verilator_utils::event event{};
                 const auto subtask{[&] -> ::verilator_utils::task<void> {
                     const frame_destruction_counter counter{&destroyed};
@@ -2748,7 +2747,7 @@ TEST_SUITE("verilator_utils/task")
                     [&] {
                         ++verify_count;
                         clock_high_during_verify = clk.value == 1;
-                        verify_stage = scheduler.get_eval_stage();
+                        verify_stage = scheduler.eval_stage();
                     });
             },
         };

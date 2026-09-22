@@ -115,7 +115,7 @@ const auto verify{
 const auto stimulate{
     [&] -> task<void> {
         co_await generate_reset(port.rst, port.clk);
-        auto verify_tasks{co_await get_spawn_pool()};                    // 子任务池：join_all 会抛出汇总异常
+        auto verify_tasks{co_await spawn_pool()};                    // 子任务池：join_all 会抛出汇总异常
         const auto do_verify{[&](bool rising, bool falling) { verify_tasks.add_task(verify(rising, falling)); }};
 
         co_await wait_stimulate(port.clk);                               // 下降沿、评估前加激励
@@ -147,7 +147,7 @@ ctx.loop_until_finish();
 | `wait_time` / `wait_event` / `wait_posedge` / `wait_negedge` / `wait_alledge` | 时间、事件与边沿等待 |
 | `wait_eval_stage` / `verify_at` / `wait_verify` / `wait_stimulate` | 评估阶段与激励/验证时机 |
 | `max_eval_time(duration)` | 仿真超时保护：到时后标记调度器错误、结束仿真并抛出 `eval_timeout_exception` |
-| `eval_finish()` / `get_time_in_string()` / `get_time_in_time_precision()` / `get_scheduler()` / `stacktrace()` | 结束仿真、读取时间、读取调度器、协程栈回溯（均为可等待体） |
+| `eval_finish()` / `time_in_string()` / `time_in_time_precision()` / `scheduler()` / `stacktrace()` | 结束仿真、读取时间、读取调度器、协程栈回溯（均为可等待体） |
 
 需要精确签名时以 `src/task.cppm` 的注释为准。
 

@@ -42,7 +42,7 @@ TEST_SUITE("dual_ram")
         dut_context_t ctx{
             {.coverage = true, .time_precision = verilator_time_unit::ns}
         };
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
         using pair_t = std::pair<std::uint8_t, std::uint8_t>;
         mailbox<std::uint8_t> queue{};
         constexpr static auto ram_depth{1zu << port.addr_width};
@@ -50,7 +50,7 @@ TEST_SUITE("dual_ram")
         constexpr static auto epochs{8zu};
         std::array<pair_t, ram_depth * epochs> operation_list{};
 
-        std::mt19937 engine{ctx.get_seed()};
+        std::mt19937 engine{ctx.seed()};
         for(auto&& [i, pair]: views::enumerate(operation_list))
         {
             auto&& [addr, data]{pair};
@@ -113,7 +113,7 @@ TEST_SUITE("dual_ram")
 
         const auto do_verify{
             [&] -> task<void> {
-                auto tasks{co_await get_spawn_pool()};
+                auto tasks{co_await spawn_pool()};
                 tasks.add_task(do_write());
                 tasks.add_task(do_read());
                 co_await tasks.join_all();
@@ -140,6 +140,6 @@ TEST_SUITE("dual_ram")
         ctx.add_task(do_verify());
 
         ctx.loop_until_finish();
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

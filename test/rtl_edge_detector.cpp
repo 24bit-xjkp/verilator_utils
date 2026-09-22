@@ -34,7 +34,7 @@ TEST_SUITE("edge_detector")
         dut_context_t ctx{
             {.coverage = true, .time_precision = verilator_time_unit::ps_10}
         };
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
 
         constexpr static auto period{1_ns};
         constexpr static auto pipeline{3zu};
@@ -58,7 +58,7 @@ TEST_SUITE("edge_detector")
             [&] -> task<void> {
                 port.signal = 0;
                 co_await generate_reset(port.rst, port.clk);
-                auto verify_tasks{co_await get_spawn_pool()};
+                auto verify_tasks{co_await spawn_pool()};
                 const auto do_verify{[&](bool rising, bool falling) { verify_tasks.add_task(verify(rising, falling)); }};
 
                 // 产生异步输入信号
@@ -101,6 +101,6 @@ TEST_SUITE("edge_detector")
         ctx.add_task(stimulate());
 
         ctx.loop_until_finish();
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

@@ -703,7 +703,7 @@ export namespace verilator_utils
              *
              * @note 使用移动构造将结果所有权转移到外部
              */
-            [[nodiscard]] return_type get_result()
+            [[nodiscard]] return_type result()
             {
                 ::verilator_utils::check{}(is_coroutine_exited(), "协程尚未执行完成，不能获取结果"sv);
                 ::verilator_utils::check{}(is_coroutine_finished(), "协程非正常退出，不能获取结果"sv);
@@ -716,7 +716,7 @@ export namespace verilator_utils
          *
          * @param handle 协程句柄
          */
-        explicit task(handle_t handle) noexcept : handle{handle} {}
+        explicit task(handle_t handle) noexcept : handle_{handle} {}
 
         /**
          * @brief 任务析构函数，销毁协程句柄
@@ -728,21 +728,21 @@ export namespace verilator_utils
         task& operator= (const task& other) noexcept = delete;
         task& operator= (task&& other) noexcept = delete;
 
-        task(task&& other) noexcept : handle{::std::exchange(other.handle, nullptr)} {}
+        task(task&& other) noexcept : handle_{::std::exchange(other.handle_, nullptr)} {}
 
         /**
          * @brief 检查任务对象是否绑定了协程柄
          *
          * @return 是否绑定了协程柄
          */
-        explicit operator bool() const noexcept { return static_cast<bool>(handle); }
+        explicit operator bool() const noexcept { return static_cast<bool>(handle_); }
 
         /**
          * @brief 判断任务对象是否可同步
          *
          * @return 是否可同步
          */
-        [[nodiscard]] bool joinable() const noexcept { return static_cast<bool>(handle); }
+        [[nodiscard]] bool joinable() const noexcept { return static_cast<bool>(handle_); }
 
         /**
          * @brief 检查任务是否完成
@@ -752,7 +752,7 @@ export namespace verilator_utils
         [[nodiscard]] bool done() const
         {
             ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能检查是否完成"sv);
-            return handle.done();
+            return handle_.done();
         }
 
         /**
@@ -762,7 +762,7 @@ export namespace verilator_utils
         void resume()
         {
             ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能恢复执行"sv);
-            handle.resume();
+            handle_.resume();
         }
 
         /**
@@ -770,31 +770,31 @@ export namespace verilator_utils
          *
          * @note 若任务是通过抛出仿真结束异常结束的，则不重新抛出异常
          */
-        void rethrow_exception() const { get_promise().rethrow_exception(); }
+        void rethrow_exception() const { promise().rethrow_exception(); }
 
         /**
          * @brief 分离任务的协程句柄，此后任务不再持有该句柄
          *
          * @return 任务的协程句柄
          */
-        [[nodiscard]] handle_t detach() noexcept { return ::std::exchange(handle, nullptr); }
+        [[nodiscard]] handle_t detach() noexcept { return ::std::exchange(handle_, nullptr); }
 
         /**
          * @brief 获取任务的协程句柄
          *
          * @return 任务的协程句柄
          */
-        [[nodiscard]] handle_t get_handle() const noexcept { return handle; }
+        [[nodiscard]] handle_t handle() const noexcept { return handle_; }
 
         /**
          * @brief 获取任务的promise对象
          *
          * @return 任务的promise对象引用
          */
-        [[nodiscard]] promise_type& get_promise() const
+        [[nodiscard]] promise_type& promise() const
         {
             ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能获取承诺体"sv);
-            return handle.promise();
+            return handle_.promise();
         }
 
         /**
@@ -803,7 +803,7 @@ export namespace verilator_utils
          */
         void destroy() noexcept
         {
-            if(handle) { ::std::exchange(handle, nullptr).destroy(); }
+            if(handle_) { ::std::exchange(handle_, nullptr).destroy(); }
         }
 
         /**
@@ -814,7 +814,7 @@ export namespace verilator_utils
         [[nodiscard]] bool cancel_possible() const
         {
             ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能检查取消状态"sv);
-            return handle.promise().cancel_possible();
+            return handle_.promise().cancel_possible();
         }
 
         /**
@@ -824,7 +824,7 @@ export namespace verilator_utils
         void cancel() const
         {
             ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能取消"sv);
-            handle.promise().cancel();
+            handle_.promise().cancel();
         }
 
         /**
@@ -835,7 +835,7 @@ export namespace verilator_utils
         [[nodiscard]] bool cancel_requested() const
         {
             ::verilator_utils::check{}(joinable(), "任务未绑定协程，不能检查取消状态"sv);
-            return handle.promise().cancel_requested();
+            return handle_.promise().cancel_requested();
         }
 
         /**
@@ -846,11 +846,11 @@ export namespace verilator_utils
         friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
         {
             ::verilator_utils::check{}(subtask.joinable(), "子任务未绑定协程，不能等待"sv);
-            return ::verilator_utils::detail::subtask_awaiter<promise_type>{subtask.handle};
+            return ::verilator_utils::detail::subtask_awaiter<promise_type>{subtask.handle_};
         }
 
     private:
-        handle_t handle;
+        handle_t handle_;
     };
 
     /**
@@ -988,13 +988,13 @@ namespace verilator_utils
 
     private:
         /// 指向VerilatedModel的指针，由dut类型擦除得到
-        ::VerilatedModel& dut;
+        ::VerilatedModel& dut_;
         /// dut状态计算函数指针类型
         using dut_eval_t = void (*)(::VerilatedModel&);
         /// dut状态计算函数
-        dut_eval_t dut_eval;
+        dut_eval_t dut_eval_;
         /// 时间精度，单位为飞秒
-        ::std::size_t time_precision_fs;
+        ::std::size_t time_precision_fs_;
         /// 每dut时间单位对应的dut时间精度
         double time_precision_per_time_unit;
         /// 每dut时间精度对应的格式化输出单位
@@ -1014,7 +1014,7 @@ namespace verilator_utils
         ::verilator_utils::detail::coroutine_pair finish_entry{};
 
         /// 评估阶段
-        eval_stage_enum eval_stage{eval_stage_enum::not_begin};
+        eval_stage_enum eval_stage_{eval_stage_enum::not_begin};
 
         /**
          * @brief 评估等待队列，推进时间步，将就绪协程放入就绪队列
@@ -1026,7 +1026,7 @@ namespace verilator_utils
             {
                 auto target_time{wait_queue.top().target_time};
                 // 推进时间步
-                dut.contextp()->time(target_time);
+                dut_.contextp()->time(target_time);
                 // 将就绪协程放入就绪队列
                 while(!wait_queue.empty())
                 {
@@ -1133,19 +1133,19 @@ namespace verilator_utils
          * @param dut_eval 回调函数，实现dut状态计算
          * @note 调度器会缓存time precision和time unit，因此在构造时需要确保二者已经设置
          */
-        explicit eval_scheduler(::VerilatedModel& dut, dut_eval_t dut_eval) noexcept : dut{dut}, dut_eval{dut_eval}
+        explicit eval_scheduler(::VerilatedModel& dut, dut_eval_t dut_eval) noexcept : dut_{dut}, dut_eval_{dut_eval}
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             const auto& context{*dut.contextp()};
             const auto time_precision{context.timeprecision()};
             const auto time_unit{context.timeunit()};
-            time_precision_fs = static_cast<::std::uint64_t>(::std::pow(10, 15 + time_precision));
+            time_precision_fs_ = static_cast<::std::uint64_t>(::std::pow(10, 15 + time_precision));
             time_precision_per_time_unit = ::std::pow(10, time_unit - time_precision);
             for(const auto& [unit_exponent, unit_fs, unit_suffix]: ::verilator_utils::detail::time_unit_table)
             {
                 if(time_unit >= unit_exponent)
                 {
-                    output_unit_per_time_precision = static_cast<double>(time_precision_fs) / static_cast<double>(unit_fs);
+                    output_unit_per_time_precision = static_cast<double>(time_precision_fs_) / static_cast<double>(unit_fs);
                     output_unit_suffix = unit_suffix;
                     return;
                 }
@@ -1186,26 +1186,26 @@ namespace verilator_utils
          *
          * @return 仿真是否结束
          */
-        [[nodiscard]] bool is_finish() const noexcept { return dut.contextp()->gotFinish(); }
+        [[nodiscard]] bool is_finish() const noexcept { return dut_.contextp()->gotFinish(); }
 
         /**
          * @brief 检查仿真是否存在错误
          *
          * @return 仿真是否存在错误
          */
-        [[nodiscard]] bool is_error() const noexcept { return dut.contextp()->gotError(); }
+        [[nodiscard]] bool is_error() const noexcept { return dut_.contextp()->gotError(); }
 
         /**
          * @brief 标记仿真结束
          *
          */
-        void finish() noexcept { dut.contextp()->gotFinish(true); }
+        void finish() noexcept { dut_.contextp()->gotFinish(true); }
 
         /**
          * @brief 标记仿真中出现错误
          *
          */
-        void error() noexcept { dut.contextp()->gotError(true); }
+        void error() noexcept { dut_.contextp()->gotError(true); }
 
         /**
          * @brief 仿真结束时抛出eval_finish_exception异常
@@ -1224,15 +1224,15 @@ namespace verilator_utils
          * @return 待测模型对象的引用
          */
         template <::std::derived_from<::VerilatedModel> dut_t = ::VerilatedModel>
-        dut_t& get_dut() const noexcept
-        { return *static_cast<dut_t*>(dut); }
+        dut_t& dut() const noexcept
+        { return *static_cast<dut_t*>(dut_); }
 
         /**
          * @brief 获取当前时间，单位为dut时间精度
          *
          * @return 当前时间
          */
-        [[nodiscard]] ::std::uint64_t time_in_time_precision() const noexcept { return dut.contextp()->time(); }
+        [[nodiscard]] ::std::uint64_t time_in_time_precision() const noexcept { return dut_.contextp()->time(); }
 
         /**
          * @brief 获取当前时间，单位为dut时间单位
@@ -1247,7 +1247,7 @@ namespace verilator_utils
          *
          * @return dut时间精度
          */
-        [[nodiscard]] ::std::uint64_t get_time_precision_fs() const noexcept { return time_precision_fs; }
+        [[nodiscard]] ::std::uint64_t time_precision_fs() const noexcept { return time_precision_fs_; }
 
         /**
          * @brief 获取当前时间，已根据时间单位转换为字符串格式并添加时间单位后缀
@@ -1300,7 +1300,7 @@ namespace verilator_utils
          *
          * @return eval_stage_enum 评估阶段枚举
          */
-        [[nodiscard]] eval_stage_enum get_eval_stage() const noexcept { return eval_stage; }
+        [[nodiscard]] eval_stage_enum eval_stage() const noexcept { return eval_stage_; }
 
         /**
          * @brief 执行一轮评估
@@ -1310,27 +1310,27 @@ namespace verilator_utils
         {
             using enum eval_stage_enum;
 
-            eval_stage = eval_ready_task;
+            eval_stage_ = eval_ready_task;
             // 执行已就绪协程
             while(ready_queue_eval()) {}
 
             // 推进时间步，执行新的就绪协程
             wait_queue_eval();
-            eval_stage = before_dut_eval;
+            eval_stage_ = before_dut_eval;
             while(ready_queue_eval()) {}
             // 循环评估事件队列和就绪队列，直到收敛
             while(event_queue_eval()) { ready_queue_eval(); }
 
             // 评估电路，该步骤只评估verilator模型，不进行协程调度
-            eval_stage = on_dut_eval;
-            dut_eval(dut);
+            eval_stage_ = on_dut_eval;
+            dut_eval_(dut_);
 
             // 循环评估事件队列和就绪队列，直到收敛
-            eval_stage = after_dut_eval;
+            eval_stage_ = after_dut_eval;
             while(event_queue_eval()) { ready_queue_eval(); }
 
             // 结束一轮评估
-            eval_stage = eval_end;
+            eval_stage_ = eval_end;
         }
 
         /**
@@ -1350,10 +1350,10 @@ namespace verilator_utils
         void initial_eval()
         {
             using enum eval_stage_enum;
-            ::verilator_utils::check{}(eval_stage <= after_initial_eval, "已进入仿真循环阶段，不能执行初始化"sv);
-            ::verilator_utils::check{}(eval_stage == not_begin, "已执行过initial_eval，不应再次执行"sv);
+            ::verilator_utils::check{}(eval_stage_ <= after_initial_eval, "已进入仿真循环阶段，不能执行初始化"sv);
+            ::verilator_utils::check{}(eval_stage_ == not_begin, "已执行过initial_eval，不应再次执行"sv);
             while(ready_queue_eval()) {}
-            eval_stage = after_initial_eval;
+            eval_stage_ = after_initial_eval;
         }
 
         /**
@@ -1375,9 +1375,9 @@ namespace verilator_utils
         void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
         {
             ::verilator_utils::check{}(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
-            const auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs};
+            const auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs_};
             ::verilator_utils::check{}(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
-            const auto current_time{dut.contextp()->time()};
+            const auto current_time{dut_.contextp()->time()};
             const auto target_time{time_to_wait_in_time_precision + current_time};
             ::verilator_utils::check{}(target_time > current_time, "Verilator仿真计时器溢出"sv);
             wait_queue.emplace(target_time, pair);
@@ -1440,7 +1440,7 @@ namespace verilator_utils
         void add_task(::verilator_utils::task<void> task)
         {
             // 向task中添加调度器
-            task.get_promise().scheduler = this;
+            task.promise().scheduler = this;
             register_ready(task.detach());
         }
     };
@@ -1509,7 +1509,7 @@ namespace verilator_utils
         {
             throw ::verilator_utils::subtask_cancel_exception{};  // 处理canceled
         }
-        return subhandle.promise().get_result();  // 处理finished
+        return subhandle.promise().result();  // 处理finished
     }
 }  // namespace verilator_utils
 

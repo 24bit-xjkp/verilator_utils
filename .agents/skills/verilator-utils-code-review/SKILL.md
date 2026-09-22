@@ -69,7 +69,7 @@ xmake 目标、选项与命令细节由 `.agents/skills/xmake/` 中的 xmake ski
 ### 前置条件与错误行为
 
 - 需要避免的是 **`REQUIRE*` 系列**及任何会终止进程的 doctest 断言：框架的运行时数据校验不得用它们替代语言级契约，否则会把生产行为耦合到测试框架。`CHECK_*`、`CAPTURE` 等非致命设施属于仓库既有的 doctest 集成方式，不作为缺陷。
-- 与 doctest 的**集成点**是既有设计，不应作为缺陷上报：`dut_context` 通过 doctest 上下文取得当前测试名、用 `ContextScope` 记录随机种子，并提供 `get_binary_path()` 等辅助；`verify_at()` 用 `CAPTURE(eval_time)` 把仿真时刻附加到断言上下文（`src/task.cppm`）；协程栈回溯提供 `::doctest::StringMaker`/formatter 特化；`src/main.cpp` 是唯一的 doctest 入口与 `setAsDefaultForAssertsOutOfTestCases()` 调用点。审查新增代码时，判断标准是新校验逻辑是否用 `REQUIRE*` 代替了语言级契约。
+- 与 doctest 的**集成点**是既有设计，不应作为缺陷上报：`dut_context` 通过 doctest 上下文取得当前测试名、用 `ContextScope` 记录随机种子，并提供 `binary_path()` 等辅助；`verify_at()` 用 `CAPTURE(eval_time)` 把仿真时刻附加到断言上下文（`src/task.cppm`）；协程栈回溯提供 `::doctest::StringMaker`/formatter 特化；`src/main.cpp` 是唯一的 doctest 入口与 `setAsDefaultForAssertsOutOfTestCases()` 调用点。审查新增代码时，判断标准是新校验逻辑是否用 `REQUIRE*` 代替了语言级契约。
 - 优先使用语言级契约：异常、约束（concept/`requires`）、或已文档化的前置条件与未定义行为，与该 API 的既有方向一致。
 - 在校验之前检查算术：下溢、溢出、非法移位、零宽度、反向区间、越界字访问。
 - 确认 `noexcept` 函数不会走到可能抛异常的校验、分配、格式化、回调或协程异常路径。
@@ -135,7 +135,7 @@ TEST_SUITE("edge_detector")
 
 - 期望值必须由 RTL 延迟、时钟极性、复位语义、采样沿、非阻塞赋值行为与调度阶段顺序推导出来。
 - 检查采样沿两侧的异步激励、同步激励、复位后的第一个有效沿、稳定/无输入周期、以及流水线排空。
-- 每个被 spawn 的验证任务都必须被持有并 join（`get_spawn_pool()` + `join_all()`）；测试不能在仍有校验挂起时结束。
+- 每个被 spawn 的验证任务都必须被持有并 join（`spawn_pool()` + `join_all()`）；测试不能在仍有校验挂起时结束。
 - `eval_finish()` 只能在所有期望输出都观察到、且必要的波形排空周期结束后调用；`generate_clock` 会持续产生时钟，必须显式结束仿真。
 - 局部端口包装、DUT/上下文对象、spawn 池与被引用状态必须活过所有协程任务。
 - 优先表达明确的时序意图，而不是随手加延迟。波形看着对，但断言采样在错误的周期/阶段，仍然是不合格的测试。

@@ -139,13 +139,13 @@ export namespace verilator_utils
     struct dut_context
     {
     private:
-        ::std::unique_ptr<::VerilatedContext> context{};
-        ::std::unique_ptr<dut_t> dut{};
-        ::std::unique_ptr<::verilator_utils::eval_scheduler> scheduler{};
+        ::std::unique_ptr<::VerilatedContext> context_{};
+        ::std::unique_ptr<dut_t> dut_{};
+        ::std::unique_ptr<::verilator_utils::eval_scheduler> scheduler_{};
         constexpr static auto use_tracer{!::std::is_void_v<tracer_t>};
-        [[no_unique_address]] ::verilator_utils::detail::dut_context_tracer<tracer_t> tracer{};
-        bool coverage{};
-        ::std::string base_name{};
+        [[no_unique_address]] ::verilator_utils::detail::dut_context_tracer<tracer_t> tracer_{};
+        bool coverage_{};
+        ::std::string base_name_{};
 
         /**
          * @brief 在doctest断言失败时记录随机种子
@@ -175,27 +175,27 @@ export namespace verilator_utils
          * @param option 配置选项
          * @note 记录文件会在initial_eval时才打开
          */
-        explicit dut_context(::verilator_utils::dut_context_option option = {}) : coverage{option.coverage}
+        explicit dut_context(::verilator_utils::dut_context_option option = {}) : coverage_{option.coverage}
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             auto&& current_test{*::doctest::getContextOptions()->currentTest};
-            context = ::std::make_unique<::VerilatedContext>();
-            context->commandArgs(option.argc.value_or(::verilator_utils::detail::dut_context_default_args::args.size()),
-                                 option.argv.value_or(::verilator_utils::detail::dut_context_default_args::args.data()));
-            dut = ::std::make_unique<dut_t>(context.get(),
-                                            current_test.m_test_suite == nullptr ? "TOP" : current_test.m_test_suite);
+            context_ = ::std::make_unique<::VerilatedContext>();
+            context_->commandArgs(option.argc.value_or(::verilator_utils::detail::dut_context_default_args::args.size()),
+                                  option.argv.value_or(::verilator_utils::detail::dut_context_default_args::args.data()));
+            dut_ = ::std::make_unique<dut_t>(context_.get(),
+                                             current_test.m_test_suite == nullptr ? "TOP" : current_test.m_test_suite);
             // 覆盖dut内的timescale设置
-            context->timeprecision(::std::to_underlying(option.time_precision));
-            context->timeunit(::std::to_underlying(option.time_unit));
-            scheduler = ::std::make_unique<::verilator_utils::eval_scheduler>(*dut);
-            base_name = option.base_name.empty() ? current_test.m_name : option.base_name;
+            context_->timeprecision(::std::to_underlying(option.time_precision));
+            context_->timeunit(::std::to_underlying(option.time_unit));
+            scheduler_ = ::std::make_unique<::verilator_utils::eval_scheduler>(*dut_);
+            base_name_ = option.base_name.empty() ? current_test.m_name : option.base_name;
 
             if constexpr(use_tracer)
             {
                 static_assert(dut_t::traceCapable, "Verilator生成代码时未开启trace支持");
-                context->traceEverOn(true);
-                tracer.init();
-                dut->trace(tracer.get(), option.trace_level);
+                context_->traceEverOn(true);
+                tracer_.init();
+                dut_->trace(tracer_.get(), option.trace_level);
             }
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
@@ -208,11 +208,11 @@ export namespace verilator_utils
 
         ~dut_context() noexcept
         {
-            dut->final();
-            if(coverage && scheduler->get_eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
+            dut_->final();
+            if(coverage_ && scheduler_->eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
             {
-                context->coverageFilename(::std::format("{}.dat"sv, base_name));
-                context->coveragep()->write();
+                context_->coverageFilename(::std::format("{}.dat"sv, base_name_));
+                context_->coveragep()->write();
             }
         }
 
@@ -222,8 +222,8 @@ export namespace verilator_utils
          */
         void loop_once()
         {
-            scheduler->loop_once();
-            if constexpr(use_tracer) { tracer.dump(context->time()); }
+            scheduler_->loop_once();
+            if constexpr(use_tracer) { tracer_.dump(context_->time()); }
         }
 
         /**
@@ -233,11 +233,11 @@ export namespace verilator_utils
          */
         void initial_eval()
         {
-            scheduler->initial_eval();
+            scheduler_->initial_eval();
             if constexpr(use_tracer)
             {
-                tracer.open(base_name);
-                tracer.dump(context->time());
+                tracer_.open(base_name_);
+                tracer_.dump(context_->time());
             }
         }
 
@@ -246,7 +246,7 @@ export namespace verilator_utils
          *
          * @return 文件基本名称
          */
-        [[nodiscard]] ::std::string_view get_base_name() const noexcept { return base_name; }
+        [[nodiscard]] ::std::string_view base_name() const noexcept { return base_name_; }
 
         /**
          * @brief 设置生成文件的基本名称，不带后缀名
@@ -256,10 +256,9 @@ export namespace verilator_utils
          */
         void set_base_name(::std::string_view base_name)
         {
-            ::verilator_utils::check{}(scheduler->get_eval_stage() ==
-                                           ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin,
+            ::verilator_utils::check{}(scheduler_->eval_stage() == ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin,
                                        "必须在initial_eval之前设置文件基本名称"sv);
-            this->base_name = base_name;
+            this->base_name_ = base_name;
         }
 
         /**
@@ -267,21 +266,21 @@ export namespace verilator_utils
          *
          * @return Verilator上下文对象引用
          */
-        auto&& get_context(this auto&& self) noexcept { return *self.context; }
+        auto&& context(this auto&& self) noexcept { return *self.context_; }
 
         /**
          * @brief 获取DUT对象引用
          *
          * @return DUT对象引用
          */
-        auto&& get_dut(this auto&& self) noexcept { return *self.dut; }
+        auto&& dut(this auto&& self) noexcept { return *self.dut_; }
 
         /**
          * @brief 获取调度器对象引用
          *
          * @return 调度器对象引用
          */
-        auto&& get_scheduler(this auto&& self) noexcept { return *self.scheduler; }
+        auto&& scheduler(this auto&& self) noexcept { return *self.scheduler_; }
 
         /**
          * @brief 获取跟踪器引用
@@ -289,22 +288,22 @@ export namespace verilator_utils
          * 只有当tracer_t不为void，即启用跟踪器时可调用
          * @return 跟踪器引用
          */
-        auto&& get_tracer(this auto&& self) noexcept
+        auto&& tracer(this auto&& self) noexcept
             requires (use_tracer)
-        { return *self.tracer.get(); }
+        { return *self.tracer_.get(); }
 
         /**
          * @brief 获取VerilatorContext的随机种子
          *
          * @return 随机种子
          */
-        ::std::size_t get_seed() noexcept
+        ::std::size_t seed() noexcept
         {
             if(!random_seed_logger.has_value())
             {
-                random_seed_logger.emplace(::doctest::detail::MakeContextScope(log_random_seed{context.get()}));
+                random_seed_logger.emplace(::doctest::detail::MakeContextScope(log_random_seed{context_.get()}));
             }
-            return static_cast<::std::size_t>(context->randSeed());
+            return static_cast<::std::size_t>(context_->randSeed());
         }
 
         /**
@@ -312,7 +311,7 @@ export namespace verilator_utils
          *
          * @return 可执行文件所在路径
          */
-        [[nodiscard]] ::std::filesystem::path get_binary_path() const
+        [[nodiscard]] ::std::filesystem::path binary_path() const
         { return ::std::filesystem::canonical(::verilator_utils::detail::dut_context_default_args::args[0]); }
 
         /**
@@ -320,14 +319,14 @@ export namespace verilator_utils
          *
          * @return 覆盖率记录是否启用
          */
-        [[nodiscard]] bool is_coverage_enabled() const noexcept { return coverage; }
+        [[nodiscard]] bool coverage() const noexcept { return coverage_; }
 
         /**
          * @brief 设置覆盖率记录是否启用
          *
          * @param enable_coverage 覆盖率记录是否启用
          */
-        void set_coverage_status(bool enable_coverage) noexcept { coverage = enable_coverage; }
+        void set_coverage(bool enable_coverage) noexcept { coverage_ = enable_coverage; }
 
         /**
          * @brief 执行初始化循环，然后执行调度器循环直到调度器队列为空或者仿真结束，如果启用波形记录器，则记录波形
@@ -339,7 +338,7 @@ export namespace verilator_utils
         {
             if(max_eval_time != 0_fs) { add_task(::verilator_utils::max_eval_time(max_eval_time)); }
             initial_eval();
-            while(!scheduler->empty() && !scheduler->is_finish()) { loop_once(); }
+            while(!scheduler_->empty() && !scheduler_->is_finish()) { loop_once(); }
         }
 
         /**
@@ -348,19 +347,19 @@ export namespace verilator_utils
          * @param task 要添加的任务
          * @note 相当于在绑定的调度器对象scheduler上调用add_task
          */
-        void add_task(::verilator_utils::task<void> task) { scheduler->add_task(::std::move(task)); }
+        void add_task(::verilator_utils::task<void> task) { scheduler_->add_task(::std::move(task)); }
 
         /**
          * @brief 获取统计信息
          *
          * @return 统计信息
          */
-        [[nodiscard]] ::verilator_utils::dut_context_stats get_stats() const
+        [[nodiscard]] ::verilator_utils::dut_context_stats stats() const
         {
-            auto simtime{scheduler->time_in_time_unit()};
+            auto simtime{scheduler_->time_in_time_unit()};
             // 时间单位的指数，e.g. fs -> -15
-            auto time_unit{context->timeunit()};
-            auto walltime{context->statWallTimeSinceStart()};
+            auto time_unit{context_->timeunit()};
+            auto walltime{context_->statWallTimeSinceStart()};
             auto speed{simtime / walltime};
             ::std::uint64_t memory_peak{};
             ::std::uint64_t memory_current{};
@@ -387,12 +386,12 @@ export namespace verilator_utils
                     return ::std::get<0>(item) == scaled_time_unit;
                 }))};
 
-            return {scheduler->time_in_string(),
+            return {scheduler_->time_in_string(),
                     ::std::format("{:.3f}{}/s", scaled_speed, scaled_time_unit_suffix),
-                    context->threadsInModels(),
+                    context_->threadsInModels(),
                     simtime,
                     walltime,
-                    context->statCpuTimeSinceStart(),
+                    context_->statCpuTimeSinceStart(),
                     speed,
                     static_cast<double>(memory_peak) / 1024.0 / 1024.0};
         }

@@ -34,7 +34,7 @@ TEST_SUITE("counter")
         dut_context_t ctx{
             {.coverage = true, .time_precision = verilator_time_unit::ns}
         };
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
 
         ctx.add_task(generate_clock(port.clk, 2_ns));
         const auto do_verify{
@@ -80,6 +80,6 @@ TEST_SUITE("counter")
         };
         ctx.add_task(do_verify());
         ctx.loop_until_finish();
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

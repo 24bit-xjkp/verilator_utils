@@ -177,7 +177,7 @@ namespace
     {
         reference_module ref{port};
         co_await add_task(ref.eval());
-        auto pool{co_await get_spawn_pool()};
+        auto pool{co_await spawn_pool()};
         pool.add_task(do_write(port, ref));
         pool.add_task(do_read(port, ref));
         co_await pool.join_all();
@@ -196,11 +196,11 @@ namespace
 
     task<void> do_verify_random(dut_context_t& ctx, port_t& port, dist_t i_dist, dist_t o_dist)
     {
-        auto seed{ctx.get_seed()};
+        auto seed{ctx.seed()};
         std::mt19937_64 engin{seed};
         reference_module ref{port};
         co_await add_task(ref.eval());
-        auto pool{co_await get_spawn_pool()};
+        auto pool{co_await spawn_pool()};
         constexpr auto iters{port_t::depth * 500zu};
         auto i{0zu};
 
@@ -247,7 +247,7 @@ TEST_SUITE("async_fifo")
     TEST_CASE("write_slow_read_fast")
     {
         dut_context_t ctx{option};
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
 
         ctx.add_task(generate_async_reset(port.rst, rst_period));
         ctx.add_task(generate_clock(port.i_clk, slow_period));
@@ -259,7 +259,7 @@ TEST_SUITE("async_fifo")
     TEST_CASE("write_fast_read_slow")
     {
         dut_context_t ctx{option};
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
 
         ctx.add_task(generate_async_reset(port.rst, rst_period));
         ctx.add_task(generate_clock(port.i_clk, fast_period));
@@ -271,26 +271,26 @@ TEST_SUITE("async_fifo")
     TEST_CASE("write_slow_read_fast_random")
     {
         dut_context_t ctx{option};
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
 
         ctx.add_task(generate_async_reset(port.rst, rst_period));
         ctx.add_task(generate_clock(port.i_clk, slow_period));
         ctx.add_task(generate_clock(port.o_clk, fast_period));
         ctx.add_task(do_verify_random(ctx, port, dist_t{0, 1}, dist_t{0, 3}));
         ctx.loop_until_finish(110_us);
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 
     TEST_CASE("write_fast_read_slow_random")
     {
         dut_context_t ctx{option};
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
 
         ctx.add_task(generate_async_reset(port.rst, rst_period));
         ctx.add_task(generate_clock(port.i_clk, fast_period));
         ctx.add_task(generate_clock(port.o_clk, slow_period));
         ctx.add_task(do_verify_random(ctx, port, dist_t{0, 3}, dist_t{0, 1}));
         ctx.loop_until_finish(110_us);
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

@@ -72,12 +72,12 @@ TEST_SUITE("sync_dual_ram")
         dut_context_t ctx{
             {.coverage = true, .time_precision = verilator_time_unit::ns}
         };
-        port_t port{ctx.get_dut()};
+        port_t port{ctx.dut()};
         reference_module ref{port};
 
         constexpr static auto epochs{8zu};
         constexpr static auto iters{port_t::depth * epochs};
-        std::mt19937_64 rng{ctx.get_seed()};
+        std::mt19937_64 rng{ctx.seed()};
 
         ctx.add_task(generate_clock(port.clk, 2_ns));
         ctx.add_task(ref.eval());
@@ -185,7 +185,7 @@ TEST_SUITE("sync_dual_ram")
 
         const auto do_verify{
             [&] -> task<void> {
-                auto pool{co_await get_spawn_pool()};
+                auto pool{co_await spawn_pool()};
                 pool.add_task(do_sync_write());
                 pool.add_task(do_sync_read());
                 co_await pool.join_all();
@@ -201,6 +201,6 @@ TEST_SUITE("sync_dual_ram")
         ctx.add_task(do_verify());
 
         ctx.loop_until_finish(1_us);
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

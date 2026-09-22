@@ -49,8 +49,8 @@ TEST_SUITE("fir_filter")
         dut_context_t ctx{
             {.coverage = true, .time_precision = verilator_time_unit::ns}
         };
-        port_t port{ctx.get_dut()};
-        npy::npzfilereader reader{ctx.get_binary_path().parent_path() / "fir_filter.npz"sv};
+        port_t port{ctx.dut()};
+        npy::npzfilereader reader{ctx.binary_path().parent_path() / "fir_filter.npz"sv};
         using tensor_t = npy::tensor<port_t::data_t>;
         const auto origin_signal{reader.read<tensor_t>("x.npy")};
         const auto filtered_signal{reader.read<tensor_t>("y.npy")};
@@ -87,7 +87,7 @@ TEST_SUITE("fir_filter")
             }
         }};
         const auto do_verify{[&] -> task<void> {
-            auto pool{co_await get_spawn_pool()};
+            auto pool{co_await spawn_pool()};
             for(const auto i: std::views::iota(0zu, port_t::filter_num)) { pool.add_task(verify_a_port(i)); }
             co_await pool.join_all();
 
@@ -97,6 +97,6 @@ TEST_SUITE("fir_filter")
         ctx.add_task(do_verify());
 
         ctx.loop_until_finish(200_us);
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

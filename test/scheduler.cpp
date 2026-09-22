@@ -39,19 +39,19 @@ TEST_SUITE("verilator_utils/scheduler")
 
         ::verilator_utils::task<void>::handle_t parent_handle;
         const auto parent{[&] -> ::verilator_utils::task<void> {
-            const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+            const auto handle{co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
             CHECK(handle);
             parent_handle = handle;
             CHECK_EQ(handle.promise().status, ::verilator_utils::task<void>::status_enum::running);
             co_await child;
         }};
         auto parent_task{parent()};
-        const auto expected_parent_handle{parent_task.get_handle()};
+        const auto expected_parent_handle{parent_task.handle()};
 
         CHECK(parent_task);
         CHECK(child);
-        CHECK_EQ(parent_task.get_promise().status, ::verilator_utils::task<void>::status_enum::initial_suspend);
-        CHECK_EQ(child.get_promise().status, ::verilator_utils::task<void>::status_enum::initial_suspend);
+        CHECK_EQ(parent_task.promise().status, ::verilator_utils::task<void>::status_enum::initial_suspend);
+        CHECK_EQ(child.promise().status, ::verilator_utils::task<void>::status_enum::initial_suspend);
         scheduler.add_task(::std::move(parent_task));
         scheduler.loop_until_finish();
         CHECK_EQ(parent_handle, expected_parent_handle);
@@ -119,8 +119,8 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_EQ(value, 23);
         CHECK(child.done());
         CHECK(forwarding_task.done());
-        CHECK_EQ(::std::addressof(child.get_promise().get_result()), ::std::addressof(value));
-        CHECK_EQ(::std::addressof(forwarding_task.get_promise().get_result()), ::std::addressof(value));
+        CHECK_EQ(::std::addressof(child.promise().result()), ::std::addressof(value));
+        CHECK_EQ(::std::addressof(forwarding_task.promise().result()), ::std::addressof(value));
     }
 
     TEST_CASE("task preserves const references")
@@ -143,7 +143,7 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_EQ(result, ::std::addressof(value));
         CHECK_EQ(*result, 31);
         CHECK(child.done());
-        CHECK_EQ(::std::addressof(child.get_promise().get_result()), ::std::addressof(value));
+        CHECK_EQ(::std::addressof(child.promise().result()), ::std::addressof(value));
     }
 
     TEST_CASE("value-returning task propagates exceptions to its parent")
@@ -180,17 +180,17 @@ TEST_SUITE("verilator_utils/scheduler")
     TEST_CASE("task supports move construction assignment detach and destroy")
     {
         auto task{[] -> ::verilator_utils::task<void> { co_return; }()};
-        auto original_handle{task.get_handle()};
+        auto original_handle{task.handle()};
 
         const ::verilator_utils::task<void> moved{::std::move(task)};
         // The moved-from state is part of task's move-construction contract.
         // NOLINTNEXTLINE(bugprone-use-after-move)
         CHECK_FALSE(task);
         CHECK(moved);
-        CHECK_EQ(moved.get_handle(), original_handle);
+        CHECK_EQ(moved.handle(), original_handle);
 
         ::verilator_utils::task<void> assigned{[] -> ::verilator_utils::task<void> { co_return; }()};
-        original_handle = assigned.get_handle();
+        original_handle = assigned.handle();
         const auto detached_handle{assigned.detach()};
         CHECK_FALSE(assigned);
         CHECK_EQ(detached_handle, original_handle);
@@ -214,11 +214,11 @@ TEST_SUITE("verilator_utils/scheduler")
                              ::doctest::Contains{"不能检查是否完成"},
                              ::verilator_utils::assertion_error);
         CHECK_THROWS_WITH_AS(source.resume(), ::doctest::Contains{"不能恢复执行"}, ::verilator_utils::assertion_error);
-        // rethrow_exception转发给get_promise，因此报告的是承诺体的检查
+        // rethrow_exception转发给promise，因此报告的是承诺体的检查
         CHECK_THROWS_WITH_AS(source.rethrow_exception(),
                              ::doctest::Contains{"不能获取承诺体"},
                              ::verilator_utils::assertion_error);
-        CHECK_THROWS_WITH_AS(static_cast<void>(source.get_promise()),
+        CHECK_THROWS_WITH_AS(static_cast<void>(source.promise()),
                              ::doctest::Contains{"不能获取承诺体"},
                              ::verilator_utils::assertion_error);
         CHECK_THROWS_WITH_AS(static_cast<void>(source.cancel_possible()),
@@ -289,7 +289,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         CHECK(caught_regular);
         CHECK(failing_task.done());
-        CHECK(failing_task.get_promise().with_unhandled_exception());
+        CHECK(failing_task.promise().with_unhandled_exception());
         CHECK_THROWS_AS(failing_task.rethrow_exception(), ::std::runtime_error);
 
         // eval_finish_exception不会被记录为未处理异常，因此重新抛出时被忽略
@@ -299,7 +299,7 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler.loop_until_finish();
 
         CHECK(finish_task.done());
-        CHECK_FALSE(finish_task.get_promise().with_unhandled_exception());
+        CHECK_FALSE(finish_task.promise().with_unhandled_exception());
         CHECK_NOTHROW(finish_task.rethrow_exception());
     }
 
@@ -558,7 +558,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
             void eval() const
             {
-                CHECK_EQ(scheduler->get_eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::on_dut_eval);
+                CHECK_EQ(scheduler->eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::on_dut_eval);
                 *seen_on_dut_eval = true;
             }
 
@@ -577,7 +577,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         scheduler.loop_once();
         CHECK(seen_on_dut_eval);
-        CHECK_EQ(scheduler.get_eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::eval_end);
+        CHECK_EQ(scheduler.eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::eval_end);
     }
 
     TEST_CASE("stage waits do not interfere with on_dut_eval observation")
@@ -609,10 +609,10 @@ TEST_SUITE("verilator_utils/scheduler")
         auto scheduler{fixture.make_scheduler()};
 
         CHECK(scheduler.empty());
-        CHECK_EQ(scheduler.get_eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin);
+        CHECK_EQ(scheduler.eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin);
         scheduler.loop_once();
         CHECK(scheduler.empty());
-        CHECK_EQ(scheduler.get_eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::eval_end);
+        CHECK_EQ(scheduler.eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::eval_end);
         CHECK_FALSE(scheduler.is_finish());
         scheduler.finish();
         CHECK(scheduler.is_finish());
@@ -696,7 +696,7 @@ TEST_SUITE("verilator_utils/scheduler")
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
                 [[maybe_unused]] const auto handle{
-                    co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                    co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
                 recorded_line = ::std::source_location::current().line();
                 co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
             },
@@ -704,7 +704,7 @@ TEST_SUITE("verilator_utils/scheduler")
         auto child{child_lambda()};
         const auto parent{[&] -> ::verilator_utils::task<void> { co_await child; }};
         scheduler.add_task(parent());
-        const auto& promise{child.get_promise()};
+        const auto& promise{child.promise()};
 
         CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::initial_suspend);
         CHECK(is_default_suspend_location(promise.suspend_location));
@@ -732,7 +732,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
-                const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                const auto handle{co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
                 co_await ::verilator_utils::wait_time(1_ps);
                 observed_status = handle.promise().status;
                 observed_location = handle.promise().suspend_location;
@@ -757,7 +757,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
-                const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                const auto handle{co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
                 const auto& promise{handle.promise()};
                 CHECK_EQ(promise.status, ::verilator_utils::task<void>::status_enum::running);
                 CHECK(is_default_suspend_location(promise.suspend_location));
@@ -788,7 +788,7 @@ TEST_SUITE("verilator_utils/scheduler")
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
                 [[maybe_unused]] const auto handle{
-                    co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                    co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
                 co_await ::verilator_utils::wait_event([&] { return signal.value != 0; });
             },
         };
@@ -801,7 +801,7 @@ TEST_SUITE("verilator_utils/scheduler")
             },
         };
         auto parent_task{parent()};
-        const auto& promise{parent_task.get_promise()};
+        const auto& promise{parent_task.promise()};
         scheduler.add_task(::std::move(parent_task));
 
         scheduler.loop_once();
@@ -825,7 +825,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto task_lambda{
             [&] -> ::verilator_utils::task<void> {
-                const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                const auto handle{co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
                 auto& promise{handle.promise()};
                 co_await bool_suspend_awaiter{false};
                 status_after_false_resume = promise.status;
@@ -836,7 +836,7 @@ TEST_SUITE("verilator_utils/scheduler")
             },
         };
         auto task{task_lambda()};
-        auto& promise{task.get_promise()};
+        auto& promise{task.promise()};
 
         // 任务必须绑定到调度器：手动驱动任务前先完成绑定（与add_task的绑定方式一致）
         promise.scheduler = ::std::addressof(scheduler);
@@ -1044,10 +1044,10 @@ TEST_SUITE("verilator_utils/scheduler")
         ::verilator_utils::event event{};
         const auto waiter_lambda{[&] -> ::verilator_utils::task<void> { co_await event; }};
         const auto task{waiter_lambda()};
-        const auto handle{task.get_handle()};
+        const auto handle{task.handle()};
 
         // 任务未绑定调度器时挂起失败：可等待体在挂起前检查调度器并抛出断言异常
-        auto awaiter{task.get_promise().await_transform(event)};
+        auto awaiter{task.promise().await_transform(event)};
         CHECK_THROWS_AS(awaiter.await_suspend(handle), ::verilator_utils::assertion_error);
     }
 
@@ -1080,7 +1080,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         never_started.cancel();
         CHECK(never_started.cancel_requested());
-        CHECK_EQ(never_started.get_promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+        CHECK_EQ(never_started.promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
         // 已收到取消请求的任务不在可取消状态，重复请求触发断言
         CHECK_FALSE(never_started.cancel_possible());
         CHECK_THROWS_WITH_AS(never_started.cancel(), ::doctest::Contains{"不可取消"}, ::verilator_utils::assertion_error);
@@ -1094,7 +1094,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
         const auto running_lambda{
             [&] -> ::verilator_utils::task<void> {
-                const auto handle{co_await ::verilator_utils::get_handle<::verilator_utils::task<void>::promise_type>()};
+                const auto handle{co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
                 CHECK_EQ(handle.promise().status, ::verilator_utils::task<void>::status_enum::running);
                 CHECK_FALSE(handle.promise().cancel_possible());
                 CHECK_THROWS_WITH_AS(handle.promise().cancel(),
@@ -1154,12 +1154,12 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler.loop_once();
         // 父任务等待子任务，子任务挂起在事件上：此时子任务处于可取消状态
         REQUIRE_FALSE(child_task.done());
-        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::suspended);
+        CHECK_EQ(child_task.promise().status, ::verilator_utils::task<void>::status_enum::suspended);
         CHECK(child_task.cancel_possible());
 
         child_task.cancel();
         CHECK(child_task.cancel_requested());
-        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+        CHECK_EQ(child_task.promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
         CHECK_FALSE(child_task.cancel_possible());
 
         signal.value = 1;
@@ -1170,15 +1170,15 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(parent_caught);
         CHECK(parent_finished);
         REQUIRE(child_task.done());
-        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::canceled);
-        CHECK(child_task.get_promise().is_coroutine_exited());
-        CHECK_FALSE(child_task.get_promise().is_coroutine_finished());
-        CHECK_FALSE(child_task.get_promise().cancel_requested());
+        CHECK_EQ(child_task.promise().status, ::verilator_utils::task<void>::status_enum::canceled);
+        CHECK(child_task.promise().is_coroutine_exited());
+        CHECK_FALSE(child_task.promise().is_coroutine_finished());
+        CHECK_FALSE(child_task.promise().cancel_requested());
         // 取消不是异常退出：协程中没有未处理的异常，重新抛出时也不产生异常
-        CHECK_FALSE(child_task.get_promise().with_unhandled_exception());
+        CHECK_FALSE(child_task.promise().with_unhandled_exception());
         CHECK_NOTHROW(child_task.rethrow_exception());
         // 被取消的子任务没有结果可消费，父任务只能通过subtask_cancel_exception感知取消
-        CHECK_THROWS_WITH_AS(static_cast<void>(child_task.get_promise().get_result()),
+        CHECK_THROWS_WITH_AS(static_cast<void>(child_task.promise().result()),
                              ::doctest::Contains{"不能获取结果"},
                              ::verilator_utils::assertion_error);
     }
@@ -1222,7 +1222,7 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(parent_caught);
         CHECK(parent_finished);
         REQUIRE(child_task.done());
-        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::canceled);
+        CHECK_EQ(child_task.promise().status, ::verilator_utils::task<void>::status_enum::canceled);
     }
 
     TEST_CASE("canceling a root task waiting on time reclaims its frame")
@@ -1240,7 +1240,7 @@ TEST_SUITE("verilator_utils/scheduler")
             },
         };
         auto root{waiter_lambda()};
-        const auto handle{root.get_handle()};
+        const auto handle{root.handle()};
         scheduler.add_task(::std::move(root));
         // 只执行就绪队列，让根任务挂起在等待队列上而不推进仿真时间
         scheduler.initial_eval();
@@ -1287,7 +1287,7 @@ TEST_SUITE("verilator_utils/scheduler")
                              ::verilator_utils::subtask_cancel_exception);
         CHECK_FALSE(resumed_after_wait);
         REQUIRE(child_task.done());
-        CHECK_EQ(child_task.get_promise().status, ::verilator_utils::task<void>::status_enum::canceled);
+        CHECK_EQ(child_task.promise().status, ::verilator_utils::task<void>::status_enum::canceled);
     }
 
     TEST_CASE("cancellation exceptions are distinct from the simulation finish exception")
@@ -1314,16 +1314,16 @@ TEST_SUITE("verilator_utils/scheduler")
         const auto second_lambda{[] -> ::verilator_utils::task<void> { co_return; }};
         const auto first{first_lambda()};
         const auto second{second_lambda()};
-        const ::verilator_utils::detail::coroutine_pair first_pair{first.get_handle()};
-        ::verilator_utils::detail::coroutine_pair first_pair_duplicate{first.get_handle()};
-        ::verilator_utils::detail::coroutine_pair second_pair{second.get_handle()};
+        const ::verilator_utils::detail::coroutine_pair first_pair{first.handle()};
+        ::verilator_utils::detail::coroutine_pair first_pair_duplicate{first.handle()};
+        ::verilator_utils::detail::coroutine_pair second_pair{second.handle()};
 
         // 同一协程柄构造的状态对相等，不同协程柄不相等
         CHECK(first_pair == first_pair_duplicate);
         CHECK(first_pair != second_pair);
         CHECK_EQ(first_pair <=> first_pair_duplicate, ::std::strong_ordering::equal);
         // 全序关系与协程柄地址序一致
-        const auto expected_order{first.get_handle().address() < second.get_handle().address()};
+        const auto expected_order{first.handle().address() < second.handle().address()};
         CHECK_EQ(first_pair < second_pair, expected_order);
     }
 }

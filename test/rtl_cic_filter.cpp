@@ -41,8 +41,8 @@ TEST_SUITE("cic_filter")
         dut_context_t ctx{
             {.coverage = true, .time_precision = verilator_time_unit::ns}
         };
-        port_t port{ctx.get_dut()};
-        npy::npzfilereader reader{ctx.get_binary_path().parent_path() / "cic_filter.npz"sv};
+        port_t port{ctx.dut()};
+        npy::npzfilereader reader{ctx.binary_path().parent_path() / "cic_filter.npz"sv};
         using tensor_t = npy::tensor<port_t::data_t>;
         auto origin_signal{reader.read<tensor_t>("x.npy")};
         auto filtered_signal{reader.read<tensor_t>("y.npy")};
@@ -71,6 +71,6 @@ TEST_SUITE("cic_filter")
         ctx.add_task(do_verify());
 
         ctx.loop_until_finish(60_us);
-        MESSAGE(ctx.get_stats());
+        MESSAGE(ctx.stats());
     }
 }

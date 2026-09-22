@@ -209,13 +209,13 @@ export namespace verilator_utils
          * @brief 获取绝对误差
          *
          */
-        [[nodiscard]] constexpr type get_atol() const noexcept { return atol; }
+        [[nodiscard]] constexpr type atol() const noexcept { return atol_; }
 
         /**
          * @brief 获取相对误差
          *
          */
-        [[nodiscard]] constexpr double get_rtol() const noexcept { return rtol; }
+        [[nodiscard]] constexpr double rtol() const noexcept { return rtol_; }
 
         /**
          * @brief 设置绝对误差范围
@@ -225,7 +225,7 @@ export namespace verilator_utils
         constexpr void set_atol(type atol)
         {
             ::verilator_utils::check{}(atol >= 0);
-            this->atol = atol;
+            this->atol_ = atol;
         }
 
         /**
@@ -236,17 +236,17 @@ export namespace verilator_utils
         constexpr void set_rtol(double rtol)
         {
             ::verilator_utils::check{}(rtol >= 0.0 && rtol <= 1.0);
-            this->rtol = rtol;
+            this->rtol_ = rtol;
         }
 
         constexpr ::verilator_utils::detail::approx_compare<type> operator() (type value) const noexcept
-        { return {atol, value, rtol}; }
+        { return {atol_, value, rtol_}; }
 
     private:
         /// 绝对误差
-        type atol{};
+        type atol_{};
         /// 相对误差
-        double rtol{};
+        double rtol_{};
     };
 
     /**
@@ -1781,7 +1781,7 @@ export namespace std
 
         template <typename iter_t>
         static auto format(const ::verilator_utils::approx<type>& value, ::std::basic_format_context<iter_t, char>& ctx)
-        { return ::std::format_to(ctx.out(), "{{atol: {}, rtol: {}}}"sv, value.get_atol(), value.get_rtol()); }
+        { return ::std::format_to(ctx.out(), "{{atol: {}, rtol: {}}}"sv, value.atol(), value.rtol()); }
     };
 
     template <::verilator_utils::same_as_any<::std::uint64_t, ::std::int64_t, double> type>
