@@ -241,8 +241,43 @@ CHECK_THROWS_WITH_AS_MESSAGE((::verilator_utils::approx<::std::int64_t>{-1z, 0.5
 2. 在最小相关的 `test/<basename>.cpp` 中新增或修改测试；RTL 测试改对应的 `test/rtl_<name>.cpp`。
 3. 使用结果显而易见的确定性取值；边界用例紧邻它所校验的正常行为。
 4. 自问"哪一行实现缺陷会让这个测试失败"——如果答不上来，测试就是空洞的。
-5. 运行测试（目标名、过滤、详细输出等由 `.agents/skills/xmake/` 中的 xmake skills 说明），只修与被改动测试或目标行为相关的失败。
+5. 按下一节的两步顺序运行测试（目标名、过滤、详细输出等由 xmake skills 说明），只修与被改动测试或目标行为相关的失败。
 6. 若因修改 C++ 模块导致 BMI/对象文件陈旧而构建失败，按 xmake skills 的说明重建；不要为了让测试通过而改动实现语义。
+
+## 运行测试的顺序：先常规组，后 tysan 组
+
+TypeSanitizer 会大幅拖慢测试运行速度，而它只能发现类型混淆/违反严格别名这一类问题。
+因此工具链支持 tysan时，**需要分两步跑**：先跑不带 tysan 的常规组，常规组全部通过后再跑 tysan 组。
+这样绝大多数功能性问题会先在快速的那一轮暴露出来，不必每次都付出 tysan 的耗时；tysan 组只承担它独有的检查职责。
+
+两组测试的区分方式是组名：
+
+- 常规组：`unit_test`、`unit_test_rtl`（asan + ubsan）
+- tysan 组：`unit_test_tysan`、`unit_test_rtl_tysan`（仅 tysan）
+
+```bash
+# 第一步：常规组，必须全绿后才继续
+xmake test -g unit_test           # 单元测试
+xmake test -g unit_test_rtl       # RTL集成测试
+
+# 第二步：常规组通过后，再跑 tysan 组
+xmake test -g unit_test_tysan     # 开启tysan的单元测试
+xmake test -g unit_test_rtl_tysan # 开启tysan的RTL集成测试
+```
+
+### tysan 组的前置条件
+
+tysan 组不是总存在，`xmake f --use_type_sanitizer=y` 且工具链支持 `-fsanitize=type` 时才会创建（当前实现还要求 `use_sanitizer=y`）。
+工具链不支持时 `xmake f` 会给出告警并忽略该选项，此时目标是 0 个，第二步命令会报 `nothing to test`——这不是失败，也不要为了让它跑起来去放宽 sanitizer 配置。
+
+判断当前配置里有没有 tysan 目标：
+
+```bash
+xmake show -l targets | grep tysan
+```
+
+- 常规组通过、tysan 组失败时，失败**确实**可能是 tysan 独有的真问题（类型混淆、违反严格别名），先确认失败原因再决定是改实现还是改测试，不要直接跳过 tysan 组。
+- 交付说明中要写明这次实际跑了哪一组（或两组），不要把只跑了常规组说成完整回归。
 
 ## 交付前检查
 
