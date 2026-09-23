@@ -6,6 +6,16 @@ namespace
     using namespace ::std::string_view_literals;
 }
 
+namespace verilator_utils::detail
+{
+    /**
+     * @brief 表达任务取消的异常基类，仅在框架内使用
+     *
+     */
+    struct internal_task_cancel_exception : ::std::runtime_error
+    { using ::std::runtime_error::runtime_error; };
+}  // namespace verilator_utils::detail
+
 export namespace verilator_utils
 {
     /**
@@ -13,9 +23,9 @@ export namespace verilator_utils
      *
      * @note 该异常在框架中使用，不要在框架外捕获它
      */
-    struct eval_finish_exception : ::std::runtime_error
+    struct eval_finish_exception : ::verilator_utils::detail::internal_task_cancel_exception
     {
-        eval_finish_exception() noexcept : ::std::runtime_error{"仿真正常退出"} {}
+        eval_finish_exception() noexcept : ::verilator_utils::detail::internal_task_cancel_exception{"仿真正常退出"} {}
     };
 
     /**
@@ -23,9 +33,9 @@ export namespace verilator_utils
      *
      * @note 该异常在框架中使用，不要在框架外捕获它
      */
-    struct task_cancel_exception : ::std::runtime_error
+    struct task_cancel_exception : ::verilator_utils::detail::internal_task_cancel_exception
     {
-        task_cancel_exception() noexcept : ::std::runtime_error{"任务取消"} {}
+        task_cancel_exception() noexcept : ::verilator_utils::detail::internal_task_cancel_exception{"任务取消"} {}
     };
 
     /**
@@ -136,8 +146,6 @@ namespace verilator_utils::detail
         suspended,
         /// 协程收到取消请求
         cancel_requested,
-        /// 协程收到评估结束请求
-        eval_finish_requested,
         /// 协程已取消
         canceled,
         /// 协程异常退出
@@ -457,23 +465,8 @@ namespace verilator_utils::detail
         {
             // 复用suspend_location来表示协程内异常抛出位置
             suspend_location = location;
-            try
-            {
-                throw;
-            }
-            catch(const ::verilator_utils::eval_finish_exception&)
-            {
-                status = status_enum::eval_finish_requested;
-            }
-            catch(const ::verilator_utils::task_cancel_exception&)  // NOLINT(bugprone-empty-catch)
-            {
-                // 保持取消请求，以便final_suspend将状态置为canceled而不是aborted
-                status = status_enum::cancel_requested;
-            }
-            catch(...)
-            {
-                exception = ::std::current_exception();
-            }
+            // 总是捕获异常，然后在final_suspend中进行分类处理
+            exception = ::std::current_exception();
         }
 
         /**
@@ -1824,6 +1817,12 @@ namespace verilator_utils
             {
                 promise.rethrow_exception();
             }
+            catch(const ::verilator_utils::detail::internal_task_cancel_exception&)
+            {
+                promise.status = status_enum::canceled;
+                // 内部异常不再继续传播
+                promise.exception = nullptr;
+            }
             catch(const ::verilator_utils::coroutine_exception&)  // NOLINT(bugprone-empty-catch)
             {
                 // 已经加入协程栈回溯信息，不进行处理
@@ -1843,8 +1842,6 @@ namespace verilator_utils
                 }
             }
         }
-        else if(promise.status == status_enum::eval_finish_requested) { promise.status = status_enum::aborted; }
-        else if(promise.status == status_enum::cancel_requested) { promise.status = status_enum::canceled; }
         else
         {
             promise.status = status_enum::finished;
