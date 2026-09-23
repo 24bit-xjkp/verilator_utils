@@ -1225,7 +1225,11 @@ namespace verilator_utils::detail
         /// 协程状态对
         ::verilator_utils::detail::coroutine_pair pair;
 
-        /// 等待队列元素的比较运算符，按等待时间点进行比较
+        // 按等待时间点进行比较
+        friend bool operator== (const wait_queue_element& self, const wait_queue_element& other) noexcept
+        { return self.target_time == other.target_time; }
+
+        // 按等待时间点进行比较
         friend ::std::strong_ordering operator<=> (const wait_queue_element& self, const wait_queue_element& other) noexcept
         { return self.target_time <=> other.target_time; }
     };
@@ -1233,7 +1237,7 @@ namespace verilator_utils::detail
     /// 等待队列类型
     using wait_queue_t = ::std::priority_queue<::verilator_utils::detail::wait_queue_element,
                                                ::std::vector<::verilator_utils::detail::wait_queue_element>,
-                                               ::std::greater<>>;
+                                               ::std::ranges::greater>;
 
     /**
      * @brief 事件队列的元素类型
