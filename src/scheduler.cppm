@@ -301,6 +301,23 @@ export namespace verilator_utils
         }
 
         /**
+         * @brief 创建一个协程栈回溯对象，失败时不抛出异常而是保持栈帧数组为空
+         *
+         * @param pair 协程状态对
+         */
+        explicit coroutine_stacktrace(::std::nothrow_t, ::verilator_utils::detail::coroutine_pair pair) noexcept
+        {
+            try
+            {
+                frames = backtrace(pair) | ::std::ranges::to<::std::vector>();
+            }
+            catch(...)
+            {
+                frames.clear();
+            }
+        }
+
+        /**
          * @brief 判断栈帧数组是否为空
          *
          * @return 栈帧数组是否为空
@@ -1787,29 +1804,48 @@ namespace verilator_utils
         }
     };
 
-    void resume_coroutine(::verilator_utils::detail::promise_base& promise)
+    namespace detail
     {
-        using enum ::verilator_utils::detail::status_enum;
-        // 不允许未绑定调度器的任务
-        // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult)
-        if(promise.scheduler == nullptr) [[unlikely]] { ::std::unreachable(); }
-        // 协作式取消的优先级更高
-        promise.scheduler->throw_if_finish();
-        // 检查是否需要取消
-        if(promise.status == cancel_requested) { throw ::verilator_utils::task_cancel_exception{}; }
-        promise.status = running;
-    }
+        void resume_coroutine(::verilator_utils::detail::promise_base& promise)
+        {
+            using enum ::verilator_utils::detail::status_enum;
+            // 不允许未绑定调度器的任务
+            // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult)
+            if(promise.scheduler == nullptr) [[unlikely]] { ::std::unreachable(); }
+            // 协作式取消的优先级更高
+            promise.scheduler->throw_if_finish();
+            // 检查是否需要取消
+            if(promise.status == cancel_requested) { throw ::verilator_utils::task_cancel_exception{}; }
+            promise.status = running;
+        }
+
+        /**
+         * @brief 在恢复父任务执行前检查子任务的状态
+         *
+         * 会处理aborted和canceled状态，finished状态由await_resume根据需求处理
+         * @param pair 协程状态对
+         */
+        void check_before_parent_resume(::verilator_utils::detail::coroutine_pair pair)
+        {
+            ::verilator_utils::check{}(pair.handle.done(), "子任务尚未完成"sv);
+            pair.promise->rethrow_exception();  // 处理aborted
+            if(pair.promise->status == ::verilator_utils::detail::status_enum::canceled)
+            {
+                throw ::verilator_utils::subtask_cancel_exception{};  // 处理canceled
+            }
+        }
+    }  // namespace detail
 
     template <typename awaiter_t>
     auto ::verilator_utils::detail::awaiter_wrapper<awaiter_t>::await_resume() -> decltype(auto)
     {
-        promise.suspend_location = ::std::source_location{};
-        ::verilator_utils::resume_coroutine(promise);
+        promise.suspend_location = {};
+        ::verilator_utils::detail::resume_coroutine(promise);
         return awaiter.await_resume();
     }
 
     void ::verilator_utils::detail::promise_base::initial_awaiter::await_resume()
-    { ::verilator_utils::resume_coroutine(promise); }
+    { ::verilator_utils::detail::resume_coroutine(promise); }
 
     auto ::verilator_utils::detail::promise_base::final_awaiter::await_suspend(::std::coroutine_handle<> handle) const noexcept
         -> ::std::coroutine_handle<>
@@ -1834,16 +1870,10 @@ namespace verilator_utils
             catch(...)
             {
                 // 尝试注入协程栈回溯信息
-                try
-                {
-                    promise.exception = ::std::make_exception_ptr(
-                        ::verilator_utils::coroutine_exception{promise.exception,
-                                                               ::verilator_utils::coroutine_stacktrace{{handle, &promise}}});
-                }
-                catch(...)
-                {
-                    promise.exception = ::std::make_exception_ptr(::verilator_utils::coroutine_exception{promise.exception});
-                }
+                promise.exception = ::std::make_exception_ptr(::verilator_utils::coroutine_exception{
+                    promise.exception,
+                    ::verilator_utils::coroutine_stacktrace{::std::nothrow, {handle, &promise}}
+                });
             }
         }
         else
@@ -1856,6 +1886,7 @@ namespace verilator_utils
             promise.scheduler->register_finish({handle, &promise});
             return ::std::noop_coroutine();
         }
+        // 异步协程不进行回溯
         if(promise.is_async) { return ::std::noop_coroutine(); }
         // 父协程为非根协程直接回溯
         return promise.parent.handle;
@@ -1864,13 +1895,7 @@ namespace verilator_utils
     template <typename promise_type>
     auto ::verilator_utils::detail::subtask_awaiter<promise_type>::await_resume() -> return_type
     {
-        ::verilator_utils::check{}(subhandle.done(), "子任务尚未完成，不能获取结果"sv);
-        subhandle.promise().scheduler->throw_if_finish();
-        subhandle.promise().rethrow_exception();  // 已处理aborted
-        if(subhandle.promise().status == ::verilator_utils::detail::status_enum::canceled)
-        {
-            throw ::verilator_utils::subtask_cancel_exception{};  // 处理canceled
-        }
+        ::verilator_utils::detail::check_before_parent_resume(subhandle);
         return subhandle.promise().result();  // 处理finished
     }
 }  // namespace verilator_utils

@@ -145,6 +145,17 @@ namespace
         co_await ::verilator_utils::wait_time(1_ps);
     }
 
+    /// 根协程：分别以抛出异常与nothrow两种方式对同一协程链执行协程栈回溯
+    ::verilator_utils::task<void>
+        stacktrace_nothrow_root(::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& throwing_captured,
+                                ::std::shared_ptr<::verilator_utils::coroutine_stacktrace>& nothrow_captured)
+    {
+        const auto pair{::verilator_utils::detail::coroutine_pair{
+            co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()}};
+        throwing_captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(pair);
+        nothrow_captured = ::std::make_shared<::verilator_utils::coroutine_stacktrace>(::std::nothrow, pair);
+    }
+
 }  // namespace
 
 TEST_SUITE("verilator_utils/task")
@@ -1031,6 +1042,29 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(static_cast<int>(captured->frames[0].location.line()), expected_line);
         CHECK(::std::string_view{captured->frames[0].location.function_name()}.contains("stacktrace_orphan_async"sv));
         CHECK_EQ(captured->frames[1].type, type_t::root_coroutine);
+    }
+
+    TEST_CASE("coroutine_stacktrace nothrow construction captures the same frames")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::shared_ptr<::verilator_utils::coroutine_stacktrace> throwing_captured{};
+        ::std::shared_ptr<::verilator_utils::coroutine_stacktrace> nothrow_captured{};
+
+        scheduler.add_task(stacktrace_nothrow_root(throwing_captured, nothrow_captured));
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+
+        REQUIRE(throwing_captured);
+        REQUIRE(nothrow_captured);
+        // nothrow构造只吞掉异常而不吞掉栈帧：两种构造方式捕获完全相同的调用链
+        REQUIRE_FALSE(throwing_captured->empty());
+        REQUIRE_EQ(nothrow_captured->frames.size(), throwing_captured->frames.size());
+        for(const auto& [throwing_frame, nothrow_frame]: ::std::views::zip(throwing_captured->frames, nothrow_captured->frames))
+        {
+            CHECK_EQ(nothrow_frame.coroutine_frame_ptr, throwing_frame.coroutine_frame_ptr);
+            CHECK_EQ(nothrow_frame.type, throwing_frame.type);
+            CHECK_EQ(nothrow_frame.location.line(), throwing_frame.location.line());
+        }
     }
 
     TEST_CASE("coroutine_stacktrace formatter renders every frame with its index")
@@ -2035,7 +2069,8 @@ TEST_SUITE("verilator_utils/task")
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         bool child_body_ran{};
-        bool child_awaited{};
+        bool parent_caught{};
+        bool parent_finished{};
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
@@ -2056,9 +2091,16 @@ TEST_SUITE("verilator_utils/task")
                 CHECK_EQ(child.promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
                 CHECK_FALSE(child.cancel_possible());
 
-                // 异步任务的取消不通过异常传播：等待被取消的任务不会抛出异常
-                co_await child;
-                child_awaited = true;
+                // 与同步任务一致：等待被取消的异步任务抛出子任务取消异常，而不是静默返回
+                try
+                {
+                    co_await child;
+                }
+                catch(const ::verilator_utils::subtask_cancel_exception&)
+                {
+                    parent_caught = true;
+                }
+                parent_finished = true;
             },
         };
 
@@ -2066,7 +2108,8 @@ TEST_SUITE("verilator_utils/task")
         CHECK_NOTHROW(scheduler.loop_until_finish());
         // 取消请求在恢复点生效：协程体一次都不会运行
         CHECK_FALSE(child_body_ran);
-        CHECK(child_awaited);
+        CHECK(parent_caught);
+        CHECK(parent_finished);
     }
 
     TEST_CASE("canceling a suspended async task drops the remainder of its body")
@@ -2076,7 +2119,8 @@ TEST_SUITE("verilator_utils/task")
         auto scheduler{fixture.make_scheduler()};
         bool child_started{};
         bool resumed_after_wait{};
-        bool child_awaited{};
+        bool parent_caught{};
+        bool parent_finished{};
 
         const auto child_lambda{
             [&] -> ::verilator_utils::task<void> {
@@ -2107,9 +2151,16 @@ TEST_SUITE("verilator_utils/task")
                 CHECK_FALSE(child.cancel_possible());
                 CHECK_THROWS_WITH_AS(child.cancel(), ::doctest::Contains{"不可取消"}, ::verilator_utils::assertion_error);
 
-                // 取消不产生未处理异常，等待被取消的任务同样不会抛出异常
-                co_await child;
-                child_awaited = true;
+                // 取消自身不产生未处理异常，但等待被取消的异步任务会收到子任务取消异常
+                try
+                {
+                    co_await child;
+                }
+                catch(const ::verilator_utils::subtask_cancel_exception&)
+                {
+                    parent_caught = true;
+                }
+                parent_finished = true;
             },
         };
 
@@ -2118,9 +2169,126 @@ TEST_SUITE("verilator_utils/task")
         // 取消请求在恢复点生效：子任务不再继续执行
         CHECK(child_started);
         CHECK_FALSE(resumed_after_wait);
-        CHECK(child_awaited);
+        CHECK(parent_caught);
+        CHECK(parent_finished);
         // 被取消的异步任务在等待完成后回收协程帧
         CHECK_EQ(destroyed, 1zu);
+    }
+
+    TEST_CASE("uncaught async task cancellation propagates out of the scheduler")
+    {
+        ::std::size_t destroyed{};
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool resumed_after_wait{};
+        ::verilator_utils::task<void>::promise_type* child_promise{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
+                child_promise = ::std::addressof(
+                    (co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()).promise());
+                co_await ::verilator_utils::wait_time(5_ps);
+                resumed_after_wait = true;
+            },
+        };
+
+        // 父任务不捕获异步子任务的取消异常，异常应沿调用链向上传播
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto child{co_await ::verilator_utils::to_async(child_lambda())};
+                co_await child;
+            },
+        };
+
+        scheduler.add_task(parent());
+        // 只执行就绪队列：父任务挂起在异步子任务上，异步子任务挂起在等待队列上
+        scheduler.initial_eval();
+
+        REQUIRE(child_promise != nullptr);
+        CHECK_EQ(child_promise->status, ::verilator_utils::task<void>::status_enum::suspended);
+        CHECK(child_promise->cancel_possible());
+        child_promise->cancel();
+        CHECK_EQ(child_promise->status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+
+        CHECK_THROWS_WITH_AS(scheduler.loop_until_finish(),
+                             ::doctest::Contains{"子任务取消"},
+                             ::verilator_utils::coroutine_exception);
+        CHECK_FALSE(resumed_after_wait);
+        // 被取消的异步子任务不再继续执行，其协程帧在父任务展开时回收
+        CHECK_EQ(destroyed, 1zu);
+    }
+
+    TEST_CASE("spawn_pool join_all collects the cancellation of a canceled child")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::promise_type* canceled_promise{};
+        bool survivor_finished{};
+        ::std::size_t exception_count{};
+        bool cancel_rethrown{};
+
+        const auto canceled_child{
+            [&] -> ::verilator_utils::task<void> {
+                canceled_promise = ::std::addressof(
+                    (co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()).promise());
+                co_await ::verilator_utils::wait_time(5_ps);
+            },
+        };
+        const auto survivor_child{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_time(3_ps);
+                survivor_finished = true;
+            },
+        };
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto pool{co_await ::verilator_utils::spawn_pool()};
+                pool.add_task(canceled_child());
+                pool.add_task(survivor_child());
+                // 让出执行权，使两个子任务都挂起在等待队列上
+                co_await ::verilator_utils::wait_time(1_ps);
+                CHECK_NE(canceled_promise, nullptr);
+                if(canceled_promise != nullptr) { canceled_promise->cancel(); }
+
+                try
+                {
+                    co_await pool.join_all();
+                }
+                catch(const ::verilator_utils::coroutine_exception& exception)
+                {
+                    try
+                    {
+                        exception.rethrow_exception();
+                    }
+                    catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
+                    {
+                        const auto& exceptions{join_all_exception.exceptions()};
+                        exception_count = exceptions.size();
+                        CHECK_FALSE(exceptions.empty());
+                        if(!exceptions.empty())
+                        {
+                            try
+                            {
+                                ::std::rethrow_exception(exceptions.front());
+                            }
+                            catch(const ::verilator_utils::subtask_cancel_exception&)
+                            {
+                                cancel_rethrown = true;
+                            }
+                        }
+                    }
+                }
+            },
+        };
+
+        scheduler.add_task(parent());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        // join_all等待所有子任务：被取消的子任务与其他子任务的异常一样被汇总
+        CHECK(survivor_finished);
+        CHECK_EQ(exception_count, 1zu);
+        CHECK(cancel_rethrown);
     }
 
     TEST_CASE("scheduler reclaims detached async tasks suspended on a never-fired event")
@@ -2453,6 +2621,63 @@ TEST_SUITE("verilator_utils/task")
         scheduler.loop_until_finish();
         CHECK(joined);
         CHECK_EQ(completed, (::std::vector<int>{2, 1}));
+    }
+
+    TEST_CASE("spawn_pool join_any reports the cancellation of a canceled child")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::promise_type* canceled_promise{};
+        bool cancel_caught{};
+        bool survivor_finished{};
+        bool drained{};
+
+        const auto canceled_child{
+            [&] -> ::verilator_utils::task<void> {
+                canceled_promise = ::std::addressof(
+                    (co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()).promise());
+                co_await ::verilator_utils::wait_time(2_ps);
+            },
+        };
+        const auto survivor_child{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_time(5_ps);
+                survivor_finished = true;
+            },
+        };
+
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto pool{co_await ::verilator_utils::spawn_pool()};
+                pool.add_task(canceled_child());
+                pool.add_task(survivor_child());
+                // 让出执行权，使两个子任务都挂起在等待队列上
+                co_await ::verilator_utils::wait_time(1_ps);
+                CHECK_NE(canceled_promise, nullptr);
+                if(canceled_promise != nullptr) { canceled_promise->cancel(); }
+
+                // 被取消的子任务先到达恢复点：join_any报告取消，并把它移出任务池
+                try
+                {
+                    co_await pool.join_any();
+                }
+                catch(const ::verilator_utils::subtask_cancel_exception&)
+                {
+                    cancel_caught = true;
+                }
+                CHECK_FALSE(pool.empty());
+
+                // 取消只影响被取消的子任务：再次join_any仍然会等待其余子任务正常完成
+                co_await pool.join_any();
+                drained = pool.empty();
+            },
+        };
+
+        scheduler.add_task(parent());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        CHECK(cancel_caught);
+        CHECK(survivor_finished);
+        CHECK(drained);
     }
 
     TEST_CASE("scheduler reclaims a pool of subtasks suspended on a never-fired event")

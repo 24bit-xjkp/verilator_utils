@@ -1182,7 +1182,7 @@ export namespace verilator_utils
              * @note 异步任务下，父子任务同时存在于调度队列中，不能在子任务完成前恢复父任务
              * @throws 若子任务抛出异常则重新抛出异常
              */
-            void await_resume() const { subhandle.promise().rethrow_exception(); }
+            void await_resume() const { ::verilator_utils::detail::check_before_parent_resume(subhandle); }
 
             async_task_awaiter(const async_task_awaiter&) = delete;
             async_task_awaiter& operator= (const async_task_awaiter&) = delete;
@@ -1333,12 +1333,11 @@ export namespace verilator_utils
             /**
              * @brief 恢复等待任务的执行
              *
-             * @throws 子任务中未处理的异常
              */
             void await_resume()
             {
                 search_finish_task();
-                ptr->promise().rethrow_exception();
+                ::verilator_utils::detail::check_before_parent_resume(ptr->handle());
             }
 
             join_any_awaiter(const join_any_awaiter&) noexcept = delete;
@@ -1352,7 +1351,7 @@ export namespace verilator_utils
                 if(pool == nullptr) { return; }
                 search_finish_task();
                 constexpr static auto deleter{
-                    [](join_any_awaiter* self) {
+                    [](join_any_awaiter* self) noexcept {
                         // 若待析构的元素不为最后一个元素，则将最后的元素移动到当前位置，然后析构最后的空元素
                         // 否则直接析构元素
                         if(self->ptr != ::std::addressof(self->pool->back()))
@@ -1398,7 +1397,7 @@ export namespace verilator_utils
                     }
 
                     // 标记ptr为空的情况不可达以消除静态分析警告
-                    if(ptr == nullptr) { ::std::unreachable(); }
+                    if(ptr == nullptr) [[unlikely]] { ::std::unreachable(); }
                 }
             }
 
