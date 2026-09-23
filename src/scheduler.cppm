@@ -1751,10 +1751,10 @@ namespace verilator_utils
          * @param pair 协程状态对
          * @note 只能注册根协程
          */
-        void register_finish(::verilator_utils::detail::coroutine_pair pair)
+        void register_finish(::verilator_utils::detail::coroutine_pair pair) noexcept
         {
-            ::verilator_utils::check{}(pair.promise->parent == nullptr, "完成项对只能注册根协程"sv);
-            ::verilator_utils::check{}(finish_entry.handle == nullptr, "完成项不为空"sv);
+            ::verilator_utils::check{}(::std::nothrow, pair.promise->parent == nullptr, "完成项对只能注册根协程"sv);
+            ::verilator_utils::check{}(::std::nothrow, finish_entry.handle == nullptr, "完成项不为空"sv);
             finish_entry = pair;
         }
 
@@ -1849,17 +1849,10 @@ namespace verilator_utils
         {
             promise.status = status_enum::finished;
         }
-        // 无父协程或者为异步协程则不进行回溯
+        // 无父协程则不进行回溯
         if(promise.parent == nullptr)
         {
-            try
-            {
-                promise.scheduler->register_finish({handle, &promise});
-            }
-            catch(...)
-            {
-                ::std::terminate();
-            }
+            promise.scheduler->register_finish({handle, &promise});
             return ::std::noop_coroutine();
         }
         if(promise.is_async) { return ::std::noop_coroutine(); }
