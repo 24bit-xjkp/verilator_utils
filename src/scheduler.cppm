@@ -199,14 +199,14 @@ namespace verilator_utils::detail
     export struct coroutine_pair
     {
         /// 协程柄
-        ::std::coroutine_handle<> handle;
+        ::std::coroutine_handle<> handle{};
         /// 类型擦除的承诺指针
-        ::verilator_utils::detail::promise_base* promise;
+        ::verilator_utils::detail::promise_base* promise{};
 
         // NOLINTBEGIN(*-explicit-constructor)
 
         /**
-         * @brief 从未类型擦除的协程柄构造状态对
+         * @brief 从未类型擦除的协程柄构造协程状态对
          *
          * @tparam promise_type 承诺类型
          * @param handle 未类型擦除的协程柄
@@ -218,16 +218,21 @@ namespace verilator_utils::detail
         }
 
         /**
-         * @brief 从子协程承诺中保存的父协程状态构造状态对
+         * @brief 从类型擦除的协程柄和承诺指针构造协程状态对
          *
-         * @param subtask_promise 子协程承诺
+         * @param handle 协程柄
+         * @param promise 承诺指针
          */
-        coroutine_pair(const ::verilator_utils::detail::promise_base& subtask_promise) noexcept;
-
-        coroutine_pair(::std::coroutine_handle<> handle = nullptr,
-                       ::verilator_utils::detail::promise_base* promise = nullptr) noexcept : handle{handle}, promise{promise}
+        coroutine_pair(::std::coroutine_handle<> handle, ::verilator_utils::detail::promise_base* promise) noexcept :
+            handle{handle}, promise{promise}
         {
         }
+
+        /**
+         * @brief 构造空的协程状态对
+         *
+         */
+        coroutine_pair() noexcept = default;
 
         friend bool operator== (const coroutine_pair& lhs, ::std::nullptr_t /* unused */) noexcept
         {
@@ -588,11 +593,6 @@ namespace verilator_utils::detail
          */
         [[nodiscard]] bool cancel_requested() const noexcept { return status == status_enum::cancel_requested; }
     };
-
-    ::verilator_utils::detail::coroutine_pair::coroutine_pair(
-        const ::verilator_utils::detail::promise_base& subtask_promise) noexcept : coroutine_pair{subtask_promise.parent}
-    {
-    }
 
     template <typename awaiter_t>
     struct awaiter_wrapper
