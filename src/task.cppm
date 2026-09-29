@@ -209,8 +209,14 @@ namespace verilator_utils::detail
         template <::verilator_utils::is_coroutine_promise promise_type>
         void await_suspend(::std::coroutine_handle<promise_type> handle)
         {
-            event_callback = [this] noexcept { return await_ready(); };
+            set_event_callback();
             scheduler.register_event(event_callback, handle);
+        }
+
+        // 绕过lld开启lto时崩溃的问题
+        void set_event_callback()
+        {
+            event_callback = [this] noexcept { return await_ready(); };
         }
     };
 
