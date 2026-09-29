@@ -121,7 +121,21 @@ namespace verilator_utils::detail
      * @brief 永不挂起的可等待体
      *
      */
-    struct no_suspend_awaiter : ::std::suspend_never
+    export struct no_suspend_awaiter : ::std::suspend_never
+    {
+        void set_promise(this auto&& self, ::std::derived_from<::verilator_utils::detail::promise_base> auto& promise) noexcept(
+            noexcept(self.set_promise_impl(promise)))
+            requires (requires() {
+                { self.set_promise_impl(promise) } -> ::std::same_as<void>;
+            })
+        { self.set_promise_impl(promise); }
+    };
+
+    /**
+     * @brief 可以获知实际承诺体的可等待体基类
+     *
+     */
+    export struct with_promise_awaiter
     {
         void set_promise(this auto&& self, ::std::derived_from<::verilator_utils::detail::promise_base> auto& promise) noexcept(
             noexcept(self.set_promise_impl(promise)))
@@ -343,6 +357,12 @@ export namespace verilator_utils
         [[nodiscard]] bool empty() const noexcept { return frames.empty(); }
 
         /**
+         * @brief 清空栈帧数组
+         *
+         */
+        void clear() noexcept { frames.clear(); }
+
+        /**
          * @brief 开始协程栈回溯
          *
          * @param pair 协程状态对
@@ -389,6 +409,29 @@ export namespace verilator_utils
          */
         void rethrow_exception() const { ::std::rethrow_exception(exception_); }
 
+        /**
+         * @brief 转化为原始异常
+         *
+         * @tparam type 原始异常类型
+         * @return 指向原始异常对象的指针，转化失败为空指针
+         */
+        template <typename type>
+        const type* as() const noexcept
+        {
+            try
+            {
+                ::std::rethrow_exception(exception_);
+            }
+            catch(const type& exception)
+            {
+                return ::std::addressof(exception);
+            }
+            catch(...)
+            {
+                return nullptr;
+            }
+        }
+
         [[nodiscard]] const char* what() const noexcept override
         {
             if(message.empty()) { message = generate_message(); }
@@ -421,6 +464,10 @@ namespace verilator_utils::detail
         ::verilator_utils::eval_scheduler* scheduler{};
         /// 协程挂起点的源代码位置
         ::std::source_location suspend_location{};
+        /// 栈回溯条目
+        ::verilator_utils::coroutine_stacktrace stacktrace{};
+        /// 与栈回溯条目对应的异常指针
+        ::std::exception_ptr stacktrace_exception{};
         /// 协程状态
         status_enum status{status_enum::creating};
         /// 是否为异步协程
@@ -503,6 +550,8 @@ namespace verilator_utils::detail
             suspend_location = location;
             // 总是捕获异常，然后在final_suspend中进行分类处理
             exception = ::std::current_exception();
+            // 异常不同时清空栈回溯条目
+            if(exception != stacktrace_exception) { stacktrace.clear(); }
         }
 
         /**
@@ -573,7 +622,12 @@ namespace verilator_utils::detail
             }
             else if constexpr(::verilator_utils::detail::is_awaiter<awaiter_t, promise_type>)
             {
-                return ::verilator_utils::detail::awaiter_wrapper{::std::forward<awaiter_t>(awaiter), self};
+                if constexpr(::std::derived_from<pure_awaiter_t, ::verilator_utils::detail::with_promise_awaiter>)
+                {
+                    // 通过set_promise向可等待体传递承诺引用
+                    awaiter.set_promise(self);
+                }
+                return ::verilator_utils::detail::awaiter_wrapper<pure_awaiter_t>{self, ::std::forward<awaiter_t>(awaiter)};
             }
             else
             {
@@ -609,10 +663,36 @@ namespace verilator_utils::detail
     };
 
     template <typename awaiter_t>
-    struct awaiter_wrapper
+    struct awaiter_wrapper_promise
     {
+        ::verilator_utils::detail::promise_base& _promise;
+
+        ::verilator_utils::detail::promise_base& promise() noexcept { return _promise; }
+    };
+
+    template <typename awaiter_t>
+        requires (requires(awaiter_t&& awaiter) {
+            awaiter.promise;
+            requires ::std::same_as<decltype(awaiter.promise), ::verilator_utils::detail::promise_base*>;
+        })
+    struct awaiter_wrapper_promise<awaiter_t>
+    {
+        explicit awaiter_wrapper_promise(::verilator_utils::detail::promise_base& /* unused */) noexcept {}
+
+        ::verilator_utils::detail::promise_base& promise(this auto&& self) noexcept { return *self.awaiter.promise; }
+    };
+
+    template <typename awaiter_t>
+    struct awaiter_wrapper : ::verilator_utils::detail::awaiter_wrapper_promise<awaiter_t>
+    {
+        template <typename actual_awaiter_t>
+        awaiter_wrapper(::verilator_utils::is_coroutine_promise auto& promise, actual_awaiter_t&& awaiter) :
+            ::verilator_utils::detail::awaiter_wrapper_promise<awaiter_t>{promise},
+            awaiter{::std::forward<actual_awaiter_t>(awaiter)}
+        {
+        }
+
         awaiter_t awaiter;
-        promise_base& promise;
 
         bool await_ready() noexcept(noexcept(awaiter.await_ready())) { return awaiter.await_ready(); }
 
@@ -626,15 +706,15 @@ namespace verilator_utils::detail
                 auto need_suspend{awaiter.await_suspend(handle)};
                 if(need_suspend)
                 {
-                    promise.suspend_location = location;
-                    promise.status = ::verilator_utils::detail::status_enum::suspended;
+                    this->promise().suspend_location = location;
+                    this->promise().status = ::verilator_utils::detail::status_enum::suspended;
                 }
                 return need_suspend;
             }
             else
             {
-                promise.suspend_location = location;
-                promise.status = ::verilator_utils::detail::status_enum::suspended;
+                this->promise().suspend_location = location;
+                this->promise().status = ::verilator_utils::detail::status_enum::suspended;
                 return awaiter.await_suspend(handle);
             }
         }
@@ -759,12 +839,16 @@ namespace verilator_utils::detail
     };
 
     template <typename promise_type>
-    struct subtask_awaiter
+    struct subtask_awaiter : ::verilator_utils::detail::with_promise_awaiter
     {
         using handle_t = ::std::coroutine_handle<promise_type>;
         using return_type = promise_type::return_type;
         /// 子任务的协程句柄
         handle_t subhandle;
+        /// 父任务的承诺指针
+        ::verilator_utils::detail::promise_base* promise{};
+
+        void set_promise_impl(::verilator_utils::detail::promise_base& promise) { this->promise = &promise; }
 
         /**
          * @brief 检查子任务是否完成
@@ -1215,7 +1299,7 @@ export namespace verilator_utils
         friend ::verilator_utils::detail::subtask_awaiter<promise_type> operator co_await(const task& subtask)
         {
             ::verilator_utils::check{}(subtask.joinable(), "子任务未绑定协程，不能等待"sv);
-            return ::verilator_utils::detail::subtask_awaiter<promise_type>{subtask.handle_};
+            return ::verilator_utils::detail::subtask_awaiter<promise_type>{{}, subtask.handle_};
         }
 
     private:
@@ -1837,13 +1921,19 @@ namespace verilator_utils
          * @brief 在恢复父任务执行前检查子任务的状态
          *
          * 会处理aborted和canceled状态，finished状态由await_resume根据需求处理
-         * @param pair 协程状态对
+         * @param sub_pair 子协程状态对
          */
-        void check_before_parent_resume(::verilator_utils::detail::coroutine_pair pair)
+        void check_before_parent_resume(::verilator_utils::detail::promise_base* parent_promise,
+                                        ::verilator_utils::detail::coroutine_pair sub_pair)
         {
-            ::verilator_utils::check{}(pair.handle.done(), "子任务尚未完成"sv);
-            pair.promise->rethrow_exception();  // 处理aborted
-            if(pair.promise->status == ::verilator_utils::detail::status_enum::canceled)
+            ::verilator_utils::check{}(sub_pair.handle.done(), "子任务尚未完成"sv);
+            if(sub_pair.promise->with_unhandled_exception())
+            {
+                parent_promise->stacktrace = ::std::move(sub_pair.promise->stacktrace);  // 传播栈回溯条目
+                parent_promise->stacktrace_exception = sub_pair.promise->exception;      // 传播异常指针
+                sub_pair.promise->rethrow_exception();                                   // 处理aborted
+            }
+            if(sub_pair.promise->status == ::verilator_utils::detail::status_enum::canceled)
             {
                 throw ::verilator_utils::subtask_cancel_exception{};  // 处理canceled
             }
@@ -1853,8 +1943,8 @@ namespace verilator_utils
     template <typename awaiter_t>
     auto ::verilator_utils::detail::awaiter_wrapper<awaiter_t>::await_resume() -> decltype(auto)
     {
-        promise.suspend_location = {};
-        ::verilator_utils::detail::resume_coroutine(promise);
+        this->promise().suspend_location = {};
+        ::verilator_utils::detail::resume_coroutine(this->promise());
         return awaiter.await_resume();
     }
 
@@ -1883,11 +1973,20 @@ namespace verilator_utils
             }
             catch(...)
             {
-                // 尝试注入协程栈回溯信息
-                promise.exception = ::std::make_exception_ptr(::verilator_utils::coroutine_exception{
-                    promise.exception,
-                    ::verilator_utils::coroutine_stacktrace{::std::nothrow, {handle, &promise}}
-                });
+                // 栈回溯条目缺失或与当前异常不对应，在当前协程重新捕获
+                if(promise.stacktrace.empty())
+                {
+                    promise.stacktrace = ::verilator_utils::coroutine_stacktrace{
+                        ::std::nothrow,
+                        {handle, &promise}
+                    };
+                }
+                // 回溯到根协程时尝试注入协程栈回溯信息
+                if(promise.parent == nullptr)
+                {
+                    promise.exception = ::std::make_exception_ptr(
+                        ::verilator_utils::coroutine_exception{promise.exception, ::std::move(promise.stacktrace)});
+                }
             }
         }
         else
@@ -1909,7 +2008,7 @@ namespace verilator_utils
     template <typename promise_type>
     auto ::verilator_utils::detail::subtask_awaiter<promise_type>::await_resume() -> return_type
     {
-        ::verilator_utils::detail::check_before_parent_resume(subhandle);
+        ::verilator_utils::detail::check_before_parent_resume(promise, subhandle);
         return subhandle.promise().result();  // 处理finished
     }
 }  // namespace verilator_utils

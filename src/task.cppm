@@ -1146,10 +1146,14 @@ export namespace verilator_utils
          * @brief 实现异步子任务的可等待体
          *
          */
-        struct async_task_awaiter
+        struct async_task_awaiter : ::verilator_utils::detail::with_promise_awaiter
         {
             /// 子任务的协程柄
             handle_t subhandle;
+            /// 父任务的承诺指针
+            ::verilator_utils::detail::promise_base* promise{};
+
+            void set_promise_impl(::verilator_utils::detail::promise_base& promise) { this->promise = &promise; }
 
             /**
              * @brief 判断是否立即完成
@@ -1179,7 +1183,7 @@ export namespace verilator_utils
              * @note 异步任务下，父子任务同时存在于调度队列中，不能在子任务完成前恢复父任务
              * @throws 若子任务抛出异常则重新抛出异常
              */
-            void await_resume() const { ::verilator_utils::detail::check_before_parent_resume(subhandle); }
+            void await_resume() const { ::verilator_utils::detail::check_before_parent_resume(promise, subhandle); }
 
             async_task_awaiter(const async_task_awaiter&) = delete;
             async_task_awaiter& operator= (const async_task_awaiter&) = delete;
@@ -1187,7 +1191,10 @@ export namespace verilator_utils
 
             explicit async_task_awaiter(handle_t subhandle) noexcept : subhandle{subhandle} {}
 
-            async_task_awaiter(async_task_awaiter&& other) noexcept : subhandle{::std::exchange(other.subhandle, nullptr)} {}
+            async_task_awaiter(async_task_awaiter&& other) noexcept :
+                subhandle{::std::exchange(other.subhandle, nullptr)}, promise{other.promise}
+            {
+            }
 
             ~async_task_awaiter() noexcept
             {
@@ -1302,9 +1309,18 @@ export namespace verilator_utils
          * @brief 实现等待任务池中任意任务完成使用的可等待体
          *
          */
-        struct join_any_awaiter
+        struct join_any_awaiter : ::verilator_utils::detail::with_promise_awaiter
         {
+            /// 子任务视图
+            pool_t* pool;
+            /// 首个完成任务的指针
+            ::verilator_utils::async_task* ptr{};
+            /// 父任务的承诺指针
+            ::verilator_utils::detail::promise_base* promise{};
+
             explicit join_any_awaiter(pool_t& pool) noexcept : pool{&pool} {}
+
+            void set_promise_impl(::verilator_utils::detail::promise_base& promise) { this->promise = &promise; }
 
             /**
              * @brief 判断是否立即完成
@@ -1318,7 +1334,7 @@ export namespace verilator_utils
              *
              * @param handle 当前任务的协程柄
              */
-            void await_suspend(::verilator_utils::async_task::handle_t handle)
+            void await_suspend(::verilator_utils::async_task::handle_t handle) const
             {
                 const auto parent{pool->begin()->promise().parent};
                 ::verilator_utils::check{}(handle == parent,
@@ -1335,14 +1351,17 @@ export namespace verilator_utils
             void await_resume()
             {
                 search_finish_task();
-                ::verilator_utils::detail::check_before_parent_resume(ptr->handle());
+                ::verilator_utils::detail::check_before_parent_resume(promise, ptr->handle());
             }
 
             join_any_awaiter(const join_any_awaiter&) noexcept = delete;
             join_any_awaiter& operator= (const join_any_awaiter&) noexcept = delete;
             join_any_awaiter& operator= (join_any_awaiter&&) noexcept = delete;
 
-            join_any_awaiter(join_any_awaiter&& other) noexcept : pool{::std::exchange(other.pool, nullptr)}, ptr{other.ptr} {}
+            join_any_awaiter(join_any_awaiter&& other) noexcept :
+                pool{::std::exchange(other.pool, nullptr)}, ptr{other.ptr}, promise{other.promise}
+            {
+            }
 
             ~join_any_awaiter() noexcept
             {
@@ -1398,11 +1417,6 @@ export namespace verilator_utils
                     if(ptr == nullptr) [[unlikely]] { ::std::unreachable(); }
                 }
             }
-
-            /// 子任务视图
-            pool_t* pool;
-            /// 首个完成任务的指针
-            ::verilator_utils::async_task* ptr{};
         };
 
     public:

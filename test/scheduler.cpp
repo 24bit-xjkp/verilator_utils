@@ -25,6 +25,70 @@ namespace
     [[nodiscard]] bool is_default_suspend_location(::std::source_location location) noexcept
     { return location.line() == 0u && location.column() == 0u && ::std::string_view{location.file_name()}.empty(); }
 
+    /// 非std::exception派生的异常类型，用于验证as<>对未知异常类型的转换
+    struct non_standard_error
+    {
+    };
+
+    /// 抛出异常的子协程：记录自身协程柄后抛出异常
+    ::verilator_utils::task<void> throwing_child(::verilator_utils::task<void>::handle_t& self_handle)
+    {
+        self_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+        throw ::std::runtime_error{"nested failure"};
+    }
+
+    /// 抛出异常的孙协程：记录自身协程柄后抛出异常
+    ::verilator_utils::task<void> throwing_grandchild(::verilator_utils::task<void>::handle_t& self_handle)
+    {
+        self_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+        throw ::std::runtime_error{"nested failure"};
+    }
+
+    /// 子协程：记录自身协程柄并等待会抛出异常的孙协程
+    ::verilator_utils::task<void> throwing_middle(::verilator_utils::task<void>::handle_t& middle_handle,
+                                                  ::verilator_utils::task<void>::handle_t& grandchild_handle)
+    {
+        middle_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+        co_await throwing_grandchild(grandchild_handle);
+    }
+
+    /// 根协程：等待两层子协程，其中最内层协程抛出异常
+    ::verilator_utils::task<void> nested_throwing_root(::verilator_utils::task<void>::handle_t& root_handle,
+                                                       ::verilator_utils::task<void>::handle_t& middle_handle,
+                                                       ::verilator_utils::task<void>::handle_t& grandchild_handle)
+    {
+        root_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+        co_await throwing_middle(middle_handle, grandchild_handle);
+    }
+
+    /// 中间协程：处理子协程抛出的异常后抛出新的异常
+    ::verilator_utils::task<void> rethrowing_middle(::verilator_utils::task<void>::handle_t& middle_handle,
+                                                    ::verilator_utils::task<void>::handle_t& child_handle,
+                                                    bool& child_exception_handled)
+    {
+        middle_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+        try
+        {
+            co_await throwing_child(child_handle);
+        }
+        catch(const ::std::runtime_error&)
+        {
+            // 子协程的异常已被处理，其栈回溯条目不应再被父协程的新异常沿用
+            child_exception_handled = true;
+        }
+        throw ::std::logic_error{"new failure from parent"};
+    }
+
+    /// 根协程：等待处理子协程异常后抛出新的异常的中间协程
+    ::verilator_utils::task<void> rethrowing_root(::verilator_utils::task<void>::handle_t& root_handle,
+                                                  ::verilator_utils::task<void>::handle_t& middle_handle,
+                                                  ::verilator_utils::task<void>::handle_t& child_handle,
+                                                  bool& child_exception_handled)
+    {
+        root_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+        co_await rethrowing_middle(middle_handle, child_handle, child_exception_handled);
+    }
+
 }  // namespace
 
 TEST_SUITE("verilator_utils/scheduler")
@@ -146,11 +210,12 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK_EQ(::std::addressof(child.promise().result()), ::std::addressof(value));
     }
 
-    TEST_CASE("value-returning task propagates exceptions to its parent")
+    TEST_CASE("value-returning task keeps the original exception type inside the parent")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         bool observed_exception{};
+        bool observed_wrapped{};
         bool consumed_result{};
 
         auto child{[] -> ::verilator_utils::task<int> {
@@ -164,17 +229,26 @@ TEST_SUITE("verilator_utils/scheduler")
                 static_cast<void>(co_await child);
                 consumed_result = true;
             }
-            catch(const ::verilator_utils::coroutine_exception& exception)
+            catch(const ::verilator_utils::coroutine_exception&)
             {
-                observed_exception = ::std::string_view{exception.what()}.contains("value task failure"sv);
+                // 未回溯到根协程，父协程不应收到带栈回溯的包装异常
+                observed_wrapped = true;
+            }
+            catch(const ::std::runtime_error& exception)
+            {
+                observed_exception = ::std::string_view{exception.what()} == "value task failure"sv;
             }
         }};
         scheduler.add_task(parent());
 
         scheduler.loop_until_finish();
         CHECK(observed_exception);
+        CHECK_FALSE(observed_wrapped);
         CHECK_FALSE(consumed_result);
         CHECK(child.done());
+        // 子协程的承诺体保存原始异常，栈回溯在等待子协程时移交给父协程
+        CHECK_THROWS_AS(child.rethrow_exception(), ::std::runtime_error);
+        CHECK(child.promise().stacktrace.empty());
     }
 
     TEST_CASE("task supports move construction assignment detach and destroy")
@@ -278,9 +352,9 @@ TEST_SUITE("verilator_utils/scheduler")
                 {
                     co_await failing_task;
                 }
-                catch(const ::verilator_utils::coroutine_exception& exception)
+                catch(const ::std::runtime_error& exception)
                 {
-                    caught_regular = ::std::string_view{exception.what()}.contains("regular failure"sv);
+                    caught_regular = ::std::string_view{exception.what()} == "regular failure"sv;
                 }
             },
         };
@@ -290,7 +364,8 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(caught_regular);
         CHECK(failing_task.done());
         CHECK(failing_task.promise().with_unhandled_exception());
-        CHECK_THROWS_AS(failing_task.rethrow_exception(), ::verilator_utils::coroutine_exception);
+        // 子任务保存的是原始异常类型，根协程之外不注入协程栈回溯
+        CHECK_THROWS_AS(failing_task.rethrow_exception(), ::std::runtime_error);
 
         // eval_finish_exception不会被记录为未处理异常，因此重新抛出时被忽略
         auto finish_task{[] -> ::verilator_utils::task<void> { co_await eval_finish(); }()};
@@ -301,6 +376,299 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(finish_task.done());
         CHECK_FALSE(finish_task.promise().with_unhandled_exception());
         CHECK_NOTHROW(finish_task.rethrow_exception());
+    }
+
+    TEST_CASE("coroutine_exception converts back to the original exception type")
+    {
+        const ::verilator_utils::coroutine_exception exception{
+            ::std::make_exception_ptr(::std::runtime_error{"original failure"})};
+
+        // 按原始异常类型转换，取回的指针指向承诺体持有的原始异常对象
+        const auto* original{exception.as<::std::runtime_error>()};
+        REQUIRE_NE(original, nullptr);
+        CHECK_EQ(::std::string_view{original->what()}, "original failure"sv);
+        // 允许按原始异常的基类转换
+        CHECK_NE(exception.as<::std::exception>(), nullptr);
+        // 类型不匹配时返回空指针
+        CHECK_EQ(exception.as<::std::logic_error>(), nullptr);
+        CHECK_EQ(exception.as<int>(), nullptr);
+        // 没有栈回溯时what()只包含原始异常消息
+        CHECK_EQ(::std::string_view{exception.what()}, "original failure\nCoroutine stack trace unavailable"sv);
+
+        // 非std::exception派生的异常仍可按原始类型转换，但无法按std::exception转换
+        const ::verilator_utils::coroutine_exception non_standard{::std::make_exception_ptr(::non_standard_error{})};
+        CHECK_NE(non_standard.as<::non_standard_error>(), nullptr);
+        CHECK_EQ(non_standard.as<::std::exception>(), nullptr);
+        CHECK_EQ(::std::string_view{non_standard.what()}, "unknown\nCoroutine stack trace unavailable"sv);
+    }
+
+    TEST_CASE("uncaught nested exception is wrapped with the coroutine stack trace at the root")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::handle_t root_handle{};
+        ::verilator_utils::task<void>::handle_t middle_handle{};
+        ::verilator_utils::task<void>::handle_t grandchild_handle{};
+        bool wrapped{};
+        bool recovered_original{};
+        ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
+
+        scheduler.add_task(nested_throwing_root(root_handle, middle_handle, grandchild_handle));
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            wrapped = true;
+            frames = exception.stacktrace().frames;
+            // 原始异常类型可通过as<>取回
+            const auto* original{exception.as<::std::runtime_error>()};
+            REQUIRE_NE(original, nullptr);
+            recovered_original = ::std::string_view{original->what()} == "nested failure"sv;
+            CHECK_EQ(exception.as<::std::logic_error>(), nullptr);
+            // what()同时包含原始异常消息与协程栈回溯
+            CHECK_EQ(::std::string{exception.what()}, ::doctest::Contains{"nested failure"});
+            CHECK_EQ(::std::string{exception.what()}, ::doctest::Contains{"Coroutine stack trace"});
+        }
+
+        CHECK(wrapped);
+        CHECK(recovered_original);
+        using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        REQUIRE_EQ(frames.size(), 3u);
+        // 帧顺序：抛出异常的协程在最前，逐层回溯到根协程
+        CHECK_EQ(frames[0].coroutine_frame_ptr, grandchild_handle.address());
+        CHECK_EQ(frames[0].type, type_t::sub_coroutine);
+        CHECK_EQ(frames[1].coroutine_frame_ptr, middle_handle.address());
+        CHECK_EQ(frames[1].type, type_t::sub_coroutine);
+        CHECK_EQ(frames[2].coroutine_frame_ptr, root_handle.address());
+        CHECK_EQ(frames[2].type, type_t::root_coroutine);
+        // 抛出异常的协程记录了异常抛出的位置
+        CHECK(::std::string_view{frames[0].location.function_name()}.contains("throwing_grandchild"sv));
+        CHECK(::std::string_view{frames[0].location.file_name()}.ends_with("scheduler.cpp"sv));
+        CHECK_GT(static_cast<int>(frames[0].location.line()), 0);
+    }
+
+    TEST_CASE("awaiting parent keeps the original exception type and receives the child stack trace")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::handle_t child_handle{};
+        bool caught_original{};
+        ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
+
+        const auto root{
+            [&](this auto) -> ::verilator_utils::task<void> {
+                // 协程柄必须在try块之外获取：co_await不允许出现在异常处理块中
+                const auto self{co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()};
+                try
+                {
+                    co_await throwing_child(child_handle);
+                }
+                catch(const ::std::runtime_error& exception)
+                {
+                    caught_original = ::std::string_view{exception.what()} == "nested failure"sv;
+                    // 子协程的栈回溯条目已传播到当前承诺体
+                    frames = self.promise().stacktrace.frames;
+                }
+            },
+        };
+        scheduler.add_task(root());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+
+        CHECK(caught_original);
+        using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        REQUIRE_EQ(frames.size(), 2u);
+        CHECK_EQ(frames[0].coroutine_frame_ptr, child_handle.address());
+        CHECK_EQ(frames[0].type, type_t::sub_coroutine);
+        CHECK_EQ(frames[1].type, type_t::root_coroutine);
+    }
+
+    TEST_CASE("parent re-captures the coroutine stack trace when it throws a new exception")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::handle_t root_handle{};
+        ::verilator_utils::task<void>::handle_t middle_handle{};
+        ::verilator_utils::task<void>::handle_t child_handle{};
+        bool wrapped{};
+        bool recovered_new_exception{};
+        bool child_exception_handled{};
+        ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
+
+        scheduler.add_task(rethrowing_root(root_handle, middle_handle, child_handle, child_exception_handled));
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            wrapped = true;
+            frames = exception.stacktrace().frames;
+            // 根协程注入的是父协程抛出的新异常
+            const auto* original{exception.as<::std::logic_error>()};
+            REQUIRE_NE(original, nullptr);
+            recovered_new_exception = ::std::string_view{original->what()} == "new failure from parent"sv;
+            // 已被父协程处理掉的旧异常不再与新异常关联
+            CHECK_EQ(exception.as<::std::runtime_error>(), nullptr);
+        }
+
+        CHECK(wrapped);
+        CHECK(recovered_new_exception);
+        // 父协程确实处理了子协程的异常后才抛出新的异常
+        CHECK(child_exception_handled);
+        using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        // 子协程残留的栈回溯条目被丢弃，重新捕获的是抛出异常的父协程及其调用链
+        REQUIRE_EQ(frames.size(), 2u);
+        CHECK_EQ(frames[0].coroutine_frame_ptr, middle_handle.address());
+        CHECK_EQ(frames[0].type, type_t::sub_coroutine);
+        CHECK_EQ(frames[1].coroutine_frame_ptr, root_handle.address());
+        CHECK_EQ(frames[1].type, type_t::root_coroutine);
+        // 已被处理的异常所属协程帧不会残留在新异常的栈回溯中
+        CHECK(::std::ranges::none_of(frames,
+                                     [&](const auto& frame) { return frame.coroutine_frame_ptr == child_handle.address(); }));
+        // 帧位置来自父协程中抛出异常的语句
+        CHECK(::std::string_view{frames[0].location.function_name()}.contains("rethrowing_middle"sv));
+        CHECK(::std::string_view{frames[0].location.file_name()}.ends_with("scheduler.cpp"sv));
+        CHECK_GT(static_cast<int>(frames[0].location.line()), 0);
+    }
+
+    TEST_CASE("root re-captures the coroutine stack trace when it throws a new exception")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::handle_t root_handle{};
+        ::verilator_utils::task<void>::handle_t child_handle{};
+        bool wrapped{};
+        bool child_exception_handled{};
+        ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
+
+        const auto root{
+            [&](this auto) -> ::verilator_utils::task<void> {
+                root_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+                try
+                {
+                    co_await throwing_child(child_handle);
+                }
+                catch(const ::std::runtime_error&)
+                {
+                    // 子协程的异常已被处理，其栈回溯条目不应再被根协程的新异常沿用
+                    child_exception_handled = true;
+                }
+                throw ::std::logic_error{"new failure from root"};
+            },
+        };
+        scheduler.add_task(root());
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            wrapped = true;
+            frames = exception.stacktrace().frames;
+            const auto* original{exception.as<::std::logic_error>()};
+            REQUIRE_NE(original, nullptr);
+            CHECK_EQ(::std::string_view{original->what()}, "new failure from root"sv);
+            // 已被根协程处理掉的旧异常不再与新异常关联
+            CHECK_EQ(exception.as<::std::runtime_error>(), nullptr);
+        }
+
+        CHECK(wrapped);
+        // 根协程确实处理了子协程的异常后才抛出新的异常
+        CHECK(child_exception_handled);
+        // 根协程重新捕获自身帧：子协程残留的栈回溯条目被丢弃
+        REQUIRE_EQ(frames.size(), 1u);
+        CHECK_EQ(frames[0].coroutine_frame_ptr, root_handle.address());
+        CHECK_EQ(frames[0].type, ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine);
+        CHECK(::std::ranges::none_of(frames,
+                                     [&](const auto& frame) { return frame.coroutine_frame_ptr == child_handle.address(); }));
+        CHECK(::std::string_view{frames[0].location.file_name()}.ends_with("scheduler.cpp"sv));
+        CHECK_GT(static_cast<int>(frames[0].location.line()), 0);
+    }
+
+    TEST_CASE("rethrow of the handled child exception keeps the propagated stack trace")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::handle_t root_handle{};
+        ::verilator_utils::task<void>::handle_t child_handle{};
+        bool wrapped{};
+        ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
+
+        const auto root{
+            [&](this auto) -> ::verilator_utils::task<void> {
+                root_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+                try
+                {
+                    co_await throwing_child(child_handle);
+                }
+                catch(const ::std::runtime_error&)
+                {
+                    // 重新抛出的是同一个异常，其栈回溯条目应当继续沿用
+                    throw;
+                }
+            },
+        };
+        scheduler.add_task(root());
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            wrapped = true;
+            frames = exception.stacktrace().frames;
+            const auto* original{exception.as<::std::runtime_error>()};
+            REQUIRE_NE(original, nullptr);
+            CHECK_EQ(::std::string_view{original->what()}, "nested failure"sv);
+        }
+
+        CHECK(wrapped);
+        // 异常未被替换，子协程捕获到的完整调用链保持不变
+        using type_t = ::verilator_utils::detail::promise_base::coroutine_type_enum;
+        REQUIRE_EQ(frames.size(), 2u);
+        CHECK_EQ(frames[0].coroutine_frame_ptr, child_handle.address());
+        CHECK_EQ(frames[0].type, type_t::sub_coroutine);
+        CHECK_EQ(frames[1].coroutine_frame_ptr, root_handle.address());
+        CHECK_EQ(frames[1].type, type_t::root_coroutine);
+    }
+
+    TEST_CASE("root coroutine that throws directly keeps its own stack trace frame")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::handle_t root_handle{};
+        bool wrapped{};
+        ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
+
+        const auto root{
+            [&](this auto) -> ::verilator_utils::task<void> {
+                root_handle = co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>();
+                throw ::std::runtime_error{"direct failure"};
+            },
+        };
+        scheduler.add_task(root());
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            wrapped = true;
+            frames = exception.stacktrace().frames;
+            const auto* original{exception.as<::std::runtime_error>()};
+            REQUIRE_NE(original, nullptr);
+            CHECK_EQ(::std::string_view{original->what()}, "direct failure"sv);
+        }
+
+        CHECK(wrapped);
+        // 根协程没有父协程，栈回溯只包含根协程自身
+        REQUIRE_EQ(frames.size(), 1u);
+        CHECK_EQ(frames[0].coroutine_frame_ptr, root_handle.address());
+        CHECK_EQ(frames[0].type, ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine);
+        CHECK(::std::string_view{frames[0].location.file_name()}.ends_with("scheduler.cpp"sv));
+        CHECK_GT(static_cast<int>(frames[0].location.line()), 0);
     }
 
     TEST_CASE("time waits advance the simulated time and format correctly")

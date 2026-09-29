@@ -1941,7 +1941,8 @@ TEST_SUITE("verilator_utils/task")
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
         bool completed{};
-        bool caught{};
+        bool caught_original{};
+        bool caught_wrapped{};
 
         const auto successful_child{[] -> ::verilator_utils::task<void> { co_await ::verilator_utils::wait_time(1_ps); }};
         const auto failing_child{
@@ -1963,17 +1964,71 @@ TEST_SUITE("verilator_utils/task")
                 {
                     co_await pool.join_any();
                 }
-                catch(const ::verilator_utils::coroutine_exception& exception)
+                catch(const ::verilator_utils::coroutine_exception&)
                 {
-                    caught = ::std::string_view{exception.what()}.contains("async child failure"sv);
+                    // 未回溯到根协程，父协程不应收到带栈回溯的包装异常
+                    caught_wrapped = true;
+                }
+                catch(const ::std::runtime_error& exception)
+                {
+                    caught_original = ::std::string_view{exception.what()} == "async child failure"sv;
                 }
             },
         };
 
         scheduler.add_task(parent());
-        scheduler.loop_until_finish();
+        CHECK_NOTHROW(scheduler.loop_until_finish());
         CHECK(completed);
-        CHECK(caught);
+        CHECK(caught_original);
+        CHECK_FALSE(caught_wrapped);
+    }
+
+    TEST_CASE("uncaught async task exception is wrapped with the coroutine stack trace at the root")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::task<void>::handle_t child_handle{};
+        bool wrapped{};
+        bool recovered_original{};
+        ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
+
+        const auto child_lambda{
+            [] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_time(1_ps);
+                throw ::std::runtime_error{"async task failure"};
+            },
+        };
+
+        // 父协程不捕获异步子任务的异常，异常应沿调用链向上传播
+        const auto parent{
+            [&](this auto) -> ::verilator_utils::task<void> {
+                auto child{co_await ::verilator_utils::to_async(child_lambda())};
+                child_handle = child.handle();
+                co_await child;
+            },
+        };
+
+        scheduler.add_task(parent());
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            wrapped = true;
+            frames = exception.stacktrace().frames;
+            // 原始异常类型可通过as<>取回
+            const auto* original{exception.as<::std::runtime_error>()};
+            REQUIRE_NE(original, nullptr);
+            recovered_original = ::std::string_view{original->what()} == "async task failure"sv;
+        }
+
+        CHECK(wrapped);
+        CHECK(recovered_original);
+        // 异常在根协程注入栈回溯：抛出异常的异步子协程与等待它的根协程
+        REQUIRE_EQ(frames.size(), 2u);
+        CHECK_EQ(frames[0].coroutine_frame_ptr, child_handle.address());
+        CHECK_EQ(frames[1].type, ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine);
     }
 
     TEST_CASE("async_task reports coroutine ownership and completion state")
@@ -2256,27 +2311,20 @@ TEST_SUITE("verilator_utils/task")
                 {
                     co_await pool.join_all();
                 }
-                catch(const ::verilator_utils::coroutine_exception& exception)
+                catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
                 {
-                    try
+                    const auto& exceptions{join_all_exception.exceptions()};
+                    exception_count = exceptions.size();
+                    CHECK_FALSE(exceptions.empty());
+                    if(!exceptions.empty())
                     {
-                        exception.rethrow_exception();
-                    }
-                    catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
-                    {
-                        const auto& exceptions{join_all_exception.exceptions()};
-                        exception_count = exceptions.size();
-                        CHECK_FALSE(exceptions.empty());
-                        if(!exceptions.empty())
+                        try
                         {
-                            try
-                            {
-                                ::std::rethrow_exception(exceptions.front());
-                            }
-                            catch(const ::verilator_utils::subtask_cancel_exception&)
-                            {
-                                cancel_rethrown = true;
-                            }
+                            ::std::rethrow_exception(exceptions.front());
+                        }
+                        catch(const ::verilator_utils::subtask_cancel_exception&)
+                        {
+                            cancel_rethrown = true;
                         }
                     }
                 }
@@ -2433,20 +2481,13 @@ TEST_SUITE("verilator_utils/task")
                 {
                     co_await pool.join_all();
                 }
-                catch(const ::verilator_utils::coroutine_exception& exception)
+                catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
                 {
-                    try
+                    message = join_all_exception.what();
+                    exception_count = join_all_exception.exceptions().size();
+                    for(const auto& exception_ptr: join_all_exception.exceptions())
                     {
-                        exception.rethrow_exception();
-                    }
-                    catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
-                    {
-                        message = join_all_exception.what();
-                        exception_count = join_all_exception.exceptions().size();
-                        for(const auto& exception_ptr: join_all_exception.exceptions())
-                        {
-                            descriptions.emplace_back(::describe_exception(exception_ptr));
-                        }
+                        descriptions.emplace_back(::describe_exception(exception_ptr));
                     }
                 }
                 joined = pool.empty();
@@ -2460,9 +2501,8 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(exception_count, 2u);
         CHECK_EQ(descriptions[0], ::doctest::Contains{"runtime_error: first failure"});
         CHECK_EQ(descriptions[1], ::doctest::Contains{"logic_error: second failure"});
-        // what()按"序号: 消息"逐行列出所有异常
-        CHECK_EQ(message, ::doctest::Contains{"1: first failure\n"});
-        CHECK_EQ(message, ::doctest::Contains{"2: second failure\n"});
+        // 收集的是原始异常，因此what()只按"序号: 消息"逐行列出所有异常
+        CHECK_EQ(message, "1: first failure\n2: second failure\n"sv);
     }
 
     TEST_CASE("spawn_pool join_all exception is catchable as std::exception")
@@ -2498,17 +2538,10 @@ TEST_SUITE("verilator_utils/task")
                         // 重新抛出以验证通过基类捕获不会切掉派生类型
                         throw;
                     }
-                    catch(const ::verilator_utils::coroutine_exception& exception)
+                    catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
                     {
-                        try
-                        {
-                            exception.rethrow_exception();
-                        }
-                        catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
-                        {
-                            caught_as_join_all = true;
-                            exception_count = join_all_exception.exceptions().size();
-                        }
+                        caught_as_join_all = true;
+                        exception_count = join_all_exception.exceptions().size();
                     }
                 }
             },
@@ -2517,7 +2550,7 @@ TEST_SUITE("verilator_utils/task")
         scheduler.loop_until_finish();
         CHECK(caught_as_join_all);
         CHECK_EQ(exception_count, 1u);
-        CHECK_EQ(message, ::doctest::Contains{"1: single failure\n"});
+        CHECK_EQ(message, "1: single failure\n"sv);
     }
 
     TEST_CASE("spawn_pool join_all describes non-standard exceptions as unknown")
@@ -2545,34 +2578,20 @@ TEST_SUITE("verilator_utils/task")
                 {
                     co_await pool.join_all();
                 }
-                catch(const ::verilator_utils::coroutine_exception& exception)
+                catch(const ::verilator_utils::spawn_pool::join_all_exception& exception)
                 {
-                    try
+                    message = exception.what();
+                    exception_count = exception.exceptions().size();
+                    for(const auto& exception_ptr: exception.exceptions())
                     {
-                        exception.rethrow_exception();
-                    }
-                    catch(const ::verilator_utils::spawn_pool::join_all_exception& exception)
-                    {
-                        message = exception.what();
-                        exception_count = exception.exceptions().size();
-                        for(const auto& exception_ptr: exception.exceptions())
+                        descriptions.emplace_back(::describe_exception(exception_ptr));
+                        try
                         {
-                            descriptions.emplace_back(::describe_exception(exception_ptr));
-                            try
-                            {
-                                ::std::rethrow_exception(exception_ptr);
-                            }
-                            catch(const ::verilator_utils::coroutine_exception& exception)
-                            {
-                                try
-                                {
-                                    exception.rethrow_exception();
-                                }
-                                catch(const ::non_standard_error&)
-                                {
-                                    non_standard_rethrown = true;
-                                }
-                            }
+                            ::std::rethrow_exception(exception_ptr);
+                        }
+                        catch(const ::non_standard_error&)
+                        {
+                            non_standard_rethrown = true;
                         }
                     }
                 }
@@ -2584,7 +2603,7 @@ TEST_SUITE("verilator_utils/task")
         CHECK(non_standard_rethrown);
         CHECK_EQ(exception_count, 1u);
         CHECK_EQ(descriptions[0], ::doctest::Contains{"non-standard"});
-        CHECK_EQ(message, ::doctest::Contains{"1: unknown\n"});
+        CHECK_EQ(message, "1: unknown\n"sv);
     }
 
     TEST_CASE("spawn_pool join_any removes the completed child regardless of position")
