@@ -142,6 +142,8 @@ class sim_env:
                 name = "量化信号" if quant else "未量化信号"
                 name = f"{with_shift}{name}"
                 x = self.q_x if quant else self.x
+                k: np.ndarray
+                y: np.ndarray
                 match quant, shifted:
                     case False, False:
                         k, y = self.kernel, self.y

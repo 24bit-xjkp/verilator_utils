@@ -127,6 +127,7 @@ class TestLinearScaleParam:
     def test_all_zero(self) -> None:
         assert linear_scale_param(np.zeros(3), 8, False) == 0.0
         assert linear_scale_param(np.zeros(3), 8, True) == 0.0
+
     def test_unsigned(self) -> None:
         x = np.array([2.0, 4.0])
         assert linear_scale_param(x, 8, False, guard=0.0) == pytest.approx(63.75)
