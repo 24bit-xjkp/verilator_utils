@@ -20,7 +20,7 @@ argument-hint: '描述要开发或测试的 Python 模块/行为；如为 mypy �
 所有命令都在**仓库根目录**执行；先激活虚拟环境（`AGENTS.md` 的要求）：
 
 ```bash
-uv sync --all-extra      # 仅首次或依赖变化时
+uv sync --all-extras      # 仅首次或依赖变化时
 source .venv/bin/activate
 ```
 

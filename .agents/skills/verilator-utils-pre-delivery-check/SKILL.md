@@ -13,7 +13,7 @@ argument-hint: 'No arguments needed；如为第三方库告警，请给出告警
 按 `AGENTS.md`：**运行任何 xmake 命令前先激活虚拟环境**，这样无需逐条判断命令是否依赖 Python。
 
 ```bash
-uv sync --all-extra   # 首次或依赖变化时
+uv sync --all-extras   # 首次或依赖变化时
 source .venv/bin/activate
 ```
 

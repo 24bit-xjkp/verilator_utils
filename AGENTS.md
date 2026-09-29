@@ -34,7 +34,7 @@
 测试需要 Python 环境（生成 RTL 测试源文件与可视化图表），由 **uv** 管理：
 
 ```bash
-uv sync --all-extra                              # 创建/更新虚拟环境 .venv
+uv sync --all-extras                              # 创建/更新虚拟环境 .venv
 source .venv/bin/activate                        # 推荐：先激活虚拟环境，再运行 xmake 命令
 ```
 
