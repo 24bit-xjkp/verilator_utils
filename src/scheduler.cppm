@@ -549,13 +549,13 @@ namespace verilator_utils::detail
                                   { awaiter.operator co_await() } -> ::verilator_utils::detail::is_awaiter<promise_type>;
                               })
             {
-                return ::verilator_utils::detail::awaiter_wrapper{::std::forward<awaiter_t>(awaiter).operator co_await(), self};
+                return self.await_transform(::std::forward<awaiter_t>(awaiter).operator co_await());
             }
             else if constexpr(requires(awaiter_t&& awaiter) {
                                   { operator co_await(awaiter) } -> ::verilator_utils::detail::is_awaiter<promise_type>;
                               })
             {
-                return ::verilator_utils::detail::awaiter_wrapper{operator co_await(::std::forward<awaiter_t>(awaiter)), self};
+                return self.await_transform(operator co_await(::std::forward<awaiter_t>(awaiter)));
             }
             else if constexpr(::verilator_utils::detail::is_awaiter<awaiter_t, promise_type>)
             {

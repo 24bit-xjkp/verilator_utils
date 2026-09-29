@@ -187,7 +187,7 @@ namespace verilator_utils::detail
         /// 目标评估阶段
         scheduler_t::eval_stage_enum eval_stage;
         /// 事件回调，用于判断事件是否触发
-        ::verilator_utils::default_event_callback event_callback;
+        ::verilator_utils::default_event_callback event_callback{};
 
         /**
          * @brief 构造可等待体
@@ -197,8 +197,7 @@ namespace verilator_utils::detail
          * @param eval_stage 目标评估阶段
          */
         explicit eval_stage_awaiter(scheduler_t& scheduler, scheduler_t::eval_stage_enum eval_stage) :
-            ::std::suspend_always{}, scheduler{scheduler}, eval_stage{eval_stage},
-            event_callback{[this] noexcept { return await_ready(); }}
+            ::std::suspend_always{}, scheduler{scheduler}, eval_stage{eval_stage}
         { ::verilator_utils::check{}(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv); }
 
         /**
@@ -216,7 +215,10 @@ namespace verilator_utils::detail
          */
         template <::verilator_utils::is_coroutine_promise promise_type>
         void await_suspend(::std::coroutine_handle<promise_type> handle)
-        { scheduler.register_event(event_callback, handle); }
+        {
+            event_callback = [this] noexcept { return await_ready(); };
+            scheduler.register_event(event_callback, handle);
+        }
     };
 
     /**
@@ -960,7 +962,7 @@ export namespace verilator_utils
         {
             ::std::vector<clock_trigger>& clk_list;
             /// 事件回调，用于轮询检测时钟边沿
-            ::verilator_utils::default_event_callback event_callback{[this] { return await_ready(); }};
+            ::verilator_utils::default_event_callback event_callback{};
 
             bool await_ready()
             {
@@ -972,6 +974,7 @@ export namespace verilator_utils
             template <::verilator_utils::is_coroutine_promise promise_type>
             void await_suspend(::std::coroutine_handle<promise_type> handle)
             {
+                event_callback = [this] { return await_ready(); };
                 auto scheduler{handle.promise().check_scheduler()};
                 scheduler->register_event(event_callback, handle);
             }
@@ -998,7 +1001,8 @@ export namespace verilator_utils
          *
          * @return 可等待体
          */
-        [[nodiscard]] select_clock_awaiter operator co_await() { return select_clock_awaiter{clk_list}; }
+        [[nodiscard]] friend select_clock_awaiter operator co_await(select_clock& self)
+        { return select_clock_awaiter{self.clk_list}; }
     };
 }  // namespace verilator_utils
 
@@ -1194,6 +1198,7 @@ export namespace verilator_utils
 
             ~async_task_awaiter() noexcept
             {
+                if(subhandle == nullptr) { return; }
                 if(subhandle.done()) { subhandle.destroy(); }
                 else
                 {
