@@ -20,7 +20,10 @@ namespace verilator_utils::detail
         using handle_t = ::std::coroutine_handle<promise_type>;
         handle_t handle{};
 
-        void set_handle_impl(handle_t handle) noexcept { this->handle = handle; }
+        template <::verilator_utils::is_coroutine_promise actual_promise_type>
+            requires (::verilator_utils::same_as_any<promise_type, void, actual_promise_type>)
+        void set_promise_impl(actual_promise_type& promise) noexcept
+        { handle = ::std::coroutine_handle<actual_promise_type>::from_promise(promise); }
 
         [[nodiscard]] handle_t await_resume() const { return handle; }
     };
@@ -33,9 +36,7 @@ namespace verilator_utils::detail
     {
         ::verilator_utils::eval_scheduler* scheduler{};
 
-        template <::verilator_utils::is_coroutine_promise promise_type>
-        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        { scheduler = handle.promise().check_scheduler(); }
+        void set_promise_impl(::verilator_utils::detail::promise_base& promise) { scheduler = promise.check_scheduler(); }
 
         [[nodiscard]] ::verilator_utils::eval_scheduler& await_resume() const { return *scheduler; }
     };
@@ -46,9 +47,7 @@ namespace verilator_utils::detail
      */
     struct eval_finish_awaiter : ::verilator_utils::detail::no_suspend_awaiter
     {
-        template <::verilator_utils::is_coroutine_promise promise_type>
-        static void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        { handle.promise().check_scheduler()->finish(); }
+        static void set_promise_impl(::verilator_utils::detail::promise_base& promise) { promise.check_scheduler()->finish(); }
 
         /**
          * @brief 恢复当前任务执行
@@ -66,9 +65,7 @@ namespace verilator_utils::detail
     {
         ::verilator_utils::eval_scheduler* scheduler{};
 
-        template <::verilator_utils::is_coroutine_promise promise_type>
-        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        { scheduler = handle.promise().check_scheduler(); }
+        void set_promise_impl(::verilator_utils::detail::promise_base& promise) { scheduler = promise.check_scheduler(); }
 
         [[nodiscard]] ::std::string await_resume() const { return scheduler->time_in_string(); }
     };
@@ -81,9 +78,7 @@ namespace verilator_utils::detail
     {
         ::verilator_utils::eval_scheduler* scheduler{};
 
-        template <::verilator_utils::is_coroutine_promise promise_type>
-        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        { scheduler = handle.promise().check_scheduler(); }
+        void set_promise_impl(::verilator_utils::detail::promise_base& promise) { scheduler = promise.check_scheduler(); }
 
         [[nodiscard]] double await_resume() const { return scheduler->time_in_time_unit(); }
     };
@@ -96,9 +91,7 @@ namespace verilator_utils::detail
     {
         ::verilator_utils::eval_scheduler* scheduler{};
 
-        template <::verilator_utils::is_coroutine_promise promise_type>
-        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        { scheduler = handle.promise().check_scheduler(); }
+        void set_promise_impl(::verilator_utils::detail::promise_base& promise) { scheduler = promise.check_scheduler(); }
 
         [[nodiscard]] ::std::uint64_t await_resume() const { return scheduler->time_in_time_precision(); }
     };
@@ -197,7 +190,7 @@ namespace verilator_utils::detail
          * @param eval_stage 目标评估阶段
          */
         explicit eval_stage_awaiter(scheduler_t& scheduler, scheduler_t::eval_stage_enum eval_stage) :
-            ::std::suspend_always{}, scheduler{scheduler}, eval_stage{eval_stage}
+            scheduler{scheduler}, eval_stage{eval_stage}
         { ::verilator_utils::check{}(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv); }
 
         /**
@@ -231,8 +224,8 @@ namespace verilator_utils::detail
         ::verilator_utils::detail::coroutine_pair pair{};
 
         template <::verilator_utils::is_coroutine_promise promise_type>
-        void set_handle_impl(::std::coroutine_handle<promise_type> handle) noexcept
-        { pair = handle; }
+        void set_promise_impl(promise_type& promise) noexcept
+        { pair = promise; }
 
         [[nodiscard]] ::verilator_utils::coroutine_stacktrace await_resume() const
         {
@@ -1499,8 +1492,8 @@ namespace verilator_utils::detail
         ::verilator_utils::detail::coroutine_pair pair;
 
         template <::verilator_utils::is_coroutine_promise promise_type>
-        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        { pair = handle; }
+        void set_promise_impl(promise_type& promise) noexcept
+        { pair = promise; }
 
         [[nodiscard]] ::verilator_utils::spawn_pool await_resume() const { return ::verilator_utils::spawn_pool{pair}; }
     };
@@ -1517,8 +1510,8 @@ namespace verilator_utils::detail
         ::verilator_utils::detail::coroutine_pair pair{};
 
         template <::verilator_utils::is_coroutine_promise promise_type>
-        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        { pair = handle; }
+        void set_promise_impl(promise_type& promise) noexcept
+        { pair = promise; }
 
         [[nodiscard]] ::verilator_utils::async_task await_resume()
         { return ::verilator_utils::async_task{pair, ::std::move(task)}; }
@@ -1531,9 +1524,7 @@ namespace verilator_utils::detail
         /// 调度器指针
         ::verilator_utils::eval_scheduler* scheduler{};
 
-        template <::verilator_utils::is_coroutine_promise promise_type>
-        void set_handle_impl(::std::coroutine_handle<promise_type> handle)
-        { scheduler = handle.promise().check_scheduler(); }
+        void set_promise_impl(::verilator_utils::detail::promise_base& promise) { scheduler = promise.check_scheduler(); }
 
         void await_resume() { scheduler->add_task(::std::move(task)); }
     };

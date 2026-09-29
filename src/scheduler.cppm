@@ -123,11 +123,12 @@ namespace verilator_utils::detail
      */
     struct no_suspend_awaiter : ::std::suspend_never
     {
-        void set_handle(this auto&& self, auto handle) noexcept(noexcept(self.set_handle_impl(handle)))
+        void set_promise(this auto&& self, ::std::derived_from<::verilator_utils::detail::promise_base> auto& promise) noexcept(
+            noexcept(self.set_promise_impl(promise)))
             requires (requires() {
-                { self.set_handle_impl(handle) } -> ::std::same_as<void>;
+                { self.set_promise_impl(promise) } -> ::std::same_as<void>;
             })
-        { self.set_handle_impl(handle); }
+        { self.set_promise_impl(promise); }
     };
 
     /**
@@ -214,6 +215,18 @@ namespace verilator_utils::detail
         template <::verilator_utils::is_coroutine_promise promise_type>
         coroutine_pair(::std::coroutine_handle<promise_type> handle) noexcept :
             handle{handle}, promise{::std::addressof(handle.promise())}
+        {
+        }
+
+        /**
+         * @brief 从未类型擦除的承诺体构造协程状态对
+         *
+         * @tparam promise_type 承诺类型
+         * @param handle 未类型擦除的承诺体
+         */
+        template <::verilator_utils::is_coroutine_promise promise_type>
+        coroutine_pair(promise_type& promise) noexcept :
+            handle{::std::coroutine_handle<promise_type>::from_promise(promise)}, promise{::std::addressof(promise)}
         {
         }
 
@@ -475,6 +488,7 @@ namespace verilator_utils::detail
          */
         [[nodiscard]] ::verilator_utils::eval_scheduler* check_scheduler() const
         {
+            // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult)
             ::verilator_utils::check{}(scheduler != nullptr, "任务必须绑定调度器"sv);
             return scheduler;
         }
@@ -536,8 +550,8 @@ namespace verilator_utils::detail
             using pure_awaiter_t = ::std::remove_cvref_t<awaiter_t>;
             if constexpr(::std::derived_from<pure_awaiter_t, ::verilator_utils::detail::no_suspend_awaiter>)
             {
-                // 通过set_handle向可等待体传递协程柄
-                awaiter.set_handle(::std::coroutine_handle<promise_type>::from_promise(self));
+                // 通过set_promise向可等待体传递承诺引用
+                awaiter.set_promise(self);
                 return ::std::forward<awaiter_t>(awaiter);
             }
             else if constexpr(::std::derived_from<pure_awaiter_t, ::std::suspend_never>)
