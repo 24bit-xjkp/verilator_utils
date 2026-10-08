@@ -81,3 +81,22 @@ rule("python", function ()
         end)
     end, { jobgraph = true })
 end)
+
+rule("coverage", function ()
+    on_load(function (target)
+        if is_mode("debug") then
+            local gcc_options = { "--coverage" }
+            local clang_options = { "-fprofile-instr-generate", "-fcoverage-mapping", "-fcoverage-mcdc" }
+            local is_gcc = string.find(get_config("toolchain") or "", "gcc", 1, true) ~= nil
+            local options = is_gcc and gcc_options or clang_options
+            target:add("cflags", options)
+            target:add("cxxflags", options)
+            target:add("ldflags", options, {force = true})
+            target:add("shflags", options)
+            target:set("policy", "build.ccache", false)
+            if not is_gcc then
+                target:add("runenvs", "LLVM_PROFILE_FILE", target:name() .. ".profraw")
+            end
+        end
+    end)
+end)

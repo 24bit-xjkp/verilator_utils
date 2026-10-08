@@ -9,16 +9,19 @@ local function register_target(kind, enable)
     target("unit_test" .. suffix, function ()
         set_enabled(enable)
         set_group("unit_test" .. suffix)
-        add_deps("verilator_utils_main".. suffix)
+        add_deps("verilator_utils_main" .. suffix)
         set_default(false)
         local regex = "*.cpp|rtl_*.cpp|common.cpp|sanitizer_option.cpp"
         add_files("*.cpp|rtl_*.cpp")
         for _, file in ipairs(os.files(regex)) do
             local name = path.basename(file)
-            add_tests(name, { runargs = { "-ts=verilator_utils/" .. name, "-fc" } })
+            add_tests(name, { runargs = { "-ts=verilator_utils/" .. name, "-fc" }, runenvs = { LLVM_PROFILE_FILE = string.format("unit_test_%s.profraw", name) } })
         end
         add_rules(sanitizer_rule)
         set_policy("generator.compile_commands", gen_json)
+        if kind == "common" then
+            add_rules("coverage")
+        end
 
         after_load(function (target)
             -- 在未安装verilator的环境下首次config时避免访问空表

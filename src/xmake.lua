@@ -15,6 +15,9 @@ local function register_target(kind, enable)
         add_rules(sanitizer_rule)
         set_enabled(enable)
         set_policy("generator.compile_commands", gen_json)
+        if kind == "common" then
+            add_rules("coverage")
+        end
     end)
 
     target("verilator_utils_main" .. suffix, function ()
@@ -26,6 +29,9 @@ local function register_target(kind, enable)
         add_rules(sanitizer_rule)
         set_enabled(enable)
         set_policy("generator.compile_commands", gen_json)
+        if kind == "common" then
+            add_rules("coverage")
+        end
     end)
 end
 
