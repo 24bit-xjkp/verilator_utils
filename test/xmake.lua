@@ -5,10 +5,11 @@ add_rpathdirs("$ORIGIN/../lib", { installonly = true })
 
 local function register_target(kind, enable)
     local suffix, sanitizer_rule, gen_json = get_target_settings(kind)
+    local prefix = kind == "common" and "" or (kind .. "_")
 
     target("unit_test" .. suffix, function ()
         set_enabled(enable)
-        set_group("unit_test" .. suffix)
+        set_group(prefix .. "unit_test")
         add_deps("verilator_utils_main" .. suffix)
         set_default(false)
         local regex = "*.cpp|rtl_*.cpp|common.cpp|sanitizer_option.cpp"
@@ -38,7 +39,7 @@ local function register_target(kind, enable)
     for name, _ in pairs(rtl_verilator_target) do
         target("unit_test_rtl_" .. name.. suffix, function ()
             set_enabled(enable)
-            set_group("unit_test_rtl" .. suffix)
+            set_group(prefix .. "unit_test_rtl")
             add_deps(format("unit_test_rtl_%s_verilator", name), "verilator_utils_main".. suffix)
             if get_config("trace_support_fst") then
                 add_packages("zlib", "lz4")

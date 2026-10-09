@@ -63,10 +63,10 @@ Python 包自身的单元测试由 pytest 驱动：
 uv run pytest
 ```
 
-支持 `debug` / `release` / `releasedbg` 三种模式，可选配置项通过 `xmake f --<选项>=y|n` 设置：
+支持 `debug` / `release` / `releasedbg` 三种模式，可选配置项如下：
 
 - `use_sanitizer`：启用地址/未定义行为消毒器
-- `use_type_sanitizer`：启用类型消毒器（TypeSanitizer）；只作用于 `*_tysan` 目标组（见下文），工具链不支持 `-fsanitize=type` 时给出告警并忽略该选项
+- `use_type_sanitizer`：启用类型消毒器（TypeSanitizer）；只作用于 `tysan_*` 目标组（见下文），工具链不支持 `-fsanitize=type` 时给出告警并忽略该选项
 - `use_std_harden`：C++ 标准库加固
 - `use_lto`：链接时优化
 - `trace_support_fst`：FST 波形支持，需要 zlib / lz4
@@ -79,14 +79,14 @@ uv run pytest
 ### 类型消毒器目标组
 
 TypeSanitizer（`-fsanitize=type`）会检测类型混淆与违反严格别名规则的访问，但它**不能与 address / leak 消毒器组合**。
-因此本项目的 type sanitizer 使用**一组独立的目标**（`tysan/xmake.lua`），只启用 `-fsanitize=type`，不加入 `enable_sanitizer` 规则；
+因此本项目的 type sanitizer 使用**一组独立的目标**，只启用 `-fsanitize=type`，不加入 `enable_sanitizer` 规则；
 常规的 asan + ubsan 目标组则完全不受影响，两组目标可以在同一次配置中共存。
 
 ```bash
 xmake f --use_type_sanitizer=y          # 工具链支持时创建该组目标，不支持时给出告警并忽略
-xmake test -g unit_test_tysan           # 框架单元测试（仅 type sanitizer）
-xmake test -g unit_test_rtl_tysan       # RTL 集成测试（仅 type sanitizer）
-xmake test                              # 两组测试都会运行
+xmake test -g tysan_unit_test           # 框架单元测试（仅 type sanitizer）
+xmake test -g tysan_unit_test_rtl       # RTL 集成测试（仅 type sanitizer）
+xmake test -g "tysan_unit_test*"        # 两组测试都会运行
 ```
 
 - 目标命名沿用常规组，仅追加 `_tysan` 后缀

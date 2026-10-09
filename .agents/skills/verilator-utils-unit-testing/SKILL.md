@@ -253,16 +253,14 @@ TypeSanitizer 会大幅拖慢测试运行速度，而它只能发现类型混淆
 两组测试的区分方式是组名：
 
 - 常规组：`unit_test`、`unit_test_rtl`（asan + ubsan）
-- tysan 组：`unit_test_tysan`、`unit_test_rtl_tysan`（仅 tysan）
+- tysan 组：`tysan_unit_test`、`tysan_unit_test_rtl`（仅 tysan）
 
 ```bash
 # 第一步：常规组，必须全绿后才继续
-xmake test -g unit_test           # 单元测试
-xmake test -g unit_test_rtl       # RTL集成测试
+xmake test -g "unit_test*"
 
 # 第二步：常规组通过后，再跑 tysan 组
-xmake test -g unit_test_tysan     # 开启tysan的单元测试
-xmake test -g unit_test_rtl_tysan # 开启tysan的RTL集成测试
+xmake test -g "tysan_unit_test*"
 ```
 
 ### tysan 组的前置条件
