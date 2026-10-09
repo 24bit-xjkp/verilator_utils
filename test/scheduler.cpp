@@ -721,6 +721,9 @@ TEST_SUITE("verilator_utils/scheduler")
         };
 
         constexpr static ::std::array test_cases{
+            test_case{0,   "1s"sv   },
+            test_case{-1,  "100ms"sv},
+            test_case{-3,  "1ms"sv  },
             test_case{-7,  "100ns"sv},
             test_case{-8,  "10ns"sv },
             test_case{-9,  "1ns"sv  },
@@ -1693,5 +1696,175 @@ TEST_SUITE("verilator_utils/scheduler")
         // 全序关系与协程柄地址序一致
         const auto expected_order{first.handle().address() < second.handle().address()};
         CHECK_EQ(first_pair < second_pair, expected_order);
+    }
+
+    TEST_CASE("scheduler reports the cached dut time precision in femtoseconds")
+    {
+        // 时间单位、时间精度与预期的精度（飞秒）
+        constexpr static ::std::array cases{
+            ::std::tuple{-9,  -12, 1'000zu                },
+            ::std::tuple{-9,  -9,  1'000'000zu            },
+            ::std::tuple{-6,  -15, 1zu                    },
+            ::std::tuple{-12, -12, 1'000zu                },
+            // 1s...1fs的端点组合
+            ::std::tuple{0,   -15, 1zu                    },
+            ::std::tuple{-15, -15, 1zu                    },
+            ::std::tuple{0,   0,   1'000'000'000'000'000zu},
+        };
+
+        for(const auto& [time_unit, time_precision, expected]: cases)
+        {
+            CAPTURE(time_unit);
+            CAPTURE(time_precision);
+            scheduler_fixture fixture{time_unit, time_precision};
+            const auto scheduler{fixture.make_scheduler()};
+            CHECK_EQ(scheduler.time_precision_fs(), expected);
+        }
+    }
+
+    TEST_CASE("scheduler rejects a time unit or time precision outside the 1s to 1fs range")
+    {
+        // 时间单位、时间精度与断言消息中应出现的字段名
+        // VerilatedContext把二者按绝对值存放在int8_t中，读取时再取相反数，
+        // 因此正常入参只可能落在[-15, 0]内：能构造出来的越界只有比1fs更细的一侧，比1s更粗的一侧只能依赖上界断言兜底
+        constexpr static ::std::array cases{
+            ::std::tuple{-9,  -16, "时间精度"sv}, // 精度比1fs更细
+            ::std::tuple{-16, -12, "时间单位"sv}, // 单位比1fs更细
+        };
+
+        for(const auto& [time_unit, time_precision, expected_field]: cases)
+        {
+            CAPTURE(time_unit);
+            CAPTURE(time_precision);
+            scheduler_fixture fixture{time_unit, time_precision};
+            bool thrown{};
+            try
+            {
+                static_cast<void>(fixture.make_scheduler());
+            }
+            catch(const ::verilator_utils::assertion_error& error)
+            {
+                thrown = true;
+                CHECK(::std::string_view{error.message()}.contains(expected_field));
+            }
+            CHECK(thrown);
+        }
+    }
+
+    TEST_CASE("coroutine_exception exposes and rethrows its original exception")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool caught{};
+        ::std::string original_message{};
+
+        const auto throwing_root{
+            [] -> ::verilator_utils::task<void> {
+                throw ::std::runtime_error{"原始异常"};
+                co_return;
+            },
+        };
+
+        scheduler.add_task(throwing_root());
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            caught = true;
+            REQUIRE_NE(exception.exception(), nullptr);
+            // 原始异常既可以直接重抛，也可以通过异常指针取回
+            CHECK_THROWS_AS(exception.rethrow_exception(), ::std::runtime_error);
+            try
+            {
+                ::std::rethrow_exception(exception.exception());
+            }
+            catch(const ::std::runtime_error& original)
+            {
+                original_message = original.what();
+            }
+        }
+
+        CHECK(caught);
+        CHECK_EQ(original_message, "原始异常"sv);
+    }
+
+    TEST_CASE("coroutine exception keeps its stack trace when it is thrown again")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool caught{};
+
+        // 直接抛出coroutine_exception：异常已经携带栈回溯信息，不应被再次包装
+        const auto wrapped_root{
+            [] -> ::verilator_utils::task<void> {
+                throw ::verilator_utils::coroutine_exception{::std::make_exception_ptr(::std::runtime_error{"已包装的异常"})};
+                co_return;
+            },
+        };
+
+        scheduler.add_task(wrapped_root());
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            caught = true;
+            CHECK(::std::string_view{exception.what()}.contains("已包装的异常"sv));
+        }
+
+        CHECK(caught);
+    }
+
+    TEST_CASE("coroutine stack trace and exception message follow the assertion color configuration")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        const auto color_backup{::verilator_utils::assertion_color_config()};
+        bool caught{};
+        ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
+        ::verilator_utils::coroutine_stacktrace trace{};
+
+        const auto throwing_root{
+            [] -> ::verilator_utils::task<void> {
+                throw ::std::runtime_error{"着色测试"};
+                co_return;
+            },
+        };
+
+        scheduler.add_task(throwing_root());
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            caught = true;
+            frames = exception.stacktrace().frames;
+            trace = exception.stacktrace();
+            REQUIRE_FALSE(frames.empty());
+
+            // 关闭彩色输出：异常消息与栈回溯都不带转义序列
+            ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = true});
+            CHECK_EQ(::std::string{exception.what()}, ::std::format("着色测试\n{}", trace));
+            CHECK_EQ(
+                ::std::string{::doctest::StringMaker<::verilator_utils::coroutine_stacktrace::frame>::convert(frames[0]).c_str()},
+                ::std::format("{}", frames[0]));
+            CHECK_EQ(::std::string{::doctest::StringMaker<::verilator_utils::coroutine_stacktrace>::convert(trace).c_str()},
+                     ::std::format("{}", trace));
+
+            // 强制彩色输出：doctest的字符串化走着色分支
+            ::verilator_utils::set_assertion_color_config({.force_colors = true, .no_colors = false});
+            CHECK_EQ(
+                ::std::string{::doctest::StringMaker<::verilator_utils::coroutine_stacktrace::frame>::convert(frames[0]).c_str()},
+                ::std::format("{:#}", frames[0]));
+            CHECK_EQ(::std::string{::doctest::StringMaker<::verilator_utils::coroutine_stacktrace>::convert(trace).c_str()},
+                     ::std::format("{:#}", trace));
+        }
+
+        CHECK(caught);
+        ::verilator_utils::set_assertion_color_config(color_backup);
     }
 }

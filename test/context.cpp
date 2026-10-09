@@ -156,24 +156,16 @@ TEST_SUITE("verilator_utils/context")
 
     TEST_CASE("stats report the simulation time in the configured time unit")
     {
+        using enum ::verilator_utils::verilator_time_unit;
+
         // 时间单位、时间精度、推进时长、预期仿真时间与预期仿真时间字符串
         constexpr static ::std::array cases{
-            ::std::tuple{::verilator_utils::verilator_time_unit::ns,
-                         ::verilator_utils::verilator_time_unit::ps,
-                         250_ns, 250.0,
-                         "250ns"sv},
-            ::std::tuple{::verilator_utils::verilator_time_unit::us,
-                         ::verilator_utils::verilator_time_unit::ns,
-                         1_us,   1.0,
-                         "1us"sv  },
-            ::std::tuple{::verilator_utils::verilator_time_unit::ps,
-                         ::verilator_utils::verilator_time_unit::fs,
-                         3_ps,   3.0,
-                         "3ps"sv  },
-            ::std::tuple{::verilator_utils::verilator_time_unit::fs_10,
-                         ::verilator_utils::verilator_time_unit::fs,
-                         20_fs,  2.0,
-                         "20fs"sv },
+            ::std::tuple{s,     ms, 2_s,    2.0,   "2s"sv   },
+            ::std::tuple{ms,    us, 3_ms,   3.0,   "3ms"sv  },
+            ::std::tuple{ns,    ps, 250_ns, 250.0, "250ns"sv},
+            ::std::tuple{us,    ns, 1_us,   1.0,   "1us"sv  },
+            ::std::tuple{ps,    fs, 3_ps,   3.0,   "3ps"sv  },
+            ::std::tuple{fs_10, fs, 20_fs,  2.0,   "20fs"sv },
         };
 
         for(const auto& [time_unit, time_precision, duration, expected_simtime, expected_string]: cases)
@@ -330,5 +322,86 @@ TEST_SUITE("verilator_utils/context")
         const auto converted{::doctest::StringMaker<::verilator_utils::dut_context_stats>::convert(stats)};
 
         CHECK_EQ(::std::string{converted.c_str()}, ::std::format("\n{}", stats));
+    }
+
+    TEST_CASE("random seed is logged to the test framework when the scope unwinds with an exception")
+    {
+        const auto stringified_before{::doctest::IReporter::get_num_stringified_contexts()};
+        bool exception_propagated{};
+
+        try
+        {
+            stats_context ctx{};
+            // seed()把记录随机种子的上下文作用域注册到doctest
+            static_cast<void>(ctx.seed());
+            throw ::std::runtime_error{"模拟断言失败时的栈展开"};
+        }
+        catch(const ::std::runtime_error&)
+        {
+            exception_propagated = true;
+        }
+
+        CHECK(exception_propagated);
+        // 栈展开时doctest会立即格式化仍处于活动状态的上下文作用域
+        const auto stringified_after{::doctest::IReporter::get_num_stringified_contexts()};
+        REQUIRE_EQ(stringified_after, stringified_before + 1);
+        const auto* contexts{::doctest::IReporter::get_stringified_contexts()};
+        REQUIRE_NE(contexts, nullptr);
+        const ::std::span<const ::doctest::String> logged{contexts, static_cast<::std::size_t>(stringified_after)};
+        CHECK(::std::string_view{logged.back().c_str()}.starts_with("random_seed := "sv));
+    }
+
+    TEST_CASE("coverage data file is written when the simulation has started")
+    {
+        const auto coverage_file{::std::filesystem::temp_directory_path() / "verilator_utils_context_coverage.dat"};
+        ::std::filesystem::remove(coverage_file);
+        const auto base_name{(coverage_file.parent_path() / coverage_file.stem()).native()};
+
+        {
+            stats_fixture fixture{
+                {.coverage = true, .base_name = base_name}
+            };
+            CHECK(fixture.ctx.coverage());
+            // initial_eval之后析构上下文才会写出覆盖率文件
+            static_cast<void>(fixture.advance(1_ns));
+        }
+
+        REQUIRE(::std::filesystem::exists(coverage_file));
+        CHECK_GT(::std::filesystem::file_size(coverage_file), 0u);
+        ::std::filesystem::remove(coverage_file);
+    }
+
+    TEST_CASE("coverage data file is not written when coverage recording is disabled")
+    {
+        const auto coverage_file{::std::filesystem::temp_directory_path() / "verilator_utils_context_no_coverage.dat"};
+        ::std::filesystem::remove(coverage_file);
+        const auto base_name{(coverage_file.parent_path() / coverage_file.stem()).native()};
+
+        {
+            stats_fixture fixture{{.base_name = base_name}};
+            CHECK_FALSE(fixture.ctx.coverage());
+            static_cast<void>(fixture.advance(1_ns));
+        }
+
+        CHECK_FALSE(::std::filesystem::exists(coverage_file));
+    }
+
+    TEST_CASE("coverage recording can be toggled after construction")
+    {
+        const auto coverage_file{::std::filesystem::temp_directory_path() / "verilator_utils_context_toggle.dat"};
+        ::std::filesystem::remove(coverage_file);
+        const auto base_name{(coverage_file.parent_path() / coverage_file.stem()).native()};
+
+        {
+            stats_fixture fixture{{.base_name = base_name}};
+            fixture.ctx.set_coverage(true);
+            CHECK(fixture.ctx.coverage());
+            static_cast<void>(fixture.advance(1_ns));
+            // 析构前关闭记录，覆盖率文件不应写出
+            fixture.ctx.set_coverage(false);
+            CHECK_FALSE(fixture.ctx.coverage());
+        }
+
+        CHECK_FALSE(::std::filesystem::exists(coverage_file));
     }
 }

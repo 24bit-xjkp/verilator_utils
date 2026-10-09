@@ -99,4 +99,34 @@ TEST_SUITE("verilator_utils/assert")
         // 恢复默认配置
         ::verilator_utils::set_assertion_color_config(backup);
     }
+
+    TEST_CASE("assertion message colorization adapts to the terminal when no color option is set")
+    {
+        const auto backup{::verilator_utils::assertion_color_config()};
+        // 既未强制彩色也未禁用彩色时按标准错误输出是否为控制台自适应
+        ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = false});
+        try
+        {
+            ::verilator_utils::check{}(false, "自适应颜色"sv);
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK(::std::string_view{error.what()}.contains("自适应颜色"sv));
+            CHECK_EQ(::std::string_view{error.what()}.contains("\033["sv), ::verilator_utils::detail::is_stderr_tty());
+        }
+        ::verilator_utils::set_assertion_color_config(backup);
+    }
+
+    TEST_CASE("check nothrow overload reports through the test framework instead of throwing")
+    {
+        ::verilator_utils::check{}(::std::nothrow, true);
+        ::verilator_utils::check{}(::std::nothrow, 3 == 3);  // NOLINT(misc-redundant-expression)
+
+        // 常量求值语境下同样可用，条件成立时不影响常量求值
+        constexpr auto evaluated{[] {
+            ::verilator_utils::check{}(::std::nothrow, true);
+            return true;
+        }()};
+        static_assert(evaluated);
+    }
 }

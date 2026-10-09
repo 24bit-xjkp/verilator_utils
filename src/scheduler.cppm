@@ -183,25 +183,13 @@ namespace verilator_utils::detail
      */
     enum class coroutine_type_enum : ::std::uint8_t
     {
-        /// 没有父协程
-        without_parent = 0,
-        /// 有父协程
-        with_parent = 1,
-        /// 同步协程
-        is_sync = 0,
-        /// 异步协程
-        is_async = 2,
-
         /// 根协程
-        root_coroutine = without_parent | is_sync,
+        root_coroutine,
         /// 同步子协程
-        sub_coroutine = with_parent | is_sync,
+        sub_coroutine,
         /// 异步协程
-        async_coroutine = is_async
+        async_coroutine,
     };
-
-    constexpr bool operator& (coroutine_type_enum value, coroutine_type_enum mask) noexcept
-    { return (::std::to_underlying(value) & ::std::to_underlying(mask)) != 0; }
 
     // 导出coroutine_pair、promise_base和promise_with_return以支持在verilator_utils模块外扩展任务类型
 
@@ -1341,10 +1329,6 @@ namespace verilator_utils::detail
         ::verilator_utils::detail::coroutine_pair pair;
 
         // 按等待时间点进行比较
-        friend bool operator== (const wait_queue_element& self, const wait_queue_element& other) noexcept
-        { return self.target_time == other.target_time; }
-
-        // 按等待时间点进行比较
         friend ::std::strong_ordering operator<=> (const wait_queue_element& self, const wait_queue_element& other) noexcept
         { return self.target_time <=> other.target_time; }
     };
@@ -1352,7 +1336,7 @@ namespace verilator_utils::detail
     /// 等待队列类型
     using wait_queue_t = ::std::priority_queue<::verilator_utils::detail::wait_queue_element,
                                                ::std::vector<::verilator_utils::detail::wait_queue_element>,
-                                               ::std::ranges::greater>;
+                                               ::std::greater<>>;
 
     /**
      * @brief 事件队列的元素类型
@@ -1386,8 +1370,6 @@ namespace verilator_utils::detail
         using callback_t = void (*)(::verilator_utils::with_suspend_queue&) noexcept;
         /// 释放函数，用于在仿真结束时把挂起在事件上的任务放回调度器
         callback_t release;
-
-        friend bool operator== (const suspend_entry& lhs, const suspend_entry& rhs) noexcept { return lhs.entry == rhs.entry; }
 
         friend ::std::strong_ordering operator<=> (const suspend_entry& lhs, const suspend_entry& rhs) noexcept
         { return lhs.entry <=> rhs.entry; }
@@ -1589,13 +1571,24 @@ namespace verilator_utils
          * @param dut 待测模型对象引用
          * @param dut_eval 回调函数，实现dut状态计算
          * @note 调度器会缓存time precision和time unit，因此在构造时需要确保二者已经设置
+         * @throws 时间单位或时间精度超出Verilator支持范围时抛出断言失败异常
          */
-        explicit eval_scheduler(::VerilatedModel& dut, dut_eval_t dut_eval) noexcept : dut_{dut}, dut_eval_{dut_eval}
+        explicit eval_scheduler(::VerilatedModel& dut, dut_eval_t dut_eval) : dut_{dut}, dut_eval_{dut_eval}
         {
             // NOLINTBEGIN(cppcoreguidelines-prefer-member-initializer)
             const auto& context{*dut.contextp()};
             const auto time_precision{context.timeprecision()};
             const auto time_unit{context.timeunit()};
+            // VerilatedContext不校验时间单位与时间精度，越界值会导致时间精度为0或下方单位表匹配失败，因此在此提前检查
+            // Verilator支持的时间范围为1s(指数0)到1fs(指数-15)
+            constexpr static auto max_time_exponent{0};
+            constexpr static auto min_time_exponent{-15};
+            ::verilator_utils::check{}(time_unit >= min_time_exponent && time_unit <= max_time_exponent,
+                                       "时间单位10^{}超出Verilator支持的范围[1fs, 1s]"sv,
+                                       time_unit);
+            ::verilator_utils::check{}(time_precision >= min_time_exponent && time_precision <= max_time_exponent,
+                                       "时间精度10^{}超出Verilator支持的范围[1fs, 1s]"sv,
+                                       time_precision);
             time_precision_fs_ = static_cast<::std::uint64_t>(::std::pow(10, 15 + time_precision));
             time_precision_per_time_unit = ::std::pow(10, time_unit - time_precision);
             for(const auto& [unit_exponent, unit_fs, unit_suffix]: ::verilator_utils::detail::time_unit_table)
@@ -1607,7 +1600,7 @@ namespace verilator_utils
                     return;
                 }
             }
-            ::std::unreachable();
+            ::std::unreachable();  // 时间单位已由上方断言限定在单位表覆盖范围内
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
 
@@ -1617,10 +1610,10 @@ namespace verilator_utils
          * @tparam dut_t 待测模型类型，必须派生自VerilatedModel
          * @param dut 指向待测模型对象的指针
          * @note 调度器会缓存time precision和time unit，因此在构造时需要确保二者已经设置
+         * @throws 时间单位或时间精度超出Verilator支持范围时抛出断言失败异常
          */
         template <::std::derived_from<::VerilatedModel> dut_t>
-        explicit eval_scheduler(dut_t& dut) noexcept :
-            eval_scheduler{dut, [](::VerilatedModel& dut) { static_cast<dut_t&>(dut).eval(); }}
+        explicit eval_scheduler(dut_t& dut) : eval_scheduler{dut, [](::VerilatedModel& dut) { static_cast<dut_t&>(dut).eval(); }}
         {
         }
 
@@ -1739,17 +1732,8 @@ namespace verilator_utils
             for(const auto& entry: suspend_entry_queue) { entry(); }
             suspend_entry_queue.clear();
 
-            while(!ready_queue.empty())
-            {
-                try
-                {
-                    ready_queue_eval();
-                }
-                catch(...)  // NOLINT(bugprone-empty-catch)
-                {
-                    // 协作式取消时产生的异常无法进行传播
-                }
-            }
+            // 仿真已结束，被唤醒的协程都会经由协作式取消正常退出，异常不可能从析构函数中传播
+            while(!ready_queue.empty()) { ready_queue_eval(); }
         }
 
         /**
@@ -1913,6 +1897,7 @@ namespace verilator_utils
             // 协作式取消的优先级更高
             promise.scheduler->throw_if_finish();
             // 检查是否需要取消
+            // NOLINTNEXTLINE(clang-analyzer-core.UndefinedBinaryOperatorResult)
             if(promise.status == cancel_requested) { throw ::verilator_utils::task_cancel_exception{}; }
             promise.status = running;
         }

@@ -394,7 +394,7 @@ export namespace verilator_utils
                 case rising: return !previous_value && current_value;
                 case falling: return previous_value && !current_value;
                 case both: return previous_value != current_value;
-                default: ::std::unreachable();
+                default: ::std::unreachable();  // edge_to_detect_越界属于未定义行为
             }
         }
 
@@ -411,7 +411,11 @@ export namespace verilator_utils
          * @param edge_to_detect 要检测的边沿类型
          * @return 先前设置的边沿类型
          */
-        void set_edge_to_detect(::verilator_utils::edge_enum edge_to_detect) noexcept { edge_to_detect_ = edge_to_detect; }
+        void set_edge_to_detect(::verilator_utils::edge_enum edge_to_detect) noexcept
+        {
+            // 不校验枚举取值，传入edge_enum范围之外的值属于未定义行为
+            edge_to_detect_ = edge_to_detect;
+        }
 
     private:
         ::verilator_utils::default_event_callback callback;
@@ -1172,12 +1176,15 @@ export namespace verilator_utils
              * @brief 向调度器事件队列中注册等待事件，然后挂起协程
              *
              * @param handle 当前任务的协程柄
+             * @note 等待关系不成立时无法确定子协程应托管给哪个调度器，且协程柄已脱离任务对象，
+             * 无法通过异常处理重新控制子协程，因此以不可恢复断言终止程序
              */
             void await_suspend(handle_t handle) const
             {
                 auto&& promise{subhandle.promise()};
                 promise.is_async = false;
-                ::verilator_utils::check{}(promise.parent == handle,
+                ::verilator_utils::check{}(::std::nothrow,
+                                           promise.parent == handle,
                                            "等待该异步任务的协程({})与创建任务的协程({})不同",
                                            handle.address(),
                                            promise.parent.handle.address());
@@ -1204,13 +1211,8 @@ export namespace verilator_utils
 
             ~async_task_awaiter() noexcept
             {
-                if(subhandle == nullptr) { return; }
-                if(subhandle.done()) { subhandle.destroy(); }
-                else
-                {
-                    // 将孤儿协程托管给调度器
-                    subhandle.promise().parent = {};
-                }
+                // 等待关系在await_suspend处已断言成立，恢复父协程时子协程必然已执行完毕
+                if(subhandle != nullptr) { subhandle.destroy(); }
             }
         };
 
@@ -1339,12 +1341,15 @@ export namespace verilator_utils
              * @brief 将子协程暂时转化为同步协程，以便由子协程唤醒父协程
              *
              * @param handle 当前任务的协程柄
+             * @note 等待关系不成立时子协程会唤醒创建任务的协程而不是当前协程，当前协程将永远不被恢复；
+             * 且协程柄已脱离任务对象，无法通过异常处理重新控制子协程，因此以不可恢复断言终止程序
              */
             void await_suspend(::verilator_utils::async_task::handle_t handle) const
             {
                 const auto parent{pool->begin()->promise().parent};
-                ::verilator_utils::check{}(handle == parent,
-                                           "等待该异步任务的协程({})与创建任务的协程({})不同"sv,
+                ::verilator_utils::check{}(::std::nothrow,
+                                           handle == parent,
+                                           "等待该异步任务的协程({})与创建任务的协程({})不同",
                                            handle.address(),
                                            parent.handle.address());
                 for(auto&& subtask: *pool) { subtask.promise().is_async = false; }
@@ -1844,6 +1849,8 @@ export namespace verilator_utils
                         return *this;
                     }
 
+                    // 后置自增不会被任何算法调用：范围算法与格式化只使用前置自增
+                    // 保留该重载仅为满足std::input_iterator对i++表达式有效的要求
                     iterator operator++ (int) noexcept
                     {
                         auto temp{*this};

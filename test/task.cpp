@@ -218,6 +218,32 @@ TEST_SUITE("verilator_utils/task")
         }
     }
 
+    TEST_CASE("generator iterators support post-increment")
+    {
+        const auto fibonacci{::verilator_utils::fibonacci_lfsr_generator(3)};
+        auto iter{fibonacci.begin()};
+        const auto expected{*iter};
+
+        // 后置自增返回void，只推进迭代器
+        iter++;
+        CHECK_EQ(*iter, false);
+        CHECK_NE(*iter, expected);
+    }
+
+    TEST_CASE("LFSR generator validates its arguments when the coroutine first runs")
+    {
+        // 参数校验位于协程体内，异常在生成器首次恢复时被捕获并在迭代时重新抛出
+        const auto width_too_small{::verilator_utils::fibonacci_lfsr_generator(2)};
+        CHECK_THROWS_WITH_AS(static_cast<void>(width_too_small.begin()),
+                             ::doctest::Contains{"LFSR宽度2超出范围[3, 64]"},
+                             ::verilator_utils::assertion_error);
+
+        const auto zero_initial_value{::verilator_utils::galois_lfsr_generator(4, 1, 0)};
+        CHECK_THROWS_WITH_AS(static_cast<void>(zero_initial_value.begin()),
+                             ::doctest::Contains{"初始值为0时LFSR输出恒为0"},
+                             ::verilator_utils::assertion_error);
+    }
+
     TEST_CASE("edge_detector reports rising falling and both edges")
     {
         signal_state signal{};
@@ -610,14 +636,26 @@ TEST_SUITE("verilator_utils/task")
 
         mailbox_t empty_mailbox{};
         CHECK_EQ(::std::format("{:#}"sv, empty_mailbox), "{max_count: 0, value: []}"sv);
+
+        // 无限容量邮箱在非详细模式下同样走无界范围的分支
+        mailbox_t unbounded_mailbox{};
+        CHECK(unbounded_mailbox.try_put(1));
+        CHECK(unbounded_mailbox.try_put(2));
+        // 无格式符的替换字段同样走不带详细说明的解析分支
+        CHECK_EQ(::std::format("{:}"sv, bounded_mailbox), "[10, 20]"sv);
+        CHECK_EQ(::std::format("{}"sv, unbounded_mailbox), "[1, 2]"sv);
+        CHECK_EQ(::std::format("{:#}"sv, unbounded_mailbox), "{max_count: 0, value: [1, 2]}"sv);
     }
 
-    TEST_CASE("mailbox formatter rejects unsupported format specifiers")
+    TEST_CASE("mailbox formatter rejects malformed dynamic format strings")
     {
 
         ::verilator_utils::mailbox<int> mailbox{};
 
+        // 不支持的格式符
         CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(mailbox))), ::std::format_error);
+        // 未闭合的替换字段：解析在到达格式串末尾时仍未遇到'}'
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:#"sv, ::std::make_format_args(mailbox))), ::std::format_error);
     }
 
     TEST_CASE("shift_register delays values by the configured depth")
@@ -879,6 +917,41 @@ TEST_SUITE("verilator_utils/task")
         CHECK(colored.contains(::std::format(":{}{}{}"sv, blue, location.column(), reset)));
         CHECK(colored.ends_with(reset));
         CHECK_FALSE(colored.contains(cyan));
+    }
+
+    TEST_CASE("formatters write into a raw character buffer")
+    {
+        using frame_t = ::verilator_utils::coroutine_stacktrace::frame;
+
+        const frame_t frame{nullptr,
+                            ::std::source_location::current(),
+                            ::verilator_utils::detail::promise_base::coroutine_type_enum::root_coroutine};
+        ::std::array<char, 512> buffer{};
+        auto* const frame_end{::std::format_to(buffer.data(), "{}"sv, frame)};
+        CHECK_EQ(::std::string_view{buffer.data(), static_cast<::std::size_t>(::std::distance(buffer.data(), frame_end))},
+                 ::std::format("{}"sv, frame));
+
+        ::verilator_utils::coroutine_stacktrace trace{};
+        ::verilator_utils::mailbox<int> mailbox{2};
+        CHECK(mailbox.try_put(7));
+        ::verilator_utils::shift_register<::std::uint64_t> delay_line{1, 8, ::verilator_utils::data_format::hex};
+        CHECK_FALSE(delay_line.update(0xabu).has_value());
+
+        ::std::array<char, 512> detail_buffer{};
+        auto* const trace_end{::std::format_to(detail_buffer.data(), "{}"sv, trace)};
+        CHECK_EQ(::std::string_view{detail_buffer.data(),
+                                    static_cast<::std::size_t>(::std::distance(detail_buffer.data(), trace_end))},
+                 ::std::format("{}"sv, trace));
+
+        auto* const mailbox_end{::std::format_to(detail_buffer.data(), "{:#}"sv, mailbox)};
+        CHECK_EQ(::std::string_view{detail_buffer.data(),
+                                    static_cast<::std::size_t>(::std::distance(detail_buffer.data(), mailbox_end))},
+                 ::std::format("{:#}"sv, mailbox));
+
+        auto* const delay_end{::std::format_to(detail_buffer.data(), "{}"sv, delay_line)};
+        CHECK_EQ(::std::string_view{detail_buffer.data(),
+                                    static_cast<::std::size_t>(::std::distance(detail_buffer.data(), delay_end))},
+                 ::std::format("{}"sv, delay_line));
     }
 
     TEST_CASE("stacktrace_frame formatter renders a default frame deterministically")
@@ -3134,6 +3207,290 @@ TEST_SUITE("verilator_utils/task")
         step_clock(scheduler, clk);
         step_clock(scheduler, clk, 0u);
         CHECK_EQ(sampled_clock, ::std::vector<::CData>{0u});
+    }
+
+    TEST_CASE("verify_at waits for the requested number of edges before running the callback")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state clk{};
+        ::verilator_utils::bit_slice<::CData> clk_ref{clk.value};
+        ::std::size_t verify_count{};
+        ::verilator_utils::eval_scheduler::eval_stage_enum verify_stage{};
+
+        const auto&& task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::verify_at(
+                    clk_ref,
+                    [&] {
+                        ++verify_count;
+                        verify_stage = scheduler.eval_stage();
+                    },
+                    2);
+            },
+        };
+
+        scheduler.add_task(task());
+        CHECK_EQ(verify_count, 0u);
+
+        // 第1个上升沿：还未达到请求的边沿数，回调不执行
+        step_clock(scheduler, clk);
+        CHECK_EQ(verify_count, 0u);
+        CHECK_FALSE(scheduler.empty());
+
+        // 第2个上升沿：回调在电路评估完成后执行且只执行一次
+        step_clock(scheduler, clk, 0u);
+        step_clock(scheduler, clk);
+        CHECK_EQ(verify_count, 1u);
+        CHECK_EQ(verify_stage, ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
+        CHECK(scheduler.empty());
+
+        step_clock(scheduler, clk, 0u);
+        step_clock(scheduler, clk);
+        CHECK_EQ(verify_count, 1u);
+    }
+
+    TEST_CASE("wait_reset_finish returns once the reset signal is deasserted")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state rst{};
+        rst.value = 1;
+        ::verilator_utils::bit_slice<::CData> rst_ref{rst.value};
+        bool finished{};
+
+        const auto reset_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_reset_finish(rst_ref);
+                finished = true;
+            },
+        };
+
+        scheduler.add_task(reset_lambda());
+        scheduler.initial_eval();
+        CHECK_FALSE(finished);
+
+        // 复位仍然有效时事件回调不就绪
+        scheduler.loop_once();
+        CHECK_FALSE(finished);
+
+        // 释放复位后事件回调就绪，等待任务继续执行
+        rst.value = 0;
+        scheduler.loop_once();
+        CHECK(finished);
+    }
+
+    TEST_CASE("wait_reset_finish honors the active-low polarity")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        signal_state rst{};
+        rst.value = 1;
+        ::verilator_utils::bit_slice<::CData> rst_ref{rst.value};
+        bool finished{};
+
+        const auto reset_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_reset_finish(rst_ref, false);
+                finished = true;
+            },
+        };
+
+        scheduler.add_task(reset_lambda());
+        scheduler.initial_eval();
+        // 低电平有效的复位在信号为高时已经完成
+        scheduler.loop_once();
+        CHECK(finished);
+    }
+
+    TEST_CASE("tasks read the simulation time in dut time units and precision")
+    {
+        scheduler_fixture fixture{-9, -12};
+        auto scheduler{fixture.make_scheduler()};
+        double time_in_unit{};
+        ::std::uint64_t time_in_precision{};
+        ::std::string time_in_string{};
+
+        const auto&& task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_time(3_ns);
+                time_in_unit = co_await ::verilator_utils::time_in_time_unit();
+                time_in_precision = co_await ::verilator_utils::time_in_time_precision();
+                time_in_string = co_await ::verilator_utils::time_in_string();
+            },
+        };
+
+        scheduler.add_task(task());
+        scheduler.loop_until_finish();
+
+        // 时间精度为ps，时间单位为ns
+        CHECK_EQ(time_in_precision, 3'000u);
+        CHECK_EQ(time_in_unit, 3.0);
+        CHECK_EQ(time_in_string, "3ns"sv);
+    }
+
+    TEST_CASE("co_await add_task schedules another root task in the same evaluation round")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::vector<::std::string> order{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                order.emplace_back("child");
+                co_return;
+            },
+        };
+        const auto parent_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                order.emplace_back("parent");
+                co_await ::verilator_utils::add_task(child_lambda());
+                order.emplace_back("parent-finished");
+            },
+        };
+
+        scheduler.add_task(parent_lambda());
+        scheduler.loop_until_finish();
+
+        // add_task不挂起父协程：父协程先执行完，新加入的任务在同一轮评估中被执行
+        CHECK_EQ(order, (::std::vector<::std::string>{"parent", "parent-finished", "child"}));
+    }
+
+    TEST_CASE("event wakes a large batch of waiters and stays usable afterwards")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::event event{};
+        // 等待者数量使挂起队列的空闲容量达到收缩阈值：erase_watermark为256，shrink_watermark为其4倍
+        constexpr static ::std::size_t waiter_count{1024};
+        ::std::size_t completed{};
+
+        const auto waiter_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                co_await event;
+                ++completed;
+            },
+        };
+
+        for(::std::size_t i{}; i != waiter_count; ++i) { scheduler.add_task(waiter_lambda()); }
+        scheduler.loop_once();
+        CHECK_EQ(completed, 0u);
+
+        // 一次唤醒全部等待者，清空后的空闲容量超过阈值，触发内存回收
+        event.notify_all();
+        scheduler.loop_once();
+        CHECK_EQ(completed, waiter_count);
+
+        // 收缩后事件仍然可用
+        completed = 0;
+        scheduler.add_task(waiter_lambda());
+        scheduler.loop_once();
+        CHECK_EQ(completed, 0u);
+        event.notify_all();
+        scheduler.loop_once();
+        CHECK_EQ(completed, 1u);
+    }
+
+    TEST_CASE("canceling a task blocked on a semaphore cleans up its queue entry")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        ::verilator_utils::task<void>::promise_type* child_promise{};
+        bool parent_caught{};
+
+        const auto child_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                child_promise = ::std::addressof(
+                    (co_await ::verilator_utils::handle<::verilator_utils::task<void>::promise_type>()).promise());
+                co_await semaphore.get();
+            },
+        };
+        const auto parent_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                auto child{co_await ::verilator_utils::to_async(child_lambda())};
+                // 让出执行权，使异步子任务挂起在信号量上
+                co_await ::verilator_utils::wait_time(1_ps);
+                REQUIRE_NE(child_promise, nullptr);
+                CHECK(child.cancel_possible());
+                child.cancel();
+                // 唤醒被取消的等待者：取消请求在恢复点生效，等待者从计数队列中摘除自身
+                semaphore.put(1);
+                try
+                {
+                    co_await child;
+                }
+                catch(const ::verilator_utils::subtask_cancel_exception&)
+                {
+                    parent_caught = true;
+                }
+            },
+        };
+
+        scheduler.add_task(parent_lambda());
+        CHECK_NOTHROW(scheduler.loop_until_finish());
+        CHECK(parent_caught);
+
+        // 被取消的等待者已从队列中摘除，信号量的计数语义不受影响
+        semaphore.put(1);
+        CHECK(semaphore.try_get());
+        CHECK_FALSE(semaphore.try_get());
+    }
+
+    TEST_CASE("event reclaims the storage of already notified waiters")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::event event{};
+        ::std::size_t completed{};
+
+        const auto waiter_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                co_await event;
+                ++completed;
+            },
+        };
+
+        scheduler.add_task(waiter_lambda());
+        scheduler.add_task(waiter_lambda());
+        scheduler.loop_once();
+        CHECK_EQ(completed, 0u);
+
+        event.notify_one();
+        scheduler.loop_once();
+        CHECK_EQ(completed, 1u);
+
+        // 回收已被消费的前缀后事件仍然可用
+        event.shrink_to_fit();
+        event.notify_one();
+        scheduler.loop_once();
+        CHECK_EQ(completed, 2u);
+    }
+
+    TEST_CASE("a semaphore waiter released after the simulation finished cleans up its queue entry")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::verilator_utils::semaphore semaphore{};
+        bool waiter_resumed{};
+
+        const auto waiter_lambda{
+            [&] -> ::verilator_utils::task<void> {
+                co_await semaphore.get();
+                waiter_resumed = true;
+            },
+        };
+
+        scheduler.add_task(waiter_lambda());
+        scheduler.initial_eval();
+        CHECK_FALSE(waiter_resumed);
+
+        // 仿真结束后再释放等待者：恢复点先抛出仿真结束异常，get()的清理分支随之执行
+        scheduler.finish();
+        semaphore.put(1);
+        CHECK_NOTHROW(scheduler.loop_once());
+        // 等待者因仿真结束被取消，未继续执行协程体
+        CHECK_FALSE(waiter_resumed);
     }
 
     // NOLINTEND(bugprone-unchecked-optional-access)

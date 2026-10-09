@@ -17,15 +17,21 @@ export namespace verilator_utils
     /**
      * @brief Verilator 时间单位枚举类
      *
+     * 枚举值为时间单位相对秒的十进制指数的绝对值，例如ns表示10^-9秒
+     * @note Verilator支持1s(10^0秒)到1fs(10^-15秒)之间的全部时间单位，本枚举只列出其中常用的取值
      */
     enum class verilator_time_unit : ::std::uint8_t
     {
+        /// 秒
+        s = 0,
+        /// 毫秒
+        ms = 3,
         /// 微秒
         us = 6,
-        /// 100微秒
-        us_100 = 7,
-        /// 10微秒
-        us_10 = 8,
+        /// 100纳秒
+        ns_100 = 7,
+        /// 10纳秒
+        ns_10 = 8,
         /// 纳秒
         ns = 9,
         /// 100皮秒

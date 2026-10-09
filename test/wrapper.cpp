@@ -1358,4 +1358,105 @@ TEST_SUITE("verilator_utils/wrapper")
                              ::doctest::Contains{"切片上界8超出上限8"},
                              ::verilator_utils::assertion_error);
     }
+
+    TEST_CASE("hex format uses the packed representation without conversion")
+    {
+        // 十六进制格式的打包表示就是std::uint64_t本身，转换应当是无操作的
+        const ::verilator_utils::format_wrapper<::std::uint64_t> wrapped{0x2au, 8, ::verilator_utils::data_format::hex};
+        CHECK_EQ(wrapped.to_verilator(), 0x2au);
+        CHECK_EQ(wrapped.to_string(), "0x2a");
+
+        ::CData data{0xa6u};
+        const ::verilator_utils::vector_slice<::CData> slice{data, 7, 0};
+        CHECK(::std::holds_alternative<::verilator_utils::data_format::hex_t>(slice.format()));
+        CHECK_EQ(::std::get<::std::uint64_t>(slice.to_underlying()), 0xa6u);
+    }
+
+    TEST_CASE("bit slice formats hexadecimal and binary values")
+    {
+        ::CData data{1u};
+        const ::verilator_utils::bit_slice<::CData> hex_bit{data, 0, ::verilator_utils::data_format::hex};
+        const ::verilator_utils::bit_slice<::CData> bin_bit{data, 0, ::verilator_utils::data_format::bin};
+
+        CHECK_EQ(hex_bit.to_string(), "0x1");
+        CHECK_EQ(bin_bit.to_string(), "0b1");
+        CHECK_EQ(::std::format("{}"sv, hex_bit), "0x1");
+
+        // 位值为0时同样渲染进制前缀
+        ::CData zero_data{0u};
+        const ::verilator_utils::bit_slice<::CData> zero_hex_bit{zero_data, 0, ::verilator_utils::data_format::hex};
+        const ::verilator_utils::bit_slice<::CData> zero_bin_bit{zero_data, 0, ::verilator_utils::data_format::bin};
+        CHECK_EQ(zero_hex_bit.to_string(), "0x0");
+        CHECK_EQ(zero_bin_bit.to_string(), "0b0");
+    }
+
+    TEST_CASE("wide binary format renders every word below the most significant one")
+    {
+        // 宽度超过两个字：除最高字外的其余字按完整字宽渲染
+        const ::VlWide<3> wide_data{0x89ab'cdefu, 0x0123'4567u, 0x0000'00f0u};
+        const ::verilator_utils::format_wrapper<::VlWide<3>> value{wide_data, 80, ::verilator_utils::data_format::bin};
+
+        CHECK_EQ(value.to_string(), ::std::format("0b{:016b}{:032b}{:032b}", 0x00f0u, 0x0123'4567u, 0x89ab'cdefu));
+        CHECK_EQ(::std::format("{}"sv, value), value.to_string());
+    }
+
+    TEST_CASE("vector slice rejects a differently sized nested slice for fixed width formats")
+    {
+        ::CData data{0b1010'0110u};
+        const ::verilator_utils::vector_slice<::CData> fixed{data,
+                                                             3,
+                                                             0,
+                                                             ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
+        CHECK_EQ(fixed.width(), 4u);
+        // 宽度一致的子切片沿用当前格式
+        CHECK_EQ(static_cast<::std::uint64_t>(fixed[3, 0]), 0b0110u);
+        CHECK_EQ((fixed[3, 0].width()), 4u);
+        // 宽度不同的子切片必须显式传入新的格式，否则触发断言
+        CHECK_THROWS_WITH_AS((fixed[2, 0]), ::doctest::Contains{"必须传入新的格式"}, ::verilator_utils::assertion_error);
+        CHECK_EQ((fixed[2, 0, ::verilator_utils::data_format::hex].width()), 3u);
+    }
+
+    TEST_CASE("vector slice rejects an unset data format")
+    {
+        ::CData data{0xau};
+        CHECK_THROWS_WITH_AS((::verilator_utils::vector_slice<::CData>{data, 4zu, ::verilator_utils::data_format::format{}}),
+                             ::doctest::Contains{"必须设置数据类型"},
+                             ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("vector slice reports every non enum value as valid")
+    {
+        ::CData data{0b1010'0110u};
+        const ::verilator_utils::vector_slice<::CData> hex_slice{data, 7, 0};
+        const ::verilator_utils::vector_slice<::CData> unsigned_slice{data, 8, ::verilator_utils::data_format::dec_unsigned};
+
+        // 非枚举格式的取值总是有效的
+        CHECK(hex_slice.is_valid());
+        CHECK(unsigned_slice.is_valid());
+    }
+
+    TEST_CASE("slices and unpacked arrays can be stringified by the test framework")
+    {
+        ::CData data{0xabu};
+        const ::verilator_utils::bit_slice<::CData> bit{data, 3};
+        const ::verilator_utils::vector_slice<::CData> range{data, 7, 0};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> wrapped{0x2au, 8, ::verilator_utils::data_format::bin};
+        ::VlUnpacked<::CData, 3> array_data{0x1u, 0x2u, 0x3u};
+        const ::verilator_utils::unpacked_array<::CData, 3> array{array_data, 8};
+
+        CHECK_EQ(::std::string{::doctest::StringMaker<::std::remove_cvref_t<decltype(bit)>>::convert(bit).c_str()},
+                 bit.to_string());
+        CHECK_EQ(::std::string{::doctest::StringMaker<::std::remove_cvref_t<decltype(range)>>::convert(range).c_str()},
+                 range.to_string());
+        CHECK_EQ(::std::string{::doctest::StringMaker<::std::remove_cvref_t<decltype(wrapped)>>::convert(wrapped).c_str()},
+                 wrapped.to_string());
+        CHECK_EQ(::std::string{::doctest::StringMaker<::std::remove_cvref_t<decltype(array)>>::convert(array).c_str()},
+                 array.to_string());
+
+        // doctest的断言上下文同样通过该特化输出切片内容
+        CAPTURE(bit);
+        CAPTURE(range);
+        CAPTURE(wrapped);
+        CAPTURE(array);
+    }
 }

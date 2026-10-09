@@ -24,13 +24,6 @@ namespace
     using namespace ::std::string_view_literals;
 }
 
-namespace verilator_utils::trace
-{
-    using ::cpptrace::generate_trace;
-    using ::cpptrace::stacktrace;
-    using ::cpptrace::stacktrace_frame;
-}  // namespace verilator_utils::trace
-
 namespace verilator_utils::detail
 {
     /**
@@ -51,6 +44,13 @@ namespace verilator_utils::detail
     constinit bool ::verilator_utils::detail::assertion_color_config_t::no_colors{};
 
     /**
+     * @brief 判断stderr是否为TTY
+     *
+     * @return stderr是否为TTY
+     */
+    export [[nodiscard]] bool is_stderr_tty() noexcept { return ::cpptrace::isatty(::cpptrace::stderr_fileno); }
+
+    /**
      * @brief 判断断言消息是否使用彩色输出
      *
      * 优先遵循no_colors和force_colors配置；
@@ -62,7 +62,7 @@ namespace verilator_utils::detail
         using config_t = ::verilator_utils::detail::assertion_color_config_t;
         if(config_t::no_colors) { return false; }
         if(config_t::force_colors) { return true; }
-        return ::cpptrace::isatty(::cpptrace::stderr_fileno);
+        return ::verilator_utils::detail::is_stderr_tty();
     }
 
     /// ANSI颜色转义序列
@@ -86,11 +86,11 @@ namespace verilator_utils::detail
      * 生成调用栈并过滤掉断言机制自身的栈帧，使调用栈从断言调用处开始
      * @return 过滤后的调用栈
      */
-    ::verilator_utils::trace::stacktrace generate_assertion_trace() noexcept
+    ::cpptrace::stacktrace generate_assertion_trace() noexcept
     {
         try
         {
-            auto trace{::verilator_utils::trace::generate_trace()};
+            auto trace{::cpptrace::generate_trace()};
             constexpr static ::std::array internal_names{
                 "cpptrace::"sv,
                 "verilator_utils::assertion_error"sv,
@@ -98,17 +98,16 @@ namespace verilator_utils::detail
                 "verilator_utils::detail::generate_assertion_trace"sv,
                 "verilator_utils::detail::check"sv,
             };
-            const auto erase_begin{
-                ::std::ranges::find_if(trace.frames, [](const ::verilator_utils::trace::stacktrace_frame& frame) {
-                    return ::std::ranges::none_of(internal_names,
-                                                  [&frame](::std::string_view name) { return frame.symbol.contains(name); });
-                })};
+            const auto erase_begin{::std::ranges::find_if(trace.frames, [](const ::cpptrace::stacktrace_frame& frame) {
+                return ::std::ranges::none_of(internal_names,
+                                              [&frame](::std::string_view name) { return frame.symbol.contains(name); });
+            })};
             trace.frames.erase(trace.frames.begin(), erase_begin);
             return trace;
         }
         catch(...)
         {
-            return ::verilator_utils::trace::stacktrace{};
+            return ::cpptrace::stacktrace{};
         }
     }
 }  // namespace verilator_utils::detail
@@ -165,7 +164,7 @@ export namespace verilator_utils
         /// 断言失败的源代码位置
         ::std::source_location location_;
         /// 断言失败时的调用栈
-        ::verilator_utils::trace::stacktrace trace_;
+        ::cpptrace::stacktrace trace_;
         /// 根据失败消息、源代码位置和调用栈组合成的完整错误信息
         mutable ::std::string composed_message{};
 
@@ -241,13 +240,7 @@ export namespace verilator_utils
          *
          * @return 调用栈
          */
-        [[nodiscard]] const ::verilator_utils::trace::stacktrace& trace() const noexcept { return trace_; }
-
-        /**
-         * @brief 将调用栈打印到标准错误输出
-         *
-         */
-        void print_trace() const { trace_.print(); }
+        [[nodiscard]] const ::cpptrace::stacktrace& trace() const noexcept { return trace_; }
 
         /**
          * @brief 获取异常描述字符串，包含断言失败消息和源代码位置

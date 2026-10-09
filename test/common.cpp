@@ -177,7 +177,7 @@ export {
             context.timeprecision(time_precision);
         }
 
-        [[nodiscard]] ::verilator_utils::eval_scheduler make_scheduler() noexcept
-        { return ::verilator_utils::eval_scheduler{dut}; }
+        // 调度器构造时会校验时间单位与时间精度，越界配置会抛出断言失败异常，因此这里不能标记noexcept
+        [[nodiscard]] ::verilator_utils::eval_scheduler make_scheduler() { return ::verilator_utils::eval_scheduler{dut}; }
     };
 }

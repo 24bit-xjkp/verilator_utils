@@ -357,4 +357,23 @@ TEST_SUITE("verilator_utils/utils")
                              ::doctest::Contains{"有符号数宽度至少为2"},
                              ::verilator_utils::assertion_error);
     }
+
+    TEST_CASE("fixed point formats report their total width")
+    {
+        using unsigned_t = ::verilator_utils::data_format::unsigned_fixed_point_t;
+        using signed_t = ::verilator_utils::data_format::signed_fixed_point_t;
+        using sign_mag_t = ::verilator_utils::data_format::sign_mag_fixed_point_t;
+
+        const auto unsigned_format{::verilator_utils::data_format::unsigned_fixed_point(3, 5)};
+        const auto signed_format{::verilator_utils::data_format::signed_fixed_point(3, 5)};
+        const auto sign_mag_format{::verilator_utils::data_format::sign_mag_fixed_point(3, 5)};
+
+        REQUIRE(::std::holds_alternative<unsigned_t>(unsigned_format));
+        REQUIRE(::std::holds_alternative<signed_t>(signed_format));
+        REQUIRE(::std::holds_alternative<sign_mag_t>(sign_mag_format));
+        // 无符号定点数的宽度为整数位数与小数位数之和，另有符号格式还包含符号位
+        CHECK_EQ(::std::get<unsigned_t>(unsigned_format).width(), 8zu);
+        CHECK_EQ(::std::get<signed_t>(signed_format).width(), 9zu);
+        CHECK_EQ(::std::get<sign_mag_t>(sign_mag_format).width(), 9zu);
+    }
 }
