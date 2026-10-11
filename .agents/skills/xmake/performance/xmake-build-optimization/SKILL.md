@@ -19,9 +19,7 @@ XMAKE_PROFILE=trace        xmake f -c   # trace every subprocess in configure
 time xmake --rebuild                    # total wall-clock
 ```
 
-Profile before each change — "speedups" often turn out to be in the cache-hit, not the fix.
-
-See `xmake-troubleshooting` for the full profiler reference.
+Profile before each change — "speedups" often turn out to be in the cache-hit, not the fix. The full profiler reference is in the official xmake documentation.
 
 ## 1. Parallelism
 
@@ -173,7 +171,7 @@ end
 
 Scale beyond one machine:
 
-- **Distributed compile** (`--distcc`) — farm out compile jobs to a cluster. See `xmake-distributed-compilation`.
+- **Distributed compile** (`--distcc`) — farm out compile jobs to a cluster.
 - **Remote cache** (`--ccache`) — share compiled objects across a team/CI. See `xmake-build-cache`.
 
 Both compose with the local cache and each other. Typical team setup:
@@ -216,7 +214,4 @@ The description-domain parse time and tool detection can dominate tiny projects.
 ## When to branch out
 
 - Cache details (local / remote) → `xmake-build-cache`
-- Multi-machine job pooling → `xmake-distributed-compilation`
-- Compiling on a remote box → `xmake-remote-compilation`
-- Slowness is actually a hang → `xmake-troubleshooting`
 - `xmake.lua` parsing is slow → `xmake-style`

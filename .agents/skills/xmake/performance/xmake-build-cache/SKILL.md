@@ -143,7 +143,7 @@ In the build log:
 
 - `cache compiling` — served from cache (local or remote).
 - `compiling` (plain) — cache miss, actually compiled.
-- `distcc compiling` — delegated to a distcc server (see `xmake-distributed-compilation`).
+- `distcc compiling` — delegated to a distcc server.
 
 ## Pitfalls
 
@@ -155,6 +155,4 @@ In the build log:
 
 ## When to branch out
 
-- Distributing the actual compile jobs across machines (not just caching) → `xmake-distributed-compilation`
-- Remotely compiling a project on a single server (no distribution) → `xmake-remote-compilation`
 - Every other build-speed knob (parallelism, unity build, PCH, etc.) → `xmake-build-optimization`

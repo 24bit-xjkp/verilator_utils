@@ -206,7 +206,7 @@ All of these are pre-imported in the script domain — no `import(...)` needed:
 - **`try ... catch ... finally`** — structured error handling, xmake's Lua-level equivalent.
 - **`winos`** / **`linuxos`** / **`macos`** — host-specific helpers.
 
-Full reference lives under `xmake/core/base/` and `xmake/core/sandbox/modules/` in the xmake source.
+Full reference lives in the official xmake documentation (built-in script modules / APIs); search it first, and fall back to reading xmake's source tree only when this skill and the docs do not cover the API.
 
 ## 7. Shell-outs: pick the right `os.*`
 
@@ -376,7 +376,7 @@ target("app")
 | Want to wrap a third-party Lua C module (cjson, etc.) | **shared** |
 | Codegen at configure time | Either — binary is simpler |
 
-Reference project in the xmake source: [`tests/projects/other/native_module_cjson`](https://github.com/xmake-io/xmake/tree/master/tests/projects/other/native_module_cjson).
+Reference example project (not an API reference): [`tests/projects/other/native_module_cjson`](https://github.com/xmake-io/xmake/tree/master/tests/projects/other/native_module_cjson).
 
 ## 10. Common pitfalls
 
@@ -393,4 +393,3 @@ Reference project in the xmake source: [`tests/projects/other/native_module_cjso
 - Where scripts live vs. description-domain rules → `xmake-style`
 - Writing a CLI subcommand (task/plugin) → `xmake-plugins`
 - Writing a rule (lifecycle hook tied to a file extension) → `xmake-rules`
-- Debugging script behavior (`-vD`, tracebacks, EmmyLua) → `xmake-troubleshooting`, `xmake-dev`

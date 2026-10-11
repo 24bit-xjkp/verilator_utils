@@ -42,7 +42,7 @@
 
 ## 构建
 
-依赖：xmake、支持 C++20 模块与 C++26 的编译器、Verilator，以及 FST 波形支持所需的 zlib / lz4（可选）。
+依赖：xmake、支持 C++20 模块与 C++26 的编译器（推荐Clang）、Verilator，以及 FST 波形支持所需的 zlib / lz4（可选）。
 
 运行测试还需要 Python 环境（生成测试源文件与可视化）。Python 环境由 [uv](https://docs.astral.sh/uv/) 管理：
 
@@ -102,15 +102,17 @@ xmake test -g "tysan_unit_test*"        # 两组测试都会运行
 ```bash
 xmake f --fuzz_time=120 --fuzz_parallel=2       # 配置模糊测试的最大运行时间和并行度
 xmake test -g fuzz_test                         # 模糊测试
-xmake update-corpus                             # 更新语料库
+xmake update-corpus                             # 精简语料并更新语料库
 ```
 
 - 每个 `test/fuzz/*.cpp` 对应一个 `fuzz_test_<文件名>` 目标，公共支持代码位于 `fuzz_test_support` 目标的 `fuzz_support` 模块
+- `xmake update-corpus` 合并各目标的 `corpus/`、`seed/` 与 `artifacts/`，精简后重新打包语料库
 - 精简语料以 `test/fuzz/corpus/<文件名>.tar.gz` 随仓库提供，与源码分开放置
-- 目标目录（构建目录下的 `fuzz_test_<文件名>/`）中有三个子目录：
+- 目标目录（构建目录下的 `fuzz_test_<文件名>/`）中有四个子目录：
   - `corpus/`：运行时的可写语料，模糊测试发现的新输入累积在此
   - `seed/`：只读的种子语料，由 `xmake test` 首次运行时从打包的语料库中解压
   - `artifacts/`：触发崩溃的输入
+  - `merged/`：`xmake update-corpus` 的精简结果，也是打包进语料库的内容
 - `xmake clean fuzz_test_<文件名>` 会直接删除该目标的目标目录，一次清掉二进制、工作语料、种子语料与崩溃输入
 
 ## 许可证

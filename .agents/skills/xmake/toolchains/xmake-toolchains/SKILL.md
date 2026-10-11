@@ -21,7 +21,7 @@ Notable ones beyond the usual gcc/clang/msvc:
 
 | Toolchain | For |
 | --- | --- |
-| `zigcc` | C/C++ through `zig cc`, a cross compiler with no sysroot — @see the `xmake-zigcc` skill |
+| `zigcc` | C/C++ through `zig cc`, a cross compiler with no sysroot |
 | `zig` | Zig code |
 | `muslcc` | musl-based cross toolchains, downloaded on demand |
 | `emcc` / `wasi` | WebAssembly (emscripten / WASI) |
@@ -105,8 +105,7 @@ xmake f -p linux -a arm64 --toolchain=zigcc
 xmake f -p freebsd --cross=x86_64-freebsd --toolchain=zigcc
 ```
 
-zig cc carries its own libc for every target, so there is nothing to install. @see the
-`xmake-zigcc` skill for the tuple mapping and its gotchas.
+zig cc carries its own libc for every target, so there is nothing to install. See the official xmake documentation for the target tuple mapping.
 
 ## Defining a custom toolchain
 

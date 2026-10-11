@@ -1,6 +1,6 @@
 ---
 name: xmake-private-packages
-description: Use when distributing C/C++ libraries *inside a company or team* — packaging a library with `xmake package`, creating a private package repository (local directory or git), writing package recipes for source/binary distribution, and consuming them via `add_repositories` + `add_requires`. For shipping end-user installers (zip/nsis/deb), see `xmake-xpack`.
+description: Use when distributing C/C++ libraries *inside a company or team* — packaging a library with `xmake package`, creating a private package repository (local directory or git), writing package recipes for source/binary distribution, and consuming them via `add_repositories` + `add_requires`.
 ---
 
 # Private Packages & Repository Distribution
@@ -268,7 +268,7 @@ See `xmake-cxx-modules` for the build side.
 
 ## When to branch out
 
-- Packaging end-user installers (zip/nsis/deb/rpm) → `xmake-xpack`
+- Packaging end-user installers (zip/nsis/deb/rpm) → `xmake pack`, see `xmake-commands`
 - Testing package recipes (`xmake l scripts/test.lua`) → `xmake-repo-testing`
 - C++20 modules build-side configuration → `xmake-cxx-modules`
 - Consuming packages (add_requires / add_packages) → `xmake-packages`

@@ -208,8 +208,6 @@ runjobs("compile", jobs, {
 })
 ```
 
-See `xmake-distributed-compilation` for the full distcc setup.
-
 ## 8. Progress reporting
 
 Inside a job function, `opt.progress` gives:
@@ -282,5 +280,4 @@ runjobs("pipeline", jobs, {comax = 8})
 
 - Writing rules / `on_build_files` / `set_extensions` → `xmake-rules`
 - Parallelism at the *whole build* level (`-jN`, distcc, cache) → `xmake-build-optimization`
-- Distributed compile service → `xmake-distributed-compilation`
 - The `core.base.graph` DAG module (lower-level than jobgraph) → `xmake-graph-module`

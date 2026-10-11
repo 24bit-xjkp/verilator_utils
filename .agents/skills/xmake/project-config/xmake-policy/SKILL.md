@@ -145,13 +145,13 @@ set_policy("build.c++.dynamic_debugging", true)             -- enable dynamic de
 
 ## 3. Finding every policy
 
-The full list lives in xmake's source:
+The full list can be dumped from the installed xmake:
 
 ```bash
 xmake l core.base.policy.policies
 ```
 
-Or browse `xmake-docs`: **API → description → Built-in Policies** has the canonical list with version badges (`v2.3.4+`, etc.). Use the badge to check minimum xmake version for a given policy.
+Or search the official xmake documentation: **API → description → Built-in Policies** has the canonical list with version badges (`v2.3.4+`, etc.). Use the badge to check minimum xmake version for a given policy.
 
 ## 4. Setting via command line
 

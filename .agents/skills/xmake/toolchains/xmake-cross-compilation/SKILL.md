@@ -324,7 +324,7 @@ Available `set_toolset` keys: `cc`, `cxx`, `ld`, `sh`, `ar`, `ex`, `strip`, `ran
   xmake build -v <target>
   ```
 
-- If a tool-detection probe hangs, set `XMAKE_PROFILE=stuck xmake f -c` to see which subprocess it's stuck on (see `xmake-troubleshooting`).
+- If a tool-detection probe hangs, set `XMAKE_PROFILE=stuck xmake f -c` to see which subprocess it's stuck on.
 
 ## 7. Common pitfalls
 
@@ -340,4 +340,3 @@ Available `set_toolset` keys: `cc`, `cxx`, `ld`, `sh`, `ar`, `ex`, `strip`, `ran
 
 - Host-only compiler switching (gcc ↔ clang on your laptop) → `xmake-toolchains`
 - Building packages cross-compiled for the target → `xmake-packages`, `xmake-repo-testing`
-- Hang/stuck during tool detection → `xmake-troubleshooting`

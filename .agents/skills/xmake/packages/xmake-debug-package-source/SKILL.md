@@ -192,7 +192,7 @@ xmake service --connect
 xmake l scripts/test.lua -vD --shallow --remote -d /tmp/zlib-1.2.11 zlib
 ```
 
-The `-d` directory is synced to the server, the build happens there, and output streams back to you. See `xmake-remote-compilation`.
+The `-d` directory is synced to the server, the build happens there, and output streams back to you.
 
 ## 8. Common scenarios
 
@@ -255,5 +255,3 @@ end)
 - Writing / submitting a new recipe → `xmake-repo-testing`
 - Distributing packages privately → `xmake-private-packages`
 - Using packages from a consuming project → `xmake-packages`
-- Remote service setup → `xmake-remote-compilation`
-- General xmake troubleshooting (non-package) → `xmake-troubleshooting`

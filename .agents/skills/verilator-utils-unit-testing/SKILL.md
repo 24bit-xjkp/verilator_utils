@@ -1,6 +1,6 @@
 ---
 name: verilator-utils-unit-testing
-description: 'Use when: writing, refactoring, or reviewing unit tests for the verilator_utils C++ module project. Covers the unit_test common module, doctest assertion style, scheduler/coroutine and RTL integration test patterns, Verilator data edge cases, and the required pre-delivery static-analysis and formatting commands.'
+description: 'Use when: writing, refactoring, or reviewing unit tests for the verilator_utils C++ module project. Covers the unit_test common module, doctest assertion style, scheduler/coroutine and RTL integration test patterns, Verilator data edge cases, running test targets through the build entry point, and the required pre-delivery static-analysis and formatting commands.'
 argument-hint: 'Describe the component or behavior to test'
 ---
 
@@ -241,8 +241,17 @@ CHECK_THROWS_WITH_AS_MESSAGE((::verilator_utils::approx<::std::int64_t>{-1z, 0.5
 2. 在最小相关的 `test/<basename>.cpp` 中新增或修改测试；RTL 测试改对应的 `test/rtl_<name>.cpp`。
 3. 使用结果显而易见的确定性取值；边界用例紧邻它所校验的正常行为。
 4. 自问"哪一行实现缺陷会让这个测试失败"——如果答不上来，测试就是空洞的。
-5. 按下一节的两步顺序运行测试（目标名、过滤、详细输出等由 xmake skills 说明），只修与被改动测试或目标行为相关的失败。
+5. 按后文的运行方式与顺序运行测试（目标名、过滤、详细输出等由 xmake skills 说明），只修与被改动测试或目标行为相关的失败。
 6. 若因修改 C++ 模块导致 BMI/对象文件陈旧而构建失败，按 xmake skills 的说明重建；不要为了让测试通过而改动实现语义。
+
+## 运行测试的方式：走构建入口，不直接执行产物
+
+运行测试一律使用构建系统的运行入口（本项目为 `xmake test`），**不要**直接执行构建目录下的测试产物（`build/` 下的 `unit_test`、`unit_test_rtl_<name>` 等路径）：
+
+- 用例的运行参数与环境由 `test/xmake.lua` 的 `add_tests` 注册：框架单元测试带 doctest 套件过滤 `-ts=verilator_utils/<basename>` 与 `LLVM_PROFILE_FILE`，RTL 测试带 `+verilator+rand+reset+2`。直接执行产物会丢掉这些声明，跑出来的不是项目约定的那次运行，结果不能作为验证证据。
+- 入口同时负责构建目标、准备包库路径与 rpath、按需生成 RTL 源文件与激励数据，因此它也是运行环境的唯一出处。
+- 需要看单个用例的详细输出时用 `xmake test -v`（它按 `add_tests` 的声明配置好运行参数与环境）。确需手工驱动某个用例时用 `xmake run <target> <参数>`，并显式补上该用例在 `add_tests` 中声明的参数——`xmake run` 只应用目标级声明，不应用用例级声明。目标名与选项写法见 `xmake-commands`、`xmake-tests` skill。
+- 同类场景同理：只要工具链提供了运行/测试入口，就用入口而不是产物路径；确实需要裸执行时在报告中写明原因与命令。
 
 ## 运行测试的顺序：先常规组，后 tysan 组
 
@@ -273,6 +282,8 @@ tysan 组不是总存在，`xmake f --use_type_sanitizer=y` 且工具链支持 `
 ```bash
 xmake show -l targets | grep tysan
 ```
+
+`xmake show` 的完整用法见 `xmake-commands` / `xmake-introspection` skill；查询目标、依赖与配置项优先用这些入口，而不是手工通读 `xmake.lua` 推断。
 
 - 常规组通过、tysan 组失败时，失败**确实**可能是 tysan 独有的真问题（类型混淆、违反严格别名），先确认失败原因再决定是改实现还是改测试，不要直接跳过 tysan 组。
 - 交付说明中要写明这次实际跑了哪一组（或两组），不要把只跑了常规组说成完整回归。

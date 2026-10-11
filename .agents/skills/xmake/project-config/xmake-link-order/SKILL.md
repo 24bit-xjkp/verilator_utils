@@ -170,4 +170,3 @@ Classic symptoms → fix:
 - Target layout / `add_links` / `add_syslinks` basics → `xmake-targets`
 - Cross-compile specific linker flags (`--sdk`/`--cross`) → `xmake-cross-compilation`
 - Rules that customize the link step → `xmake-rules`
-- Debug "why is this symbol missing" with actual link command → `xmake-troubleshooting`

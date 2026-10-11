@@ -139,7 +139,7 @@ xmake g --theme=default
 xmake g -c
 ```
 
-See `xmake-theme` for the full theme list.
+See the official xmake documentation for the full theme list.
 
 ## Choosing `cprint` / `print` / `vprint`
 
@@ -166,6 +166,4 @@ Prefer `cprint` for user-facing info, `vprint` for debug traces that should hide
 
 ## When to branch out
 
-- Picking a global theme / fixing garbled terminals → `xmake-theme`
-- All env vars incl. `XMAKE_COLORTERM` → `xmake-env-vars`
 - Where scripts can call `cprint` → `xmake-scripting`

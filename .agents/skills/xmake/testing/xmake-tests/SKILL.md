@@ -30,7 +30,7 @@ xmake test -jN                     # parallel
 
 Test names are positional arguments, so they must come last: write `xmake test -v app_test/default`, never `xmake test app_test/default -v` — trailing arguments after the test names are forwarded to the test binary instead.
 
-To run a target's binary directly (one case with framework-specific flags, a debugger, a manual reproduction), use `xmake run <target> [arguments]` rather than the built binary path: it builds the target and applies its run environment (`runenvs`, package library paths). `xmake test` swallows the test output, so `xmake run` and `xmake test -v tests` are the way to see a failing case in detail.
+Do **not** launch the built binary path. `xmake test` is the test entry point: it builds the target and applies each case's `add_tests` declarations (`runargs`, `runenvs`, `rundir`). `xmake run <target> [arguments]` is the *run* entry point and applies only **target-level** `runargs`/`runenvs`, package library paths and rpath — it does not know a case's `add_tests` options, so driving one case by hand means passing that case's flags explicitly (e.g. `xmake run app_test --quick`). Launching the artifact directly, or running it through `xmake run` without the case's flags, produces a run the project never defined. Fall back to the raw binary only when no entry point can express what you need (attaching an external debugger, reproducing a bare run) — then record why and the exact command. `xmake test` swallows the test output, so `xmake run` and `xmake test -v tests` are the way to see a failing case in detail.
 
 Options per case:
 

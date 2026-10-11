@@ -43,11 +43,14 @@ xmake -w              # treat warnings
 
 ```bash
 xmake run                  # run default runnable target
-xmake run app arg1 arg2    # pass arguments
+xmake run app arg1 arg2    # pass arguments, overwrite the default arguments passed py `set_runargs`
+xmake run app              # run app with default arguments passed py `set_runargs`
 xmake run -d app           # run under debugger (gdb/lldb/cdb)
 ```
 
-Options come before the target, arguments after it. `xmake run` builds the target and applies its run environment (`runenvs`, package library paths such as `LD_LIBRARY_PATH`), so prefer it over launching the built binary path by hand.
+Options come before the target, arguments after it.
+
+Do **not** execute the built artifact from the build directory by hand. `xmake run` is the run entry point of the build system: it builds the target first, then applies what the target declares — `runargs`, `runenvs`, package library paths (`LD_LIBRARY_PATH`, `PATH`) and rpath — and it runs with the target directory as the working directory, where generated data lives. A hand-launched binary silently drops all of that, so it either fails to find its libraries/data or runs in an environment the project never intended. Note that `runargs`/`runenvs` declared per test case with `add_tests` are applied by `xmake test`, not by `xmake run` (see `xmake-tests`). Fall back to the raw binary only when the entry point cannot express what you need.
 
 ## Clean
 
