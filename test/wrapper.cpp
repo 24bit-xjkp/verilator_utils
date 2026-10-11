@@ -1359,6 +1359,116 @@ TEST_SUITE("verilator_utils/wrapper")
                              ::verilator_utils::assertion_error);
     }
 
+    TEST_CASE("vector slice rejects width exceeding storage capacity")
+    {
+        ::CData cdata{};
+        ::IData idata{};
+        ::QData qdata{};
+
+        // 按宽度构造的切片同样不能超过 value_type 的存储位宽
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::CData>{cdata, 9}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::IData>{idata, 33}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::QData>{qdata, 65}), ::verilator_utils::assertion_error);
+
+        ::VlWide<1> one_word{};
+        ::VlWide<3> three_words{};
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::VlWide<1>>{one_word, 33}), ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::VlWide<3>>{three_words, 97}), ::verilator_utils::assertion_error);
+
+        // 边界值：宽度恰好等于存储位宽仍然合法
+        CHECK_EQ(::verilator_utils::vector_slice<::CData>{cdata, 8}.width(), 8u);
+        CHECK_EQ(::verilator_utils::vector_slice<::VlWide<3>>{three_words, 96}.width(), 96u);
+
+        // 打包格式构造路径同样执行宽度检查
+        CHECK_THROWS_AS((::verilator_utils::vector_slice<::CData>{
+                            cdata,
+                            {9, ::verilator_utils::data_format::hex}
+        }),
+                        ::verilator_utils::assertion_error);
+
+        // 错误消息携带切片宽度和上限
+        CHECK_THROWS_WITH_AS((::verilator_utils::vector_slice{idata, 33}),
+                             ::doctest::Contains{"切片宽度33超出上限32"},
+                             ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("format wrapper rejects signed values wider than the data width")
+    {
+        // 正数需要额外一位符号位：90在7位二进制补码中会读回-38
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<::std::int64_t>{90, 7, ::verilator_utils::data_format::dec_signed}),
+                        ::verilator_utils::assertion_error);
+        // 负数的幅值位宽不足以表示该值：-3在2位二进制补码中会读回1
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<::std::int64_t>{-3, 2, ::verilator_utils::data_format::dec_signed}),
+                        ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<::std::int64_t>{-5, 3, ::verilator_utils::data_format::dec_signed}),
+                        ::verilator_utils::assertion_error);
+        // 恰好需要的位数仍然合法，且打包表示可以无损还原
+        const ::verilator_utils::format_wrapper<::std::int64_t> positive{90, 8, ::verilator_utils::data_format::dec_signed};
+        CHECK_EQ(positive.to_verilator(), 90u);
+        CHECK_EQ(::verilator_utils::data_format::dec_signed_t::to_underlying(positive.to_verilator(), 8), 90);
+        const ::verilator_utils::format_wrapper<::std::int64_t> negative{-4, 3, ::verilator_utils::data_format::dec_signed};
+        CHECK_EQ(negative.to_verilator(), 0b100u);
+        CHECK_EQ(::verilator_utils::data_format::dec_signed_t::to_underlying(negative.to_verilator(), 3), -4);
+        // 最小值需要全部64位
+        const ::verilator_utils::format_wrapper<::std::int64_t> minimum{::std::numeric_limits<::std::int64_t>::min(),
+                                                                        64,
+                                                                        ::verilator_utils::data_format::dec_signed};
+        CHECK_EQ(minimum.to_verilator(), 0x8000'0000'0000'0000u);
+
+        // 错误消息携带数据位宽与数据宽度
+        CHECK_THROWS_WITH_AS(
+            (::verilator_utils::format_wrapper<::std::int64_t>{90, 7, ::verilator_utils::data_format::dec_signed}),
+            ::doctest::Contains{"数据宽度8过大，不能超过7"},
+            ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("fixed point formats require the data width to match the format width")
+    {
+        // 定点数的整数位与小数位决定定标：数据宽度与格式宽度不一致时必须拒绝，
+        // 否则格式宽度（而非数据宽度）会进入转换，宽度超过64位时产生未定义行为
+        CHECK_THROWS_WITH_AS(
+            (::verilator_utils::format_wrapper<double>{1.0, 8, ::verilator_utils::data_format::unsigned_fixed_point(2, 2)}),
+            ::doctest::Contains{"数据宽度8与格式宽度4不同"},
+            ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(
+            (::verilator_utils::format_wrapper<double>{-1.0, 5, ::verilator_utils::data_format::signed_fixed_point(60, 60)}),
+            ::verilator_utils::assertion_error);
+
+        ::CData data{0b0110u};
+        CHECK_THROWS_AS(
+            (::verilator_utils::vector_slice<::CData>{data, 7, ::verilator_utils::data_format::sign_mag_fixed_point(2, 1)}),
+            ::verilator_utils::assertion_error);
+
+        // 宽度与格式一致时仍然合法
+        const ::verilator_utils::format_wrapper<double> matched{1.5,
+                                                                4,
+                                                                ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
+        CHECK_EQ(matched.to_verilator(), 0b0110u);
+    }
+
+    TEST_CASE("fixed point formats reject values that cannot be stored exactly")
+    {
+        // 定点数转换对超范围数据使用饱和转换，由往返检查拒绝，不产生未定义行为
+        CHECK_THROWS_AS(
+            (::verilator_utils::format_wrapper<double>{1e300, 5, ::verilator_utils::data_format::unsigned_fixed_point(1, 4)}),
+            ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(
+            (::verilator_utils::format_wrapper<double>{1e300, 5, ::verilator_utils::data_format::signed_fixed_point(1, 3)}),
+            ::verilator_utils::assertion_error);
+        CHECK_THROWS_AS(
+            (::verilator_utils::format_wrapper<double>{1e300, 5, ::verilator_utils::data_format::sign_mag_fixed_point(1, 3)}),
+            ::verilator_utils::assertion_error);
+        // 负数不能用无符号定点数保存
+        CHECK_THROWS_AS(
+            (::verilator_utils::format_wrapper<double>{-1.5, 5, ::verilator_utils::data_format::unsigned_fixed_point(1, 4)}),
+            ::verilator_utils::assertion_error);
+        // 非数不能保存
+        CHECK_THROWS_AS((::verilator_utils::format_wrapper<double>{::std::numeric_limits<double>::quiet_NaN(),
+                                                                   5,
+                                                                   ::verilator_utils::data_format::unsigned_fixed_point(1, 4)}),
+                        ::verilator_utils::assertion_error);
+    }
+
     TEST_CASE("hex format uses the packed representation without conversion")
     {
         // 十六进制格式的打包表示就是std::uint64_t本身，转换应当是无操作的

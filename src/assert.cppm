@@ -30,18 +30,21 @@ namespace verilator_utils::detail
      * @brief 断言消息的颜色配置
      *
      * 与doctest框架的--force-colors和--no-colors命令行选项相对应，
-     * 由main函数解析doctest命令行参数后通过set_assertion_color_config配置
+     * 由main函数解析doctest命令行参数后通过set_assertion_config配置
      */
-    struct assertion_color_config_t
+    struct assertion_config_t
     {
         /// 强制使用彩色输出
         static bool force_colors;
         /// 强制不使用彩色输出
         static bool no_colors;
+        /// 在断言失败时进行栈回溯
+        static bool stacktrace;
     };
 
-    constinit bool ::verilator_utils::detail::assertion_color_config_t::force_colors{};
-    constinit bool ::verilator_utils::detail::assertion_color_config_t::no_colors{};
+    constinit bool ::verilator_utils::detail::assertion_config_t::force_colors{};
+    constinit bool ::verilator_utils::detail::assertion_config_t::no_colors{};
+    constinit bool ::verilator_utils::detail::assertion_config_t::stacktrace{true};
 
     /**
      * @brief 判断stderr是否为TTY
@@ -59,7 +62,7 @@ namespace verilator_utils::detail
      */
     [[nodiscard]] bool should_colorize_assertion_message() noexcept
     {
-        using config_t = ::verilator_utils::detail::assertion_color_config_t;
+        using config_t = ::verilator_utils::detail::assertion_config_t;
         if(config_t::no_colors) { return false; }
         if(config_t::force_colors) { return true; }
         return ::verilator_utils::detail::is_stderr_tty();
@@ -88,65 +91,72 @@ namespace verilator_utils::detail
      */
     ::cpptrace::stacktrace generate_assertion_trace() noexcept
     {
-        try
+        if(::verilator_utils::detail::assertion_config_t::stacktrace)
         {
-            auto trace{::cpptrace::generate_trace()};
-            constexpr static ::std::array internal_names{
-                "cpptrace::"sv,
-                "verilator_utils::assertion_error"sv,
-                "verilator_utils::detail::assert_fail"sv,
-                "verilator_utils::detail::generate_assertion_trace"sv,
-                "verilator_utils::detail::check"sv,
-            };
-            const auto erase_begin{::std::ranges::find_if(trace.frames, [](const ::cpptrace::stacktrace_frame& frame) {
-                return ::std::ranges::none_of(internal_names,
-                                              [&frame](::std::string_view name) { return frame.symbol.contains(name); });
-            })};
-            trace.frames.erase(trace.frames.begin(), erase_begin);
-            return trace;
+            try
+            {
+                auto trace{::cpptrace::generate_trace()};
+                constexpr static ::std::array internal_names{
+                    "cpptrace::"sv,
+                    "verilator_utils::assertion_error"sv,
+                    "verilator_utils::detail::assert_fail"sv,
+                    "verilator_utils::detail::generate_assertion_trace"sv,
+                    "verilator_utils::detail::check"sv,
+                };
+                const auto erase_begin{::std::ranges::find_if(trace.frames, [](const ::cpptrace::stacktrace_frame& frame) {
+                    return ::std::ranges::none_of(internal_names,
+                                                  [&frame](::std::string_view name) { return frame.symbol.contains(name); });
+                })};
+                trace.frames.erase(trace.frames.begin(), erase_begin);
+                return trace;
+            }
+            catch(...)
+            {
+                return ::cpptrace::stacktrace{};
+            }
         }
-        catch(...)
-        {
-            return ::cpptrace::stacktrace{};
-        }
+        return ::cpptrace::stacktrace{};
     }
 }  // namespace verilator_utils::detail
 
 export namespace verilator_utils
 {
     /**
-     * @brief 断言消息的颜色配置
+     * @brief 断言消息设置
      *
      */
-    struct assertion_color_config_t
+    struct assertion_config_t
     {
         /// 强制使用彩色输出
-        bool force_colors;
+        bool force_colors{};
         /// 强制不使用彩色输出
-        bool no_colors;
+        bool no_colors{};
+        /// 在断言失败时进行栈回溯
+        bool stacktrace{true};
     };
 
     /**
-     * @brief 获取断言彩色输出设置
+     * @brief 获取断言设置
      *
-     * @return 彩色输出设置
+     * @return 断言设置
      */
-    ::verilator_utils::assertion_color_config_t assertion_color_config() noexcept
+    ::verilator_utils::assertion_config_t assertion_config() noexcept
     {
-        using config_t = ::verilator_utils::detail::assertion_color_config_t;
-        return {config_t::force_colors, config_t::no_colors};
+        using config_t = ::verilator_utils::detail::assertion_config_t;
+        return {config_t::force_colors, config_t::no_colors, config_t::stacktrace};
     }
 
     /**
-     * @brief 设置断言彩色输出设置
+     * @brief 设置断言设置
      *
-     * @param config 彩色输出设置
+     * @param config 断言设置
      */
-    void set_assertion_color_config(::verilator_utils::assertion_color_config_t config) noexcept
+    void set_assertion_config(::verilator_utils::assertion_config_t config) noexcept
     {
-        using config_t = ::verilator_utils::detail::assertion_color_config_t;
+        using config_t = ::verilator_utils::detail::assertion_config_t;
         config_t::force_colors = config.force_colors;
         config_t::no_colors = config.no_colors;
+        config_t::stacktrace = config.stacktrace;
     }
 
     /**
@@ -173,7 +183,7 @@ export namespace verilator_utils
          *
          * 根据全局颜色配置和标准错误输出是否为控制台自适应用色：
          * 控制台默认使用彩色输出，非控制台默认不使用彩色输出，
-         * 也可通过set_assertion_color_config强制启用或禁用
+         * 也可通过set_assertion_config强制启用或禁用
          * @param message 断言失败消息
          * @param location 源代码位置
          * @param trace 栈回溯信息

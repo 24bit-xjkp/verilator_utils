@@ -1822,7 +1822,7 @@ TEST_SUITE("verilator_utils/scheduler")
     {
         scheduler_fixture fixture{};
         auto scheduler{fixture.make_scheduler()};
-        const auto color_backup{::verilator_utils::assertion_color_config()};
+        const auto color_backup{::verilator_utils::assertion_config()};
         bool caught{};
         ::std::vector<::verilator_utils::coroutine_stacktrace::frame> frames{};
         ::verilator_utils::coroutine_stacktrace trace{};
@@ -1847,7 +1847,7 @@ TEST_SUITE("verilator_utils/scheduler")
             REQUIRE_FALSE(frames.empty());
 
             // 关闭彩色输出：异常消息与栈回溯都不带转义序列
-            ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = true});
+            ::verilator_utils::set_assertion_config({.force_colors = false, .no_colors = true});
             CHECK_EQ(::std::string{exception.what()}, ::std::format("着色测试\n{}", trace));
             CHECK_EQ(
                 ::std::string{::doctest::StringMaker<::verilator_utils::coroutine_stacktrace::frame>::convert(frames[0]).c_str()},
@@ -1856,7 +1856,7 @@ TEST_SUITE("verilator_utils/scheduler")
                      ::std::format("{}", trace));
 
             // 强制彩色输出：doctest的字符串化走着色分支
-            ::verilator_utils::set_assertion_color_config({.force_colors = true, .no_colors = false});
+            ::verilator_utils::set_assertion_config({.force_colors = true, .no_colors = false});
             CHECK_EQ(
                 ::std::string{::doctest::StringMaker<::verilator_utils::coroutine_stacktrace::frame>::convert(frames[0]).c_str()},
                 ::std::format("{:#}", frames[0]));
@@ -1865,6 +1865,6 @@ TEST_SUITE("verilator_utils/scheduler")
         }
 
         CHECK(caught);
-        ::verilator_utils::set_assertion_color_config(color_backup);
+        ::verilator_utils::set_assertion_config(color_backup);
     }
 }

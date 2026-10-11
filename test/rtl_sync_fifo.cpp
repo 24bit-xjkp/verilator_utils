@@ -85,7 +85,7 @@ TEST_SUITE("sync_fifo")
         };
         port_t port{ctx.dut()};
         reference_module ref{port};
-        auto seed{ctx.seed()};
+        const auto seed{ctx.seed()};
         std::mt19937_64 engin{seed};
         std::uniform_int_distribution dist{0zu, 1zu};
 

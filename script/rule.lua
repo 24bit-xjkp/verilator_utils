@@ -24,8 +24,6 @@ end)
 -- 因此只在type_sanitizer目标组中使用本规则。
 rule("enable_type_sanitizer", function ()
     on_load(function (target)
-        -- 复用未插桩的模块BMI会丢掉类型信息，导致type sanitizer无法正常工作
-        -- target:set("policy", "build.c++.modules.reuse", false)
         target:add("cxflags", "-fsanitize=type", { force = true })
         target:add("ldflags", "-fsanitize=type", { force = true })
         target:add("shflags", "-fsanitize=type", { force = true })
@@ -89,14 +87,26 @@ rule("coverage", function ()
             local clang_options = { "-fprofile-instr-generate", "-fcoverage-mapping", "-fcoverage-mcdc" }
             local is_gcc = string.find(get_config("toolchain") or "", "gcc", 1, true) ~= nil
             local options = is_gcc and gcc_options or clang_options
-            target:add("cflags", options)
-            target:add("cxxflags", options)
-            target:add("ldflags", options, {force = true})
-            target:add("shflags", options)
-            target:set("policy", "build.ccache", false)
+            target:add("cxflags", options, { force = true })
+            target:add("ldflags", options, { force = true })
+            target:add("shflags", options, { force = true })
+            target:set("policy", "build.ccache", is_gcc)
             if not is_gcc then
                 target:add("runenvs", "LLVM_PROFILE_FILE", target:name() .. ".profraw")
             end
         end
+    end)
+end)
+
+rule("fuzzer", function ()
+    add_deps("coverage")
+    on_load(function (target)
+        if is_mode("debug") then
+            target:set("optimize", "fast")
+        end
+        target:add("cxflags", "-fsanitize=fuzzer-no-link", { force = true })
+        target:add("ldflags", "-fsanitize=fuzzer-no-link", { force = true })
+        target:add("shflags", "-fsanitize=fuzzer-no-link", { force = true })
+        target:add("syslinks", "clang_rt.fuzzer_no_main")
     end)
 end)

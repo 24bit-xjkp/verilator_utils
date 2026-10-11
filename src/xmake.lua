@@ -2,38 +2,34 @@ set_policy("build.c++.modules", true)
 add_rules("enable_lto")
 
 local function register_target(kind, enable)
-    local suffix, sanitizer_rule, gen_json = get_target_settings(kind)
+    local suffix, rules, gen_json = get_target_settings(kind)
+    local function common_settings()
+        set_group("verilator_utils" .. suffix)
+        set_enabled(enable)
+        set_policy("generator.compile_commands", gen_json)
+        add_rules(rules)
+    end
 
     target("verilator_utils" .. suffix, function ()
         set_kind("$(kind)")
-        add_packages("doctest_module", {components = "core", public = true})
-        add_packages("cpptrace", {public = true})
-        add_files("*.cppm", {public = true, install = true})
-        add_includedirs(".", {public = true})
+        add_packages("doctest_module", { components = "core", public = true })
+        add_packages("cpptrace", { public = true })
+        add_files("*.cppm", { public = true, install = true })
+        add_includedirs(".", { public = true })
         add_headerfiles("verilator_*.hpp")
-        set_group("verilator_utils" .. suffix)
-        add_rules(sanitizer_rule)
-        set_enabled(enable)
-        set_policy("generator.compile_commands", gen_json)
-        if kind == "common" then
-            add_rules("coverage")
-        end
+        common_settings()
     end)
 
     target("verilator_utils_main" .. suffix, function ()
         set_kind("static")
         add_deps("verilator_utils" .. suffix)
         add_files("main.cpp")
-        set_group("verilator_utils" .. suffix)
         set_default(get_config("with_main"))
-        add_rules(sanitizer_rule)
-        set_enabled(enable)
-        set_policy("generator.compile_commands", gen_json)
-        if kind == "common" then
-            add_rules("coverage")
-        end
+        common_settings()
     end)
 end
 
 register_target("common", true)
 register_target("tysan", enable_tysan())
+register_target("coverage", enable_coverage())
+register_target("fuzz", enable_fuzz())

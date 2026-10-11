@@ -1625,7 +1625,7 @@ export namespace verilator_utils
                 if(self.scheduler == nullptr)
                 {
                     self.scheduler = new_scheduler;
-                    self.scheduler->register_suspend_entry(self, &event::do_notify_all);
+                    self.scheduler->register_suspend_entry(self, &event::do_release);
                 }
                 else
                 {
@@ -1648,13 +1648,26 @@ export namespace verilator_utils
             }
         }
 
-        void do_notify_all(this ::verilator_utils::with_suspend_queue& ref) noexcept
+        void do_notify_all() noexcept
         {
-            auto&& self{static_cast<event&>(ref)};  // NOLINT(cppcoreguidelines-pro-type-static-cast-downcast)
-            ::std::ranges::for_each(self.suspend_queue | ::std::views::drop(static_cast<::std::ptrdiff_t>(self.head_index)),
-                                    [scheduler = self.scheduler](const pair_t& pair) { scheduler->register_ready(pair); });
-            self.suspend_queue.clear();
-            self.head_index = 0;
+            ::std::ranges::for_each(suspend_queue | ::std::views::drop(static_cast<::std::ptrdiff_t>(head_index)),
+                                    [scheduler = this->scheduler](const pair_t& pair) { scheduler->register_ready(pair); });
+            suspend_queue.clear();
+            head_index = 0;
+        }
+
+        /**
+         * @brief 调度器析构时回收挂起队列并解除与调度器的绑定
+         *
+         * @param ref 带有挂起队列的同步体
+         */
+        void do_release(this ::verilator_utils::with_suspend_queue& ref) noexcept
+        {
+            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-static-cast-downcast)
+            auto&& self{static_cast<event&>(ref)};
+            self.do_notify_all();
+            // 调度器即将析构，同步体无需再向调度器注销挂起队列
+            self.scheduler = nullptr;
         }
 
     public:
@@ -1674,6 +1687,13 @@ export namespace verilator_utils
                                            "在存在挂起任务时析构同步体是未定义行为"sv);
                 // 对于仿真完成的情况，任务行为有良好的定义，一唤醒就会执行退出流程
                 if(scheduler->is_finish()) { do_notify_all(); }
+            }
+            else
+            {
+                // 调度器先析构时会回收挂起队列并解除绑定，此时同步体上不应再有挂起的任务
+                ::verilator_utils::check{}(::std::nothrow,
+                                           suspend_queue.size() == head_index,
+                                           "在存在挂起任务时析构同步体是未定义行为"sv);
             }
         }
 
@@ -2039,14 +2059,18 @@ export namespace verilator_utils
                 co_return;
             }
             suspend_queue.emplace_back(update);
+            // 同步体的生命周期不长于调度器时，仿真结束后同步体可能已经析构，
+            // 因此先取得调度器（协程运行期间它必然存活）以判断能否访问自身状态
+            const auto& scheduler{co_await ::verilator_utils::scheduler()};
             try
             {
                 co_await event;
             }
             catch(...)
             {
-                // 在抛出异常时清理suspend_queue以避免破坏和event队列的对齐
-                suspend_queue.pop_back();
+                // 在抛出异常时清理suspend_queue以避免破坏和event队列的对齐；
+                // 仿真结束后的等待者只执行退出流程，此时挂起队列的对齐不再有意义
+                if(!scheduler.is_finish()) { suspend_queue.pop_back(); }
                 throw;
             }
         }

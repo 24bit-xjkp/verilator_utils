@@ -4,8 +4,6 @@ module;
 export module verilator_utils:context;
 import :task;
 
-extern "C++" int main(int, const char*[]);
-
 namespace
 {
     using namespace ::std::string_view_literals;
@@ -25,23 +23,16 @@ export namespace verilator_utils
     template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
     struct dut_context;
 
-    extern "C++" namespace detail
+    namespace detail
     {
         /**
          * @brief DUT上下文使用的默认命令行参数
          *
          */
-        struct dut_context_default_args  // NOLINT(misc-use-internal-linkage)
-        {
-        private:
-            template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
-            friend struct ::verilator_utils::dut_context;
-            friend int ::main(int, const char*[]);
+        struct dut_context_default_args
+        { static ::std::span<char*> args; };
 
-            static ::std::span<const char*> args;
-        };
-
-        constinit ::std::span<const char*> verilator_utils::detail::dut_context_default_args::args{};
+        constinit ::std::span<char*> verilator_utils::detail::dut_context_default_args::args{};
     }  // namespace detail
 }  // namespace verilator_utils
 
@@ -100,7 +91,7 @@ export namespace verilator_utils
         /// 命令行参数数量，默认为传递给程序的命令行参数数量，不进行过滤
         ::std::optional<int> argc{};
         /// 命令行参数数组，默认为传递给程序的命令行参数数组，不进行过滤
-        ::std::optional<const char**> argv{};
+        ::std::optional<char**> argv{};
     };
 
     /**

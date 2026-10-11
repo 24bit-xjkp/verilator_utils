@@ -66,6 +66,7 @@ namespace
         const auto suffix_start{dot + fraction_digits + 1zu};
         const auto* const number_end{&speed_str[suffix_start]};
         double value{};
+        // NOLINTNEXTLINE(bugprone-suspicious-stringview-data-usage)
         const auto conversion{::std::from_chars(speed_str.data(), number_end, value)};
         // 只用具名枚举值判断失败：errc{}会被clang-tidy误报为无效的枚举默认初始化
         if(conversion.ec == ::std::errc::invalid_argument || conversion.ec == ::std::errc::result_out_of_range ||

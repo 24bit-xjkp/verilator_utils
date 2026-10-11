@@ -71,9 +71,9 @@ TEST_SUITE("verilator_utils/assert")
 
     TEST_CASE("assertion_error message colorization follows color configuration")
     {
-        const auto backup{::verilator_utils::assertion_color_config()};
+        const auto backup{::verilator_utils::assertion_config()};
         // 强制不使用彩色输出
-        ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = true});
+        ::verilator_utils::set_assertion_config({.force_colors = false, .no_colors = true});
         try
         {
             ::verilator_utils::check{}(false, "颜色配置测试"sv);
@@ -85,7 +85,7 @@ TEST_SUITE("verilator_utils/assert")
         }
 
         // 强制使用彩色输出
-        ::verilator_utils::set_assertion_color_config({.force_colors = true, .no_colors = false});
+        ::verilator_utils::set_assertion_config({.force_colors = true, .no_colors = false});
         try
         {
             ::verilator_utils::check{}(false, "颜色配置测试"sv);
@@ -97,14 +97,14 @@ TEST_SUITE("verilator_utils/assert")
         }
 
         // 恢复默认配置
-        ::verilator_utils::set_assertion_color_config(backup);
+        ::verilator_utils::set_assertion_config(backup);
     }
 
     TEST_CASE("assertion message colorization adapts to the terminal when no color option is set")
     {
-        const auto backup{::verilator_utils::assertion_color_config()};
+        const auto backup{::verilator_utils::assertion_config()};
         // 既未强制彩色也未禁用彩色时按标准错误输出是否为控制台自适应
-        ::verilator_utils::set_assertion_color_config({.force_colors = false, .no_colors = false});
+        ::verilator_utils::set_assertion_config({.force_colors = false, .no_colors = false});
         try
         {
             ::verilator_utils::check{}(false, "自适应颜色"sv);
@@ -114,7 +114,7 @@ TEST_SUITE("verilator_utils/assert")
             CHECK(::std::string_view{error.what()}.contains("自适应颜色"sv));
             CHECK_EQ(::std::string_view{error.what()}.contains("\033["sv), ::verilator_utils::detail::is_stderr_tty());
         }
-        ::verilator_utils::set_assertion_color_config(backup);
+        ::verilator_utils::set_assertion_config(backup);
     }
 
     TEST_CASE("check nothrow overload reports through the test framework instead of throwing")

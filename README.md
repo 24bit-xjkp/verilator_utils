@@ -63,7 +63,7 @@ Python 包自身的单元测试由 pytest 驱动：
 uv run pytest
 ```
 
-支持 `debug` / `release` / `releasedbg` 三种模式，可选配置项如下：
+仅支持 64 位平台，支持 `debug` / `release` / `releasedbg` 三种模式，`static` / `shared` 两种目标类型，可选配置项如下：
 
 - `use_sanitizer`：启用地址/未定义行为消毒器
 - `use_type_sanitizer`：启用类型消毒器（TypeSanitizer）；只作用于 `tysan_*` 目标组（见下文），工具链不支持 `-fsanitize=type` 时给出告警并忽略该选项
@@ -71,10 +71,13 @@ uv run pytest
 - `use_lto`：链接时优化
 - `trace_support_fst`：FST 波形支持，需要 zlib / lz4
 - `with_main`：构建单元测试主程序 (doctest 入口，`verilator_utils_main` 目标)
-- `enable_test`：启用单元测试与 RTL 集成测试目标；关闭后不再构建测试目标，也就不需要 Python 环境
+- `enable_test`：启用仓库中的测试目标，是所有测试的总开关；关闭后不再构建测试目标，也就不需要 Python 环境
 - `visualize`：允许 Python 脚本输出可视化图表
+- `enable_fuzz`：启用模糊测试目标
+- `fuzz_time`：模糊测试的最大运行时间
+- `fuzz_parallel`：每个模糊测试目标使用的工作进程数
 
-仅支持 64 位平台与 `static` / `shared` 两种目标类型。
+使用 `xmake f --help` 查看可选配置项的说明和默认值。
 
 ### 类型消毒器目标组
 
@@ -91,6 +94,24 @@ xmake test -g "tysan_unit_test*"        # 两组测试都会运行
 
 - 目标命名沿用常规组，仅追加 `_tysan` 后缀
 - 该组复用 `src/` 与 `test/` 下的源文件，并复用常规组的 Verilator DUT 动态库
+
+### 模糊测试目标组
+
+在 `libFuzzer` 模糊测试框架可用时，本项目会启用**一组独立的目标**用于模糊测试。模糊测试可以和普通测试在同一次配置中共存。
+
+```bash
+xmake f --fuzz_time=120 --fuzz_parallel=2       # 配置模糊测试的最大运行时间和并行度
+xmake test -g fuzz_test                         # 模糊测试
+xmake update-corpus                             # 更新语料库
+```
+
+- 每个 `test/fuzz/*.cpp` 对应一个 `fuzz_test_<文件名>` 目标，公共支持代码位于 `fuzz_test_support` 目标的 `fuzz_support` 模块
+- 精简语料以 `test/fuzz/corpus/<文件名>.tar.gz` 随仓库提供，与源码分开放置
+- 目标目录（构建目录下的 `fuzz_test_<文件名>/`）中有三个子目录：
+  - `corpus/`：运行时的可写语料，模糊测试发现的新输入累积在此
+  - `seed/`：只读的种子语料，由 `xmake test` 首次运行时从打包的语料库中解压
+  - `artifacts/`：触发崩溃的输入
+- `xmake clean fuzz_test_<文件名>` 会直接删除该目标的目标目录，一次清掉二进制、工作语料、种子语料与崩溃输入
 
 ## 许可证
 

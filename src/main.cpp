@@ -1,6 +1,6 @@
 import verilator_utils.full;
 
-int main(int argc, const char* argv[])
+int main(int argc, char* argv[])
 {
     const ::verilator_utils::detail::set_console_utf8 _{};
     ::verilator_utils::detail::dut_context_default_args::args = ::std::span{argv, static_cast<::std::size_t>(argc)};
@@ -11,8 +11,7 @@ int main(int argc, const char* argv[])
         if(const auto* options{::doctest::getContextOptions()}; options != nullptr)
         {
             // 复用doctest的--force-colors/--no-colors命令行选项
-            ::verilator_utils::set_assertion_color_config(
-                {.force_colors = options->force_colors, .no_colors = options->no_colors});
+            ::verilator_utils::set_assertion_config({.force_colors = options->force_colors, .no_colors = options->no_colors});
         }
         return context.run();
     }

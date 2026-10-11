@@ -1309,6 +1309,9 @@ export namespace verilator_utils
     /**
      * @brief 带有挂起队列的设施的基类
      *
+     * @note 派生对象上存在挂起任务时不能析构：任务被唤醒时会访问同步体。
+     *       推荐让派生对象比调度器长寿，此时调度器析构时会回收全部挂起任务并解除绑定；
+     *       若派生对象先于调度器析构，则析构前必须确保仿真已经结束
      */
     struct with_suspend_queue
     {
@@ -1368,7 +1371,7 @@ namespace verilator_utils::detail
         ::verilator_utils::with_suspend_queue* entry;
         /// 回调函数类型
         using callback_t = void (*)(::verilator_utils::with_suspend_queue&) noexcept;
-        /// 释放函数，用于在仿真结束时把挂起在事件上的任务放回调度器
+        /// 回收函数，用于在调度器析构时把挂起队列中的任务交回调度器，并解除同步体与调度器的绑定
         callback_t release;
 
         friend ::std::strong_ordering operator<=> (const suspend_entry& lhs, const suspend_entry& rhs) noexcept
@@ -1728,7 +1731,7 @@ namespace verilator_utils
             event_queue.clear();
 
             // 在恢复协程执行前先清理挂起项队列
-            // 清理后，同步体上应当不存在挂起的任务，可以安全地析构同步体
+            // 回收后，同步体上不再存在挂起的任务，可以安全地析构同步体
             for(const auto& entry: suspend_entry_queue) { entry(); }
             suspend_entry_queue.clear();
 
@@ -1858,7 +1861,7 @@ namespace verilator_utils
          * @brief 向挂起项队列中注册协程
          *
          * @param entry 带有挂起队列的对象
-         * @param release 回调函数，用于在仿真结束时把挂起队列中的任务交回调度器
+         * @param release 回调函数，用于在调度器析构时回收挂起队列中的任务并解除同步体与调度器的绑定
          */
         void register_suspend_entry(::verilator_utils::with_suspend_queue& entry,
                                     ::verilator_utils::detail::suspend_entry::callback_t release)
@@ -1959,7 +1962,7 @@ namespace verilator_utils
             catch(...)
             {
                 // 栈回溯条目缺失或与当前异常不对应，在当前协程重新捕获
-                if(promise.stacktrace.empty())
+                if(::verilator_utils::detail::assertion_config_t::stacktrace && promise.stacktrace.empty())
                 {
                     promise.stacktrace = ::verilator_utils::coroutine_stacktrace{
                         ::std::nothrow,

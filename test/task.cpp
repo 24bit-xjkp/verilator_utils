@@ -1490,6 +1490,68 @@ TEST_SUITE("verilator_utils/task")
         CHECK_FALSE(semaphore.try_get());
     }
 
+    TEST_CASE("semaphore waiters cancelled by the end of the simulation release their frames")
+    {
+        ::std::size_t destroyed{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            // 同步体在调度器之后声明，因此先于调度器析构：此时仿真已结束，
+            // 被唤醒的等待者不得再访问已析构的同步体
+            ::verilator_utils::semaphore semaphore{};
+
+            const auto waiter{[&](this auto) -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
+                co_await semaphore.get();
+            }};
+            const auto finish{[&](this auto) -> ::verilator_utils::task<void> {
+                const frame_destruction_counter counter{&destroyed};
+                co_await ::verilator_utils::wait_time(1_ns);
+                co_await ::verilator_utils::eval_finish();
+            }};
+            scheduler.add_task(waiter());
+            scheduler.add_task(finish());
+
+            // 仿真通过eval_finish结束，结束异常由框架内部消化，循环正常返回
+            scheduler.loop_until_finish();
+            CHECK_EQ(destroyed, 1zu);
+        }
+        // 调度器析构时回收仍挂起在信号量上的等待者
+        CHECK_EQ(destroyed, 2zu);
+    }
+
+    TEST_CASE("semaphore waiters are reclaimed when the scheduler is destroyed first")
+    {
+        ::std::size_t destroyed{};
+        {
+            scheduler_fixture fixture{};
+            // 同步体比调度器长寿：调度器析构时回收挂起任务，并向同步体解除绑定，
+            // 因此同步体析构时不应再访问已经析构的调度器
+            ::verilator_utils::semaphore semaphore{};
+            {
+                auto scheduler{fixture.make_scheduler()};
+
+                const auto waiter{[&](this auto) -> ::verilator_utils::task<void> {
+                    const frame_destruction_counter counter{&destroyed};
+                    co_await semaphore.get();
+                }};
+                const auto finish{[&](this auto) -> ::verilator_utils::task<void> {
+                    const frame_destruction_counter counter{&destroyed};
+                    co_await ::verilator_utils::wait_time(1_ns);
+                    co_await ::verilator_utils::eval_finish();
+                }};
+                scheduler.add_task(waiter());
+                scheduler.add_task(finish());
+
+                scheduler.loop_until_finish();
+                CHECK_EQ(destroyed, 1zu);
+            }
+            // 调度器析构时回收仍挂起在信号量上的等待者
+            CHECK_EQ(destroyed, 2zu);
+        }
+        CHECK_EQ(destroyed, 2zu);
+    }
+
     TEST_CASE("semaphore get enqueues behind queued waiters even when the count suffices")
     {
         scheduler_fixture fixture{};

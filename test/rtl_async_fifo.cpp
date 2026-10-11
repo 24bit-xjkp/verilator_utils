@@ -196,7 +196,7 @@ namespace
 
     task<void> do_verify_random(dut_context_t& ctx, port_t& port, dist_t i_dist, dist_t o_dist)
     {
-        auto seed{ctx.seed()};
+        const auto seed{ctx.seed()};
         std::mt19937_64 engin{seed};
         reference_module ref{port};
         co_await add_task(ref.eval());

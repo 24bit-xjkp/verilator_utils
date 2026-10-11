@@ -527,13 +527,54 @@ namespace verilator_utils
          * @brief 计算有符号数的宽度
          *
          * @param value 数据
-         * @return 宽度
+         * @return 宽度，即以二进制补码表示该值所需的最少位数
          */
         constexpr ::std::size_t signed_integral_width(::std::int64_t value) noexcept
         {
-            auto unsigned_value{static_cast<::std::uint64_t>(value)};
-            unsigned_value = value < 0 ? -unsigned_value : unsigned_value;
-            return ::std::bit_width(unsigned_value);
+            // 二进制补码表示需要一位符号位：非负数的幅值为value，负数的幅值范围比正数大一个数，
+            // 因此负数用|value| - 1计算幅值位宽
+            const auto magnitude{value < 0 ? -(value + 1) : value};
+            return ::std::bit_width(static_cast<::std::uint64_t>(magnitude)) + 1zu;
+        }
+
+        /**
+         * @brief 把浮点数转换为无符号整数，超出范围或非数时饱和到边界值
+         *
+         * 标准规定浮点数超出整数表示范围时转换行为未定义，这里用饱和转换替代，
+         * 使调用方可以通过比较往返结果检测数据能否无损保存
+         * @param value 浮点输入
+         * @return 转换结果
+         */
+        constexpr ::std::uint64_t saturating_uint64_cast(double value) noexcept
+        {
+            // 非数与非正值一律归零
+            if(!(value > 0.)) { return 0; }
+            // static_cast<double>(max)为max + 1
+            if(value >= static_cast<double>(::std::numeric_limits<::std::uint64_t>::max()))
+            {
+                return ::std::numeric_limits<::std::uint64_t>::max();
+            }
+            return static_cast<::std::uint64_t>(value);
+        }
+
+        /**
+         * @brief 把浮点数转换为有符号整数，超出范围或非数时饱和到边界值
+         *
+         * @param value 浮点输入
+         * @return 转换结果
+         */
+        constexpr ::std::int64_t saturating_int64_cast(double value) noexcept
+        {
+            if(!(value >= static_cast<double>(::std::numeric_limits<::std::int64_t>::min())))
+            {
+                return ::std::numeric_limits<::std::int64_t>::min();
+            }
+            // static_cast<double>(max)为max + 1
+            if(value >= static_cast<double>(::std::numeric_limits<::std::int64_t>::max()))
+            {
+                return ::std::numeric_limits<::std::int64_t>::max();
+            }
+            return static_cast<::std::int64_t>(value);
         }
 
         /**
@@ -995,7 +1036,10 @@ namespace verilator_utils
              * @return 打包储存的数据
              */
             [[nodiscard]] constexpr ::std::uint64_t to_verilator(double underlying_value) const noexcept
-            { return static_cast<::std::uint64_t>(::verilator_utils::detail::ldexp(underlying_value, fractional_bit)); }
+            {
+                return ::verilator_utils::detail::saturating_uint64_cast(
+                    ::verilator_utils::detail::ldexp(underlying_value, fractional_bit));
+            }
         };
 
         /**
@@ -1053,8 +1097,9 @@ namespace verilator_utils
              */
             [[nodiscard]] constexpr ::std::uint64_t to_verilator(double underlying_value) const noexcept
             {
-                auto signed_value{
-                    static_cast<::std::int64_t>(::verilator_utils::detail::ldexp(underlying_value, fractional_bit))};
+                // 超出表示范围时饱和，由调用方的往返检查拒绝该数据
+                auto signed_value{::verilator_utils::detail::saturating_int64_cast(
+                    ::verilator_utils::detail::ldexp(underlying_value, fractional_bit))};
                 return ::verilator_utils::data_format::dec_signed_t::to_verilator(signed_value, width());
             }
         };
@@ -1118,9 +1163,10 @@ namespace verilator_utils
             [[nodiscard]] constexpr ::std::uint64_t to_verilator(double underlying_value) const noexcept
             {
                 const auto sign{static_cast<::std::uint64_t>(::verilator_utils::detail::signbit(underlying_value))};
-                const auto magnitude{
-                    ::verilator_utils::detail::ldexp(::verilator_utils::detail::abs(underlying_value), fractional_bit)};
-                return sign << (width() - 1) | static_cast<::std::uint64_t>(magnitude);
+                // 超出表示范围时饱和，由调用方的往返检查拒绝该数据
+                const auto magnitude{::verilator_utils::detail::saturating_uint64_cast(
+                    ::verilator_utils::detail::ldexp(::verilator_utils::detail::abs(underlying_value), fractional_bit))};
+                return sign << (width() - 1) | magnitude;
             }
         };
 
@@ -1376,6 +1422,15 @@ namespace verilator_utils
                                                width,
                                                min_width,
                                                max_width);
+
+                    // 定点数格式的整数位与小数位决定数据的定标，因此数据宽度必须与格式宽度一致
+                    if constexpr(requires() { format.width(); })
+                    {
+                        ::verilator_utils::check{}(width == format.width(),
+                                                   "数据宽度{}与格式宽度{}不同"sv,
+                                                   width,
+                                                   format.width());
+                    }
                 }
                 else
                 {

@@ -955,7 +955,9 @@ export namespace verilator_utils
                               ::verilator_utils::data_format::format format = ::verilator_utils::data_format::hex) :
             data{data}, left_bound{width - 1}, right_bound{0}, data_format{::std::move(format)}
         {
+            constexpr static auto max{sizeof(value_type) * ::std::numeric_limits<::std::uint8_t>::digits};
             ::verilator_utils::check{}(width != 0, "切片宽度不能为0，实际为{}"sv, width);
+            ::verilator_utils::check{}(width <= max, "切片宽度{}超出上限{}"sv, width, max);
             ::verilator_utils::data_format::check_format(data_format, width);
         }
 
