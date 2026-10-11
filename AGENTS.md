@@ -50,7 +50,7 @@ xmake 的目标注册、命令与配置项细节由专门的 xmake skill 提供�
 
 | 领域 | 先加载 |
 | --- | --- |
-| xmake 的命令、目标、选项、测试注册、插件 / addon | `.agents/skills/xmake/` 下对应主题的 skill（索引见该目录 `README.md`） |
+| xmake 的命令、目标、选项、测试注册、插件 / addon | `.agents/skills/` 下对应主题的 skill（`xmake-*`，如 `xmake-commands`、`xmake-targets`、`xmake-tests`、`xmake-scripting`；包与仓库管理为 `xrepo-cli` / `xrepo-env`） |
 | C++ 单元测试与 RTL 集成测试写法 | `verilator-utils-unit-testing` |
 | 交付前静态检查与格式化 | `verilator-utils-pre-delivery-check` |
 | 代码审查 | `verilator-utils-code-review` |

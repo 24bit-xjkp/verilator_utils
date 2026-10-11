@@ -13,7 +13,7 @@ argument-hint: 'Describe the component or behavior to test'
 - 为工具函数、调度器行为、信号包装或基于 Verilator 的 RTL 辅助功能补回归测试。
 - 判断某个断言是否真的能失败、某个边界是否被覆盖。
 
-构建目标注册、编译选项、如何运行某个测试等 xmake 细节由 `.agents/skills/xmake/` 中的 xmake skills 提供。运行任何 xmake 命令前先 `source .venv/bin/activate`（见 `AGENTS.md`），这样无需逐条判断命令是否依赖 Python。本 skill 只保留 C++ 测试代码本身的约定；交付前的静态检查与格式化流程见 `verilator-utils-pre-delivery-check` skill。
+构建目标注册、编译选项、如何运行某个测试等 xmake 细节由 `.agents/skills/` 下的 `xmake-*` skill（如 `xmake-targets`、`xmake-tests`）提供。运行任何 xmake 命令前先 `source .venv/bin/activate`（见 `AGENTS.md`），这样无需逐条判断命令是否依赖 Python。本 skill 只保留 C++ 测试代码本身的约定；交付前的静态检查与格式化流程见 `verilator-utils-pre-delivery-check` skill。
 
 ## 测试文件基本结构
 

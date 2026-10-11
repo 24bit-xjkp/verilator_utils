@@ -14,7 +14,7 @@ argument-hint: 'Provide the diff, files, commit, or review scope'
 - 判断测试是否有语义价值，而不是"能编译"或"提高了行覆盖率"。
 - 区分手写 RTL 集成测试与批量生成的单元测试，并对二者采用不同的标准。
 
-xmake 目标、选项与命令细节由 `.agents/skills/xmake/` 中的 xmake skills 提供，本 skill 不重复。
+xmake 目标、选项与命令细节由 `.agents/skills/` 下的 `xmake-*` skill 提供，本 skill 不重复。
 
 ## 审查目标
 
@@ -178,7 +178,7 @@ TEST_SUITE("edge_detector")
 
 - 先 clang-tidy 后 format，两者都要跑；只读审查也应执行，因为新告警可能正是本次改动引入的缺陷。
 - 格式化会就地改写文件，改出来的内容必须复核为纯格式化（无参数默认值、无语义变化），并保持 `git diff --check` 通过。
-- 构建目标、配置项、测试运行方式与模块相关选项由 `.agents/skills/xmake/` 中的 xmake skills 说明。
+- 构建目标、配置项、测试运行方式与模块相关选项由 `.agents/skills/` 下的 `xmake-*` skill（如 `xmake-targets`、`xmake-tests`、`xmake-cxx-modules`）说明。
 - 不要凭单一编译器/运行时配置断言广泛的移植性或完整回归覆盖。明确写出实际验证过的目标与配置。
 
 ## 审查输出

@@ -123,5 +123,5 @@ co_await ::verilator_utils::wait_event([&event_ready] { return event_ready; }); 
 
 1. 在改动过的文件里重新搜索协程 lambda，确认每个都符合上面的生命周期判定（`co_await`、`co_return`、`co_yield`、`-> ...::task<`）。
 2. 编译诊断检查：删掉形参后是否还有调用点未更新。
-3. 运行测试（目标、选项与运行方式见 `.agents/skills/xmake/` 中的 xmake skills；运行任何 xmake 命令前先 `source .venv/bin/activate`，无需逐条判断命令是否依赖 Python）。注意 clang-tidy 覆盖不到生命周期缺陷，它只能保证 `clang-analyzer-cplusplus.*` 等静态检查项没有新告警，交付前的静态检查与格式化流程见 `verilator-utils-pre-delivery-check` skill。
+3. 运行测试（目标、选项与运行方式见 `.agents/skills/` 下的 `xmake-*` skill，如 `xmake-tests`；运行任何 xmake 命令前先 `source .venv/bin/activate`，无需逐条判断命令是否依赖 Python）。注意 clang-tidy 覆盖不到生命周期缺陷，它只能保证 `clang-analyzer-cplusplus.*` 等静态检查项没有新告警，交付前的静态检查与格式化流程见 `verilator-utils-pre-delivery-check` skill。
 4. 若 sanitizer 仍报告 use-after-free / stack-use-after-scope，先排查协程句柄的所有权、`task`/`async_task` 的析构顺序和队列中的挂起协程，不要默认是捕获列表的问题。
