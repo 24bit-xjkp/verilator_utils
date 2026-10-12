@@ -3,8 +3,68 @@ import fuzz_support;
 
 namespace
 {
-    using namespace ::verilator_utils;
-    using namespace ::verilator_utils::verilator;
+    // Verilator头文件在模块的全局模块片段中引入，其全局名字对导入方不可见；
+    // 显式引入需要的名字后，才能以::开头的限定名引用它们
+    using ::verilator_utils::verilator::EData;
+    using ::verilator_utils::verilator::VlWide;
+
+    /**
+     * @brief 数据格式的操作码
+     */
+    enum class format_op_t : ::std::uint8_t
+    {
+        /// 未设置数据格式
+        unset,
+        /// 十六进制
+        hex,
+        /// 二进制
+        bin,
+        /// 无符号十进制
+        dec_unsigned,
+        /// 有符号十进制
+        dec_signed,
+        /// 单精度浮点
+        real_float,
+        /// 双精度浮点
+        real_double,
+        /// 无符号定点数
+        unsigned_fixed_point,
+        /// 有符号定点数
+        signed_fixed_point,
+        /// 符号-数值定点数
+        sign_mag_fixed_point,
+        /// 枚举
+        fsm_enum,
+        /// 布尔
+        boolean,
+        /// 操作码总数
+        total_ops,
+    };
+
+    /**
+     * @brief 格式包装器的数据类型操作码
+     */
+    enum class type_op_t : ::std::uint8_t
+    {
+        /// 无符号64位整数
+        uint64,
+        /// 有符号64位整数
+        int64,
+        /// 单精度浮点
+        float32,
+        /// 双精度浮点
+        float64,
+        /// 布尔
+        boolean,
+        /// 单字宽数据
+        vlwide1,
+        /// 双字宽数据
+        vlwide2,
+        /// 四字宽数据
+        vlwide4,
+        /// 操作码总数
+        total_ops,
+    };
 
     /**
      * @brief 执行一段期望被框架校验拒绝的操作
@@ -28,36 +88,37 @@ namespace
     /// 构造一个随机的数据格式
     [[nodiscard]] ::verilator_utils::data_format::format make_format(::fuzz::reader& input)
     {
-        switch(input.u8() % 12u)
+        switch(::fuzz::read_opcode<format_op_t>(input))
         {
-            case 0: return ::verilator_utils::data_format::format{};
-            case 1: return ::verilator_utils::hex;
-            case 2: return ::verilator_utils::bin;
-            case 3: return ::verilator_utils::dec_unsigned;
-            case 4: return ::verilator_utils::dec_signed;
-            case 5: return ::verilator_utils::real_float(input.boolean());
-            case 6: return ::verilator_utils::real_double(input.boolean());
-            case 7:
+            case format_op_t::unset: return ::verilator_utils::data_format::format{};
+            case format_op_t::hex: return ::verilator_utils::hex;
+            case format_op_t::bin: return ::verilator_utils::bin;
+            case format_op_t::dec_unsigned: return ::verilator_utils::dec_unsigned;
+            case format_op_t::dec_signed: return ::verilator_utils::dec_signed;
+            case format_op_t::real_float: return ::verilator_utils::real_float(input.boolean());
+            case format_op_t::real_double: return ::verilator_utils::real_double(input.boolean());
+            case format_op_t::unsigned_fixed_point:
                 return ::verilator_utils::unsigned_fixed_point(static_cast<::std::uint8_t>(input.range(0, 63)),
                                                                static_cast<::std::uint8_t>(input.range(0, 63)),
                                                                input.boolean());
-            case 8:
+            case format_op_t::signed_fixed_point:
                 return ::verilator_utils::signed_fixed_point(static_cast<::std::uint8_t>(input.range(0, 63)),
                                                              static_cast<::std::uint8_t>(input.range(0, 63)),
                                                              input.boolean());
-            case 9:
+            case format_op_t::sign_mag_fixed_point:
                 return ::verilator_utils::sign_mag_fixed_point(static_cast<::std::uint8_t>(input.range(0, 63)),
                                                                static_cast<::std::uint8_t>(input.range(0, 63)),
                                                                input.boolean());
-            case 10:
+            case format_op_t::fsm_enum:
             {
                 ::std::vector<::std::string> enum_string{};
                 const auto size{static_cast<::std::size_t>(input.range(1, 6))};
                 enum_string.reserve(size);
-                for(::std::size_t i{}; i != size; ++i) { enum_string.push_back(input.short_string(8)); }
+                for(auto i{0zu}; i != size; ++i) { enum_string.push_back(input.short_string(8)); }
                 return ::verilator_utils::fsm_enum(::std::move(enum_string));
             }
-            default: return ::verilator_utils::boolean;
+            case format_op_t::boolean: return ::verilator_utils::boolean;
+            case format_op_t::total_ops: ::std::unreachable();  // 取模映射不会产生该取值
         }
     }
 
@@ -156,7 +217,7 @@ namespace
     void check_wrapper(const ::verilator_utils::format_wrapper<type>& wrapper, const type& value, ::std::size_t width)
     {
         ::fuzz::check(wrapper.width() == width);
-        check_same_value(wrapper.value(), value);
+        ::check_same_value(wrapper.value(), value);
 
         // to_string()不得抛出其他异常，且长度必须与格式和宽度一致
         const auto text{wrapper.to_string()};
@@ -164,12 +225,12 @@ namespace
 
         const auto& format{wrapper.format()};
         const auto packed{wrapper.to_verilator()};
-        const auto low_value{low_uint64(packed)};
+        const auto low_value{::low_uint64(packed)};
 
-        if(::std::holds_alternative<::verilator_utils::data_format::hex_t>(format)) { check_hex_text(text, width, low_value); }
+        if(::std::holds_alternative<::verilator_utils::data_format::hex_t>(format)) { ::check_hex_text(text, width, low_value); }
         else if(::std::holds_alternative<::verilator_utils::data_format::bin_t>(format))
         {
-            check_bin_text(text, width, low_value);
+            ::check_bin_text(text, width, low_value);
         }
         else if constexpr(::verilator_utils::is_vl_wide<type>)
         {
@@ -236,6 +297,17 @@ namespace
         ::std::string buffer{};
         wrapper.format_to(::std::back_inserter(buffer));
         ::fuzz::check(buffer == wrapper.to_string());
+        // 标准格式化接口会实例化格式化器的parse路径，输出必须与to_string一致
+        ::fuzz::check(::std::format("{}", wrapper) == wrapper.to_string());
+        try
+        {
+            (void)::std::vformat("{:x}", ::std::make_format_args(wrapper));
+            ::fuzz::fail("invalid format specifier was accepted");
+        }
+        catch(const ::std::format_error& error)
+        {
+            ::fuzz::check(!::std::string_view{error.what()}.empty());
+        }
 
         const auto packed{wrapper.to_verilator()};
         // 浮点格式的底层值转换必须与位表示一致
@@ -268,7 +340,7 @@ namespace
             const ::verilator_utils::format_wrapper<type> same{wrapper.value(), wrapper.width(), format};
             if(!comparable)
             {
-                ::fuzz::check(rejected([&] { (void)(wrapper <=> same); }));
+                ::fuzz::check(::rejected([&] { (void)(wrapper <=> same); }));
                 return;
             }
             // 浮点NaN与任何值都不等价，因此只比较非NaN值
@@ -285,6 +357,28 @@ namespace
             else
             {
                 ::fuzz::check(order == ::std::strong_ordering::equivalent);
+                // 不同底层值的包装器必须得到非等价的比较结果；
+                // 部分格式可能拒绝相邻的取值，此时跳过该分支即可
+                const auto width{wrapper.width()};
+                const auto mask{width == 64zu ? ~::std::uint64_t{} : (::std::uint64_t{1zu} << width) - 1zu};
+                const auto other_value{static_cast<type>((static_cast<::std::uint64_t>(wrapper.value()) + 1zu) & mask)};
+                if(static_cast<::std::uint64_t>(other_value) != static_cast<::std::uint64_t>(wrapper.value()))
+                {
+                    (void)::rejected([&] {
+                        const ::verilator_utils::format_wrapper<type> other{other_value, width, format};
+                        const auto other_order{wrapper <=> other};
+                        ::fuzz::check(other_order != 0);
+                        if constexpr(::std::same_as<type, ::std::uint64_t>)
+                        {
+                            ::fuzz::check(other_order == (wrapper.value() <=> other.value()));
+                        }
+                        else
+                        {
+                            ::fuzz::check(other_order == (static_cast<::std::int64_t>(wrapper.value()) <=>
+                                                          static_cast<::std::int64_t>(other.value())));
+                        }
+                    });
+                }
             }
         }
     }
@@ -295,13 +389,13 @@ namespace
     {
         constexpr auto capacity{sizeof(type) * 8zu};
         const auto width{static_cast<::std::size_t>(input.range(0, capacity + 4))};
-        auto format{make_format(input)};
-        const auto value{make_value<type>(input)};
+        auto format{::make_format(input)};
+        const auto value{::make_value<type>(input)};
         try
         {
             const ::verilator_utils::format_wrapper<type> wrapper{value, width, ::std::move(format)};
-            check_wrapper(wrapper, value, width);
-            check_wrapper_extra(wrapper);
+            ::check_wrapper(wrapper, value, width);
+            ::check_wrapper_extra(wrapper);
         }
         catch(const ::verilator_utils::assertion_error&)
         {
@@ -314,16 +408,17 @@ namespace
     {
         if(size < 3) { return 0; }
         ::fuzz::reader input{data, size};
-        switch(input.u8() % 8u)
+        switch(::fuzz::read_opcode<type_op_t>(input))
         {
-            case 0: fuzz_wrapper<::std::uint64_t>(input); break;
-            case 1: fuzz_wrapper<::std::int64_t>(input); break;
-            case 2: fuzz_wrapper<float>(input); break;
-            case 3: fuzz_wrapper<double>(input); break;
-            case 4: fuzz_wrapper<bool>(input); break;
-            case 5: fuzz_wrapper<::VlWide<1>>(input); break;
-            case 6: fuzz_wrapper<::VlWide<2>>(input); break;
-            default: fuzz_wrapper<::VlWide<4>>(input); break;
+            case type_op_t::uint64: ::fuzz_wrapper<::std::uint64_t>(input); break;
+            case type_op_t::int64: ::fuzz_wrapper<::std::int64_t>(input); break;
+            case type_op_t::float32: ::fuzz_wrapper<float>(input); break;
+            case type_op_t::float64: ::fuzz_wrapper<double>(input); break;
+            case type_op_t::boolean: ::fuzz_wrapper<bool>(input); break;
+            case type_op_t::vlwide1: ::fuzz_wrapper<::VlWide<1>>(input); break;
+            case type_op_t::vlwide2: ::fuzz_wrapper<::VlWide<2>>(input); break;
+            case type_op_t::vlwide4: ::fuzz_wrapper<::VlWide<4>>(input); break;
+            case type_op_t::total_ops: ::std::unreachable();  // 取模映射不会产生该取值
         }
         return 0;
     }

@@ -1368,7 +1368,7 @@ TEST_SUITE("verilator_utils/scheduler")
 
             const auto waiter{[&](this auto) -> ::verilator_utils::task<void> {
                 const frame_destruction_counter counter{&destroyed};
-                for(::std::size_t i{}; i != 3; ++i)
+                for(auto i{0zu}; i != 3; ++i)
                 {
                     co_await event;
                     ++wake_count;

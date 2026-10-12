@@ -1,3 +1,6 @@
+module;
+// 为了避免和std.compat冲突，使用C头文件
+#include <signal.h>  // NOLINT(modernize-deprecated-headers)
 export module fuzz_support;
 export import verilator_utils.full;
 
@@ -53,7 +56,7 @@ export namespace fuzz
         [[nodiscard]] ::std::uint64_t uint(::std::size_t bytes) noexcept
         {
             ::std::uint64_t result{};
-            for(::std::size_t i{}; i != bytes && i != 8; ++i) { result |= static_cast<::std::uint64_t>(u8()) << (i * 8); }
+            for(auto i{0zu}; i != bytes && i != 8; ++i) { result |= static_cast<::std::uint64_t>(u8()) << (i * 8); }
             return result;
         }
 
@@ -73,7 +76,7 @@ export namespace fuzz
             const auto size{static_cast<::std::size_t>(range(1, max_size))};
             ::std::string result{};
             result.reserve(size);
-            for(::std::size_t i{}; i != size; ++i) { result.push_back(static_cast<char>('a' + u8() % 26)); }
+            for(auto i{0zu}; i != size; ++i) { result.push_back(static_cast<char>('a' + u8() % 26)); }
             return result;
         }
 
@@ -81,6 +84,42 @@ export namespace fuzz
         ::std::span<const ::std::uint8_t> data_;
         ::std::size_t index_{};
     };
+
+    /**
+     * @brief 操作码类型
+     *
+     * 操作码类型是以total_ops结尾的枚举：total_ops代表操作码的总数，
+     * 解码时按模映射到[0, total_ops)范围内，因此任何输入都能得到有效的操作码
+     */
+    template <typename type>
+    concept opcode_type = ::std::is_enum_v<type> && requires { type::total_ops; };
+
+    /**
+     * @brief 把原始取值解码为操作码
+     *
+     * @tparam op_t 操作码类型
+     * @tparam value_t 原始取值的无符号整数类型
+     * @param value 原始取值
+     * @return 按模映射得到的操作码
+     */
+    template <::fuzz::opcode_type op_t, ::std::unsigned_integral value_t>
+    [[nodiscard]] constexpr op_t decode_opcode(value_t value) noexcept
+    {
+        // total_ops超出value_t的表示范围时会被截断为0，此时取模没有意义
+        static_assert(static_cast<value_t>(op_t::total_ops) != 0, "操作码总数在解码的取值类型下不能为0");
+        return static_cast<op_t>(value % static_cast<value_t>(op_t::total_ops));
+    }
+
+    /**
+     * @brief 从输入中读取一个操作码
+     *
+     * @tparam op_t 操作码类型
+     * @param input 字节流解码器
+     * @return 解码得到的操作码
+     */
+    template <opcode_type op_t>
+    [[nodiscard]] op_t read_opcode(reader& input) noexcept
+    { return ::fuzz::decode_opcode<op_t>(input.u8()); }
 
     /**
      * @brief 报告不变量被破坏并终止进程
@@ -176,5 +215,11 @@ extern "C" int LLVMFuzzerInitialize(int* /*argc*/, char*** /*argv*/)
 {
     // 模糊测试中异常路径占主导，关闭断言的栈回溯以提升执行速度
     ::fuzz::disable_stacktrace();
+    // doctest安装的信号处理器在测试用例之外报告失败时会再次崩溃，
+    // 恢复默认行为使不变量失败以标准信号终止，libFuzzer才能记录并复现输入
+    // 同时避免虚假的失败记录污染语料库
+    (void)::std::signal(SIGINT, SIG_DFL);
+    (void)::std::signal(SIGTERM, SIG_DFL);
+    (void)::std::signal(SIGABRT, SIG_DFL);
     return 0;
 }

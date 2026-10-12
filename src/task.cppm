@@ -1261,10 +1261,14 @@ export namespace verilator_utils
                         return "unknown"sv;
                     }
                 }};
-                auto out{::std::back_inserter(message)};
+                // 逐条拼接消息：使用std::format_to向字符串追加长消息会在libc++的
+                // 格式化缓冲区中触发硬化解言，因此这里不经过格式化器
                 for(auto [i, msg]: exceptions_ | ::std::views::transform(message_transform) | ::std::views::enumerate)
                 {
-                    out = ::std::format_to(out, "{}: {}\n", i + 1, msg);
+                    message += ::std::to_string(i + 1);
+                    message += ": ";
+                    message += msg;
+                    message += '\n';
                 }
             }
 

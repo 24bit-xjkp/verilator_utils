@@ -614,8 +614,8 @@ TEST_SUITE("verilator_utils/task")
         {
             ::verilator_utils::mailbox<lifecycle_counter> mailbox{};
             constexpr ::std::size_t count{2048};
-            for(::std::size_t i{}; i != count; ++i) { CHECK(mailbox.try_put(static_cast<int>(i))); }
-            for(::std::size_t i{}; i != count; ++i) { CHECK(mailbox.try_get()); }
+            for(auto i{0zu}; i != count; ++i) { CHECK(mailbox.try_put(static_cast<int>(i))); }
+            for(auto i{0zu}; i != count; ++i) { CHECK(mailbox.try_get()); }
         }
         CHECK_EQ(lifecycle_counter::live_count, 0u);
     }
@@ -1884,7 +1884,7 @@ TEST_SUITE("verilator_utils/task")
         bool capacity_violation{};
 
         const auto producer{[&](this auto, int id) -> ::verilator_utils::task<void> {
-            for(::std::size_t i{}; i != items_per_task; ++i)
+            for(auto i{0zu}; i != items_per_task; ++i)
             {
                 co_await mailbox.put((id * 100 + static_cast<int>(i)));
                 max_observed_size = ::std::max(max_observed_size, mailbox.num());
@@ -1892,11 +1892,11 @@ TEST_SUITE("verilator_utils/task")
             }
         }};
         const auto consumer{[&](this auto) -> ::verilator_utils::task<void> {
-            for(::std::size_t i{}; i != items_per_task; ++i) { received.push_back(co_await mailbox.get()); }
+            for(auto i{0zu}; i != items_per_task; ++i) { received.push_back(co_await mailbox.get()); }
         }};
 
-        for(::std::size_t i{}; i != producer_count; ++i) { scheduler.add_task(producer(static_cast<int>(i))); }
-        for(::std::size_t i{}; i != consumer_count; ++i) { scheduler.add_task(consumer()); }
+        for(auto i{0zu}; i != producer_count; ++i) { scheduler.add_task(producer(static_cast<int>(i))); }
+        for(auto i{0zu}; i != consumer_count; ++i) { scheduler.add_task(consumer()); }
 
         scheduler.loop_until_finish();
 
@@ -1908,7 +1908,7 @@ TEST_SUITE("verilator_utils/task")
         expected.reserve(producer_count * items_per_task);
         for(::std::size_t id{}; id != producer_count; ++id)
         {
-            for(::std::size_t i{}; i != items_per_task; ++i) { expected.push_back(static_cast<int>(id * 100 + i)); }
+            for(auto i{0zu}; i != items_per_task; ++i) { expected.push_back(static_cast<int>(id * 100 + i)); }
         }
         ::std::ranges::sort(received);
         CHECK_EQ(received, expected);
@@ -1925,7 +1925,7 @@ TEST_SUITE("verilator_utils/task")
         clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk.value}, ::verilator_utils::edge_enum::rising);
 
         auto selector_task{[&](this auto) -> ::verilator_utils::task<void> {
-            for(::std::size_t i{}; i != 3; ++i)
+            for(auto i{0zu}; i != 3; ++i)
             {
                 auto triggered{co_await clock_selector};
                 results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
@@ -1983,7 +1983,7 @@ TEST_SUITE("verilator_utils/task")
         clock_selector.add_clock(::verilator_utils::bit_slice<::CData>{clk_b.value}, ::verilator_utils::edge_enum::falling);
 
         auto selector_task{[&](this auto) -> ::verilator_utils::task<void> {
-            for(::std::size_t i{}; i != 2; ++i)
+            for(auto i{0zu}; i != 2; ++i)
             {
                 auto triggered{co_await clock_selector};
                 results.emplace_back(triggered | ::std::ranges::to<::std::vector<bool>>());
@@ -2640,6 +2640,42 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(message, "1: first failure\n2: second failure\n"sv);
     }
 
+    TEST_CASE("spawn_pool join_all reports an exception message longer than the format buffer")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        // 消息长度跨越格式化缓冲区的容量，用于回归长消息的拼接路径
+        const ::std::string failure(300, 'x');
+        ::std::string message;
+        bool caught{};
+
+        const auto failing_child{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_time(1_ps);
+                throw ::std::runtime_error{failure};
+            },
+        };
+        const auto parent{
+            [&] -> ::verilator_utils::task<void> {
+                auto pool{co_await ::verilator_utils::spawn_pool()};
+                pool.add_task(failing_child());
+                try
+                {
+                    co_await pool.join_all();
+                }
+                catch(const ::verilator_utils::spawn_pool::join_all_exception& join_all_exception)
+                {
+                    message = join_all_exception.what();
+                    caught = true;
+                }
+            },
+        };
+        scheduler.add_task(parent());
+        scheduler.loop_until_finish();
+        CHECK(caught);
+        CHECK_EQ(message, ::std::format("1: {}\n", failure));
+    }
+
     TEST_CASE("spawn_pool join_all exception is catchable as std::exception")
     {
         static_assert(::std::derived_from<::verilator_utils::spawn_pool::join_all_exception, ::std::exception>);
@@ -3076,7 +3112,7 @@ TEST_SUITE("verilator_utils/task")
         ::std::size_t wake_count{};
 
         auto waiter_task{[&](this auto) -> ::verilator_utils::task<void> {
-            for(::std::size_t i{}; i != 3; ++i)
+            for(auto i{0zu}; i != 3; ++i)
             {
                 co_await event;
                 ++wake_count;
@@ -3106,7 +3142,7 @@ TEST_SUITE("verilator_utils/task")
 
         // 消费者先等待数据，生产者发送数据后等待消费者确认
         const auto consumer{[&](this auto) -> ::verilator_utils::task<void> {
-            for(::std::size_t i{}; i != item_count; ++i)
+            for(auto i{0zu}; i != item_count; ++i)
             {
                 co_await data_ready;
                 received.push_back(static_cast<int>(i));
@@ -3114,7 +3150,7 @@ TEST_SUITE("verilator_utils/task")
             }
         }};
         const auto producer{[&](this auto) -> ::verilator_utils::task<void> {
-            for(::std::size_t i{}; i != item_count; ++i)
+            for(auto i{0zu}; i != item_count; ++i)
             {
                 data_ready.notify_all();
                 co_await data_consumed;
@@ -3134,7 +3170,7 @@ TEST_SUITE("verilator_utils/task")
 
         ::std::vector<int> expected;
         expected.reserve(item_count);
-        for(::std::size_t i{}; i != item_count; ++i) { expected.push_back(static_cast<int>(i)); }
+        for(auto i{0zu}; i != item_count; ++i) { expected.push_back(static_cast<int>(i)); }
         CHECK_EQ(received, expected);
     }
 
@@ -3434,7 +3470,7 @@ TEST_SUITE("verilator_utils/task")
             },
         };
 
-        for(::std::size_t i{}; i != waiter_count; ++i) { scheduler.add_task(waiter_lambda()); }
+        for(auto i{0zu}; i != waiter_count; ++i) { scheduler.add_task(waiter_lambda()); }
         scheduler.loop_once();
         CHECK_EQ(completed, 0u);
 

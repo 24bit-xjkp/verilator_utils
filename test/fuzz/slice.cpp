@@ -3,8 +3,106 @@ import fuzz_support;
 
 namespace
 {
-    using namespace ::verilator_utils;
-    using namespace ::verilator_utils::verilator;
+    // Verilator头文件在模块的全局模块片段中引入，其全局名字对导入方不可见；
+    // 显式引入需要的名字后，才能以::开头的限定名引用它们
+    using ::verilator_utils::verilator::CData;
+    using ::verilator_utils::verilator::EData;
+    using ::verilator_utils::verilator::IData;
+    using ::verilator_utils::verilator::QData;
+    using ::verilator_utils::verilator::SData;
+    using ::verilator_utils::verilator::VlWide;
+
+    /**
+     * @brief 切片转换格式的操作码
+     */
+    enum class format_op_t : ::std::uint8_t
+    {
+        /// 十六进制
+        hex,
+        /// 二进制
+        bin,
+        /// 无符号十进制
+        dec_unsigned,
+        /// 有符号十进制
+        dec_signed,
+        /// 布尔
+        boolean,
+        /// 枚举
+        fsm_enum,
+        /// 操作码总数
+        total_ops,
+    };
+
+    /**
+     * @brief 切片比较格式的操作码
+     */
+    enum class compare_format_op_t : ::std::uint8_t
+    {
+        /// 无符号十进制，支持三路比较
+        dec_unsigned,
+        /// 十六进制，只支持相等比较
+        hex,
+        /// 二进制，只支持相等比较
+        bin,
+        /// 操作码总数
+        total_ops,
+    };
+
+    /**
+     * @brief 切片操作的操作码
+     */
+    enum class op_t : ::std::uint8_t
+    {
+        /// 位切片的读取与写入
+        bit_slice,
+        /// 按上下界构造向量切片
+        slice_range,
+        /// 按宽度构造向量切片
+        slice_width,
+        /// 向量切片的标量赋值
+        assign_scalar,
+        /// 向量切片之间的赋值
+        assign_slice,
+        /// 切片的dump与格式打包
+        dump,
+        /// 各种数据格式下的切片读取
+        slice_format,
+        /// 切片的三路比较
+        compare,
+        /// 固定宽度格式下的嵌套切片
+        nested_fixed_width,
+        /// 移位寄存器的差分测试
+        shift_register,
+        /// 未指定数据格式的切片
+        monostate_format,
+        /// 操作码总数
+        total_ops,
+    };
+
+    /**
+     * @brief 存储数据类型的操作码
+     */
+    enum class type_op_t : ::std::uint8_t
+    {
+        /// 8位Verilator数据
+        cdata,
+        /// 8位有符号Verilator数据
+        sdata,
+        /// 32位Verilator数据
+        idata,
+        /// 64位Verilator数据
+        qdata,
+        /// 单字宽数据
+        vlwide1,
+        /// 双字宽数据
+        vlwide2,
+        /// 三字宽数据
+        vlwide3,
+        /// 四字宽数据
+        vlwide4,
+        /// 操作码总数
+        total_ops,
+    };
 
     /// 数据类型的位容量
     template <typename type>
@@ -33,7 +131,7 @@ namespace
     template <typename type>
     [[nodiscard]] ::std::vector<bool> to_bits(const type& data)
     {
-        ::std::vector<bool> bits(capacity<type>);
+        ::std::vector<bool> bits(::capacity<type>);
         if constexpr(::verilator_utils::is_vl_wide<type>)
         {
             constexpr ::std::size_t word_width{::std::numeric_limits<::EData>::digits};
@@ -48,7 +146,7 @@ namespace
         else
         {
             const auto value{static_cast<::std::uint64_t>(data)};
-            for(::std::size_t bit{}; bit != capacity<type>; ++bit) { bits[bit] = ((value >> bit) & 1u) != 0; }
+            for(::std::size_t bit{}; bit != ::capacity<type>; ++bit) { bits[bit] = ((value >> bit) & 1u) != 0; }
         }
         return bits;
     }
@@ -57,7 +155,7 @@ namespace
     [[nodiscard]] ::std::uint64_t pack_bits(const ::std::vector<bool>& bits, ::std::size_t right, ::std::size_t width)
     {
         ::std::uint64_t result{};
-        for(::std::size_t i{}; i != width; ++i)
+        for(auto i{0zu}; i != width; ++i)
         {
             if(bits[right + i]) { result |= ::std::uint64_t{1} << i; }
         }
@@ -67,14 +165,14 @@ namespace
     /// 把不超过64位的一段写入位模型
     void write_bits(::std::vector<bool>& bits, ::std::size_t right, ::std::size_t width, ::std::uint64_t value)
     {
-        for(::std::size_t i{}; i != width; ++i) { bits[right + i] = ((value >> i) & 1u) != 0; }
+        for(auto i{0zu}; i != width; ++i) { bits[right + i] = ((value >> i) & 1u) != 0; }
     }
 
     /// 比较存储数据与位模型
     template <typename type>
     void check_storage(const type& data, const ::std::vector<bool>& bits, const char* what)
     {
-        if(to_bits(data) != bits) { ::fuzz::fail(what); }
+        if(::to_bits(data) != bits) { ::fuzz::fail(what); }
     }
 
     /// 比较切片读出的值与位模型
@@ -87,8 +185,8 @@ namespace
         const auto width{slice.width()};
         if constexpr(::verilator_utils::is_vl_wide<type>)
         {
-            const auto value_bits{to_bits(static_cast<type>(slice))};
-            for(::std::size_t i{}; i != width; ++i)
+            const auto value_bits{::to_bits(static_cast<type>(slice))};
+            for(auto i{0zu}; i != width; ++i)
             {
                 if(value_bits[i] != bits[right + i]) { ::fuzz::fail(what); }
             }
@@ -96,7 +194,7 @@ namespace
         else
         {
             const auto value{static_cast<::std::uint64_t>(slice)};
-            for(::std::size_t i{}; i != width; ++i)
+            for(auto i{0zu}; i != width; ++i)
             {
                 if(((value >> i) & 1u) != (bits[right + i] ? 1u : 0u)) { ::fuzz::fail(what); }
             }
@@ -106,7 +204,7 @@ namespace
     /// 构造一个随机的合法范围，宽度不超过limit
     [[nodiscard]] ::std::pair<::std::size_t, ::std::size_t> make_range(::fuzz::reader& input, ::std::size_t limit)
     {
-        const auto max_width{::std::min(limit, capacity<::std::uint64_t>)};
+        const auto max_width{::std::min(limit, ::capacity<::std::uint64_t>)};
         const auto width{static_cast<::std::size_t>(input.range(1, max_width))};
         const auto right{static_cast<::std::size_t>(input.range(0, limit - width))};
         return {right + width - 1, right};
@@ -116,10 +214,10 @@ namespace
     template <typename type>
     void op_bit_slice(type& data, ::std::vector<bool>& bits, ::fuzz::reader& input)
     {
-        const auto index{static_cast<::std::size_t>(input.range(0, capacity<type> + 3))};
-        if(index >= capacity<type>)
+        const auto index{static_cast<::std::size_t>(input.range(0, ::capacity<type> + 3))};
+        if(index >= ::capacity<type>)
         {
-            ::fuzz::check(rejected([&] { const ::verilator_utils::bit_slice<type> slice{data, index}; }), index);
+            ::fuzz::check(::rejected([&] { const ::verilator_utils::bit_slice<type> slice{data, index}; }), index);
             return;
         }
 
@@ -142,21 +240,41 @@ namespace
         ::std::string hex_buffer{};
         hex_slice.format_to(::std::back_inserter(hex_buffer));
         ::fuzz::check(hex_buffer == hex_slice.to_string());
+        // 标准格式化接口必须与to_string一致，且会实例化格式化器的parse路径
+        ::fuzz::check(::std::format("{}", slice) == slice.to_string());
+        ::fuzz::check(::std::format("{}", hex_slice) == hex_slice.to_string());
+        try
+        {
+            (void)::std::vformat("{:x}", ::std::make_format_args(slice));
+            ::fuzz::fail("invalid format specifier was accepted");
+        }
+        catch(const ::std::format_error& error)
+        {
+            ::fuzz::check(!::std::string_view{error.what()}.empty());
+        }
+
+        // 位切片支持枚举格式，其余格式必须被拒绝
+        ::std::vector<::std::string> enum_string{"low", "high"};
+        const ::verilator_utils::bit_slice<type> enum_slice{data, index, ::verilator_utils::fsm_enum(::std::move(enum_string))};
+        ::fuzz::check(!enum_slice.to_string().empty());
+        ::fuzz::check(::std::format("{}", enum_slice) == enum_slice.to_string());
+        ::fuzz::check(::rejected(
+            [&] { const ::verilator_utils::bit_slice<type> invalid{data, index, ::verilator_utils::real_float(false)}; }));
 
         const auto value{input.u8() & 1u};
         slice = value;
         bits[index] = value != 0;
         ::fuzz::check(static_cast<::std::uint64_t>(slice) == value, index);
-        check_storage(data, bits, "bit slice write");
-        ::fuzz::check(rejected([&] { slice = 2u; }));
-        check_storage(data, bits, "rejected bit slice write");
+        ::check_storage(data, bits, "bit slice write");
+        ::fuzz::check(::rejected([&] { slice = 2u; }));
+        ::check_storage(data, bits, "rejected bit slice write");
 
         // 与格式包装器互相赋值：布尔格式的包装器会把底层值规范化为0或1
         const ::verilator_utils::format_wrapper<::std::uint64_t> same{value, 1, ::verilator_utils::data_format::boolean};
         const ::verilator_utils::format_wrapper<::std::uint64_t> other{value ^ 1u, 1, ::verilator_utils::data_format::boolean};
         slice = other;
         bits[index] = (value ^ 1u) != 0;
-        check_storage(data, bits, "bit slice assign from wrapper");
+        ::check_storage(data, bits, "bit slice assign from wrapper");
         ::fuzz::check(static_cast<::std::uint64_t>(slice) == (value ^ 1u), index);
         ::fuzz::check(slice == other);
         ::fuzz::check(!(slice == same));
@@ -167,9 +285,9 @@ namespace
     template <typename type>
     void op_slice_range(type& data, ::std::vector<bool>& bits, ::fuzz::reader& input)
     {
-        const auto lhs{static_cast<::std::size_t>(input.range(0, capacity<type> + 3))};
-        const auto rhs{static_cast<::std::size_t>(input.range(0, capacity<type> + 3))};
-        const bool expected_valid{lhs >= rhs && lhs < capacity<type>};
+        const auto lhs{static_cast<::std::size_t>(input.range(0, ::capacity<type> + 3))};
+        const auto rhs{static_cast<::std::size_t>(input.range(0, ::capacity<type> + 3))};
+        const bool expected_valid{lhs >= rhs && lhs < ::capacity<type>};
 
         ::std::optional<::verilator_utils::vector_slice<type>> slice{};
         try
@@ -183,7 +301,7 @@ namespace
         }
         ::fuzz::check(expected_valid, lhs);
         ::fuzz::check(slice->width() == lhs - rhs + 1);
-        check_slice(*slice, bits, rhs, "slice range read");
+        ::check_slice(*slice, bits, rhs, "slice range read");
 
         // 位索引访问
         if(input.boolean())
@@ -191,7 +309,7 @@ namespace
             const auto index{static_cast<::std::size_t>(input.range(0, slice->width() + 2))};
             if(index >= slice->width())
             {
-                ::fuzz::check(rejected([&] { (void)(*slice)[index]; }));
+                ::fuzz::check(::rejected([&] { (void)(*slice)[index]; }));
             }
             else
             {
@@ -200,7 +318,7 @@ namespace
                 const auto value{input.u8() & 1u};
                 bit = value;
                 bits[rhs + index] = value != 0;
-                check_storage(data, bits, "nested bit slice write");
+                ::check_storage(data, bits, "nested bit slice write");
             }
         }
 
@@ -213,11 +331,11 @@ namespace
             {
                 const auto sub{(*slice)[left, right]};
                 ::fuzz::check(sub.width() == left - right + 1);
-                check_slice(sub, bits, rhs + right, "nested slice read");
+                ::check_slice(sub, bits, rhs + right, "nested slice read");
             }
             else
             {
-                ::fuzz::check(rejected([&] { (void)(*slice)[left, right]; }));
+                ::fuzz::check(::rejected([&] { (void)(*slice)[left, right]; }));
             }
         }
     }
@@ -226,8 +344,8 @@ namespace
     template <typename type>
     void op_slice_width(type& data, ::std::vector<bool>& bits, ::fuzz::reader& input)
     {
-        const auto width{static_cast<::std::size_t>(input.range(0, capacity<type> + 3))};
-        const bool expected_valid{width >= 1 && width <= capacity<type>};
+        const auto width{static_cast<::std::size_t>(input.range(0, ::capacity<type> + 3))};
+        const bool expected_valid{width >= 1 && width <= ::capacity<type>};
 
         ::std::optional<::verilator_utils::vector_slice<type>> slice{};
         try
@@ -241,10 +359,10 @@ namespace
         }
         ::fuzz::check(expected_valid, width);
         ::fuzz::check(slice->width() == width);
-        check_slice(*slice, bits, 0, "slice width read");
+        ::check_slice(*slice, bits, 0, "slice width read");
         if(width <= 64)
         {
-            ::fuzz::check(slice->to_string() == ::std::format("0x{:0{}x}", pack_bits(bits, 0, width), (width + 3zu) / 4zu));
+            ::fuzz::check(slice->to_string() == ::std::format("0x{:0{}x}", ::pack_bits(bits, 0, width), (width + 3zu) / 4zu));
         }
         else
         {
@@ -257,22 +375,22 @@ namespace
     template <typename type>
     void op_assign_scalar(type& data, ::std::vector<bool>& bits, ::fuzz::reader& input)
     {
-        const auto [left, right]{make_range(input, capacity<type>)};
+        const auto [left, right]{::make_range(input, ::capacity<type>)};
         const auto width{left - right + 1};
         ::verilator_utils::vector_slice<type> slice{data, left, right};
 
         const auto mask{width == 64 ? ::std::numeric_limits<::std::uint64_t>::max() : (::std::uint64_t{1} << width) - 1u};
         const auto value{input.u64() & mask};
         slice = value;
-        write_bits(bits, right, width, value);
-        check_storage(data, bits, "slice assign scalar");
-        check_slice(slice, bits, right, "slice assign scalar read");
+        ::write_bits(bits, right, width, value);
+        ::check_storage(data, bits, "slice assign scalar");
+        ::check_slice(slice, bits, right, "slice assign scalar read");
         ::fuzz::check(slice == value);
 
         if(width < 64)
         {
-            ::fuzz::check(rejected([&] { slice = value | (::std::uint64_t{1} << width); }));
-            check_storage(data, bits, "rejected slice assign scalar");
+            ::fuzz::check(::rejected([&] { slice = value | (::std::uint64_t{1} << width); }));
+            ::check_storage(data, bits, "rejected slice assign scalar");
         }
 
         // 通过格式包装器赋值
@@ -280,8 +398,8 @@ namespace
         const auto other_value{input.u64() & mask};
         const ::verilator_utils::format_wrapper<::std::uint64_t> other{other_value, width, ::verilator_utils::data_format::hex};
         slice = other;
-        write_bits(bits, right, width, other_value);
-        check_storage(data, bits, "slice assign wrapper");
+        ::write_bits(bits, right, width, other_value);
+        ::check_storage(data, bits, "slice assign wrapper");
         ::fuzz::check(slice == other);
         ::fuzz::check(wrapper.width() == width);
     }
@@ -290,38 +408,44 @@ namespace
     template <typename type>
     void op_assign_slice(type& data, ::std::vector<bool>& bits, ::fuzz::reader& input)
     {
-        const auto [left, right]{make_range(input, capacity<type>)};
+        const auto [left, right]{::make_range(input, ::capacity<type>)};
         const auto width{left - right + 1};
         ::verilator_utils::vector_slice<type> destination{data, left, right};
 
         // 源切片与目标切片等宽
-        const auto source_right{static_cast<::std::size_t>(input.range(0, capacity<type> - width))};
+        const auto source_right{static_cast<::std::size_t>(input.range(0, ::capacity<type> - width))};
         const auto source_value{input.u64() & (width == 64 ? ~::std::uint64_t{} : (::std::uint64_t{1} << width) - 1u)};
         ::verilator_utils::vector_slice<type> source{data, source_right + width - 1, source_right};
         source = source_value;
-        write_bits(bits, source_right, width, source_value);
+        ::write_bits(bits, source_right, width, source_value);
 
         // 目标宽度大于源宽度时必须拒绝
-        if(left + 1 < capacity<type>)
+        if(left + 1 < ::capacity<type>)
         {
             ::verilator_utils::vector_slice<type> wider{data, left + 1, right};
             ::fuzz::check(wider.width() == width + 1);
-            ::fuzz::check(rejected([&] { wider = source; }));
-            check_storage(data, bits, "rejected slice assign slice");
+            ::fuzz::check(::rejected([&] { wider = source; }));
+            ::check_storage(data, bits, "rejected slice assign slice");
         }
 
         destination = source;
-        write_bits(bits, right, width, source_value);
-        check_storage(data, bits, "slice assign slice");
+        ::write_bits(bits, right, width, source_value);
+        ::check_storage(data, bits, "slice assign slice");
         // 源与目标重叠时，写入目标会同时改变源的当前值，此时不能再比较两者
         if(right + width <= source_right || source_right + width <= right) { ::fuzz::check(destination == source); }
+
+        // 自赋值必须安全
+        const auto& self_alias{destination};
+        destination = self_alias;
+        ::check_storage(data, bits, "self slice assign");
+        ::fuzz::check(destination == self_alias);
     }
 
     /// 切片的dump与格式打包
     template <typename type>
     void op_dump(type& data, ::std::vector<bool>& bits, ::fuzz::reader& input)
     {
-        const auto [left, right]{make_range(input, capacity<type>)};
+        const auto [left, right]{::make_range(input, ::capacity<type>)};
         const auto width{left - right + 1};
         const auto format{input.boolean() ? ::verilator_utils::bin : ::verilator_utils::hex};
         const ::verilator_utils::vector_slice<type> slice{data, left, right, format};
@@ -330,7 +454,7 @@ namespace
         {
             const auto dumped{slice.template dump<type>()};
             ::fuzz::check(dumped.width() == width);
-            ::fuzz::check(to_bits(dumped.value()) == to_bits(static_cast<type>(slice)));
+            ::fuzz::check(::to_bits(dumped.value()) == ::to_bits(static_cast<type>(slice)));
             ::fuzz::check(dumped.to_string() == slice.to_string());
         }
         else
@@ -346,37 +470,37 @@ namespace
         ::fuzz::check(packed_format.first == width);
         const ::verilator_utils::vector_slice<type> restored{data, packed_format};
         ::fuzz::check(restored.width() == width);
-        check_slice(restored, bits, 0, "slice from packed format");
+        ::check_slice(restored, bits, 0, "slice from packed format");
     }
 
     /// 各种数据格式下的切片读取
     template <typename type>
     void op_slice_format(type& data, ::std::vector<bool>& bits, ::fuzz::reader& input)
     {
-        constexpr auto bounded_capacity{::std::min(capacity<type>, ::std::size_t{64zu})};
+        constexpr auto bounded_capacity{::std::min(::capacity<type>, ::std::size_t{64zu})};
         // 保证宽度不超过64位，使所有格式都能参与
-        const auto [left, right]{make_range(input, bounded_capacity)};
+        const auto [left, right]{::make_range(input, bounded_capacity)};
         const auto width{left - right + 1};
-        const auto packed{pack_bits(bits, right, width)};
+        const auto packed{::pack_bits(bits, right, width)};
         const ::verilator_utils::vector_slice<type> probe{data, left, right};
 
-        switch(input.u8() % 6u)
+        switch(::fuzz::read_opcode<format_op_t>(input))
         {
-            case 0:
+            case format_op_t::hex:
             {
                 const auto slice{probe.convert(::verilator_utils::data_format::hex)};
                 ::fuzz::check(::std::get<::std::uint64_t>(slice.to_underlying()) == packed);
                 ::fuzz::check(slice.to_string() == ::std::format("0x{:0{}x}", packed, (width + 3zu) / 4zu));
                 break;
             }
-            case 1:
+            case format_op_t::bin:
             {
                 const auto slice{probe.convert(::verilator_utils::bin)};
                 ::fuzz::check(::std::get<::std::uint64_t>(slice.to_underlying()) == packed);
                 ::fuzz::check(slice.to_string() == ::std::format("0b{:0{}b}", packed, width));
                 break;
             }
-            case 2:
+            case format_op_t::dec_unsigned:
             {
                 const auto slice{probe.convert(::verilator_utils::dec_unsigned)};
                 ::fuzz::check(::std::get<::std::uint64_t>(slice.to_underlying()) == packed);
@@ -385,7 +509,7 @@ namespace
                 ::fuzz::check(slice.is_valid());
                 break;
             }
-            case 3:
+            case format_op_t::dec_signed:
             {
                 if(width < 2) { break; }
                 const auto slice{probe.convert(::verilator_utils::dec_signed)};
@@ -394,7 +518,7 @@ namespace
                 ::fuzz::check(slice.to_string() == ::std::format("{}", signed_value));
                 break;
             }
-            case 4:
+            case format_op_t::boolean:
             {
                 if(width != 1) { break; }
                 const auto slice{probe.convert(::verilator_utils::boolean)};
@@ -402,15 +526,15 @@ namespace
                 ::fuzz::check(slice.to_string() == (packed != 0 ? "true" : "false"));
                 break;
             }
-            default:
+            case format_op_t::fsm_enum:
             {
                 ::std::vector<::std::string> enum_string{};
                 const auto size{static_cast<::std::size_t>(input.range(1, 5)) * 2zu};
-                for(::std::size_t i{}; i != size; ++i) { enum_string.push_back(input.short_string(6)); }
+                for(auto i{0zu}; i != size; ++i) { enum_string.push_back(input.short_string(6)); }
                 const auto min_width{size <= 1 ? 1zu : ::std::bit_width(size - 1)};
                 if(width < min_width)
                 {
-                    ::fuzz::check(rejected([&] { (void)probe.convert(::verilator_utils::fsm_enum(enum_string)); }));
+                    ::fuzz::check(::rejected([&] { (void)probe.convert(::verilator_utils::fsm_enum(enum_string)); }));
                     break;
                 }
                 const auto expected_name{packed < size ? enum_string[packed] : ::std::string{}};
@@ -419,6 +543,7 @@ namespace
                 if(packed < size) { ::fuzz::check(slice.to_string() == expected_name); }
                 break;
             }
+            case format_op_t::total_ops: ::std::unreachable();  // 取模映射不会产生该取值
         }
     }
 
@@ -443,23 +568,23 @@ namespace
     template <typename type>
     void op_compare(type& data, const ::std::vector<bool>& bits, ::fuzz::reader& input)
     {
-        constexpr auto max_width{::std::min(capacity<type>, ::std::size_t{64zu})};
-        const auto [left, right]{make_range(input, max_width)};
+        constexpr auto max_width{::std::min(::capacity<type>, ::std::size_t{64zu})};
+        const auto [left, right]{::make_range(input, max_width)};
         const auto width{left - right + 1};
-        const auto packed{pack_bits(bits, right, width)};
+        const auto packed{::pack_bits(bits, right, width)};
         // 十六进制与二进制格式不支持三路比较，只支持相等比较
-        const auto selector{input.u8() % 3u};
+        const auto selector{::fuzz::read_opcode<compare_format_op_t>(input)};
         auto format{::verilator_utils::data_format::format{::verilator_utils::dec_unsigned}};
-        if(selector == 1u) { format = ::verilator_utils::hex; }
-        if(selector == 2u) { format = ::verilator_utils::bin; }
+        if(selector == compare_format_op_t::hex) { format = ::verilator_utils::hex; }
+        if(selector == compare_format_op_t::bin) { format = ::verilator_utils::bin; }
 
         const ::verilator_utils::vector_slice<type> slice{data, left, right, format};
-        auto same_data{make_storage<type>(packed)};
+        auto same_data{::make_storage<type>(packed)};
         const ::verilator_utils::vector_slice<type> same{same_data, width - 1, 0, format};
 
-        if(selector != 0u)
+        if(selector != compare_format_op_t::dec_unsigned)
         {
-            ::fuzz::check(rejected([&] { (void)(slice <=> same); }));
+            ::fuzz::check(::rejected([&] { (void)(slice <=> same); }));
             return;
         }
 
@@ -468,6 +593,21 @@ namespace
         // 与格式包装器比较
         const ::verilator_utils::format_wrapper<::std::uint64_t> wrapper{packed, 64zu, ::verilator_utils::dec_unsigned};
         ::fuzz::check((slice <=> wrapper) == ::std::partial_ordering::equivalent);
+        // 不同数据的切片必须得到非等价的比较结果，且方向与底层值一致
+        const auto other_value{packed ^ 1zu};
+        const ::verilator_utils::format_wrapper<::std::uint64_t> other_wrapper{other_value,
+                                                                               64zu,
+                                                                               ::verilator_utils::dec_unsigned};
+        const auto order{slice <=> other_wrapper};
+        auto expected{::std::partial_ordering::equivalent};
+        if(packed < other_value) { expected = ::std::partial_ordering::less; }
+        else if(packed > other_value) { expected = ::std::partial_ordering::greater; }
+        ::fuzz::check(order == expected, packed);
+        // 值宽度超过切片宽度时必须被拒绝
+        if(width < 64zu)
+        {
+            ::fuzz::check(::rejected([&] { (void)(slice == (::std::uint64_t{1zu} << width)); }));
+        }
         // 位切片之间的三路比较
         if(width == 1zu)
         {
@@ -487,7 +627,7 @@ namespace
     void op_nested_fixed_width(type& data, ::fuzz::reader& input)
     {
         // 定点数格式以double为底层表示，宽度上限为double的有效位数
-        constexpr auto max_width{::std::min(capacity<type>, ::std::size_t{53zu})};
+        constexpr auto max_width{::std::min(::capacity<type>, ::std::size_t{53zu})};
         const auto width{static_cast<::std::size_t>(input.range(2, max_width))};
         const auto integer_bit{static_cast<::std::uint8_t>(input.range(1, width - 1))};
         const auto format{::verilator_utils::unsigned_fixed_point(integer_bit,
@@ -498,18 +638,34 @@ namespace
 
         // 固定宽度格式下，不提供新格式的窄切片必须被拒绝
         const auto right{static_cast<::std::size_t>(input.range(0, width - 2))};
-        ::fuzz::check(rejected([&] { (void)(slice[width - 2, right]); }));
+        ::fuzz::check(::rejected([&] { (void)(slice[width - 2, right]); }));
+        // 同宽度的子切片不需要提供新格式
+        const auto same_width{slice[width - 1, 0]};
+        ::fuzz::check(same_width.width() == width);
+        ::fuzz::check(same_width.format().index() == slice.format().index());
         // 提供可变宽度格式后可以创建不同宽度的切片
         const auto narrower{slice[width - 2, right, ::verilator_utils::dec_unsigned]};
         ::fuzz::check(narrower.width() == width - 1 - right);
         ::fuzz::check(::std::holds_alternative<::verilator_utils::data_format::dec_unsigned_t>(narrower.format()));
+        // 枚举是可变宽度格式：不提供新格式也可以创建更窄但仍满足枚举宽度的切片
+        if(width > 2zu)
+        {
+            ::std::vector<::std::string> enum_string{"a", "b", "c", "d"};
+            const ::verilator_utils::vector_slice<type> enum_slice{data,
+                                                                   width - 1,
+                                                                   0,
+                                                                   ::verilator_utils::fsm_enum(::std::move(enum_string))};
+            const auto enum_narrower{enum_slice[width - 2, 0]};
+            ::fuzz::check(enum_narrower.width() == width - 1);
+            ::fuzz::check(::std::format("{}", enum_slice) == enum_slice.to_string());
+        }
     }
 
     /// 移位寄存器的差分测试
     template <typename type>
     void op_shift_register(::fuzz::reader& input)
     {
-        constexpr auto max_width{::std::min(capacity<type>, ::std::size_t{64zu})};
+        constexpr auto max_width{::std::min(::capacity<type>, ::std::size_t{64zu})};
         const auto depth{static_cast<::std::size_t>(input.range(0, 4))};
         const auto width{static_cast<::std::size_t>(input.range(1, max_width))};
         // 十六进制与二进制格式对所有存储类型都有效，宽数据类型也只支持这两种格式
@@ -525,7 +681,7 @@ namespace
         const auto steps{static_cast<::std::size_t>(input.range(1, 5))};
         for(::std::size_t step{}; step != steps; ++step)
         {
-            const auto value{make_storage<type>(input.u64() & mask)};
+            const auto value{::make_storage<type>(input.u64() & mask)};
             const bool enable{input.boolean()};
             const auto updated{reg.update(value, enable)};
 
@@ -557,20 +713,20 @@ namespace
 
         // 清空后不应再返回缓冲的元素
         reg.reset();
-        ::fuzz::check(!reg.update(make_storage<type>(0zu), false).has_value());
+        ::fuzz::check(!reg.update(::make_storage<type>(0zu), false).has_value());
     }
 
     /// 未指定数据格式的切片必须被拒绝
     template <typename type>
     void op_monostate_format(type& data, ::fuzz::reader& input)
     {
-        const auto index{static_cast<::std::size_t>(input.range(0, capacity<type> - 1))};
+        const auto index{static_cast<::std::size_t>(input.range(0, ::capacity<type> - 1))};
         // std::monostate表示尚未设置数据格式
-        ::fuzz::check(rejected(
+        ::fuzz::check(::rejected(
             [&] { const ::verilator_utils::bit_slice<type> slice{data, index, ::verilator_utils::data_format::format{}}; }));
-        const auto left{static_cast<::std::size_t>(input.range(0, capacity<type> - 1))};
+        const auto left{static_cast<::std::size_t>(input.range(0, ::capacity<type> - 1))};
         const auto right{static_cast<::std::size_t>(input.range(0, left))};
-        ::fuzz::check(rejected([&] {
+        ::fuzz::check(::rejected([&] {
             const ::verilator_utils::vector_slice<type> slice{data, left, right, ::verilator_utils::data_format::format{}};
         }));
     }
@@ -589,27 +745,28 @@ namespace
         {
             data = static_cast<type>(input.u64());
         }
-        auto bits{to_bits(data)};
+        auto bits{::to_bits(data)};
 
         const auto steps{static_cast<::std::size_t>(input.range(1, 8))};
         for(::std::size_t step{}; step != steps; ++step)
         {
-            switch(input.u8() % 11u)
+            switch(::fuzz::read_opcode<op_t>(input))
             {
-                case 0: op_bit_slice(data, bits, input); break;
-                case 1: op_slice_range(data, bits, input); break;
-                case 2: op_slice_width(data, bits, input); break;
-                case 3: op_assign_scalar(data, bits, input); break;
-                case 4: op_assign_slice(data, bits, input); break;
-                case 5: op_dump(data, bits, input); break;
-                case 6: op_slice_format(data, bits, input); break;
-                case 7: op_compare(data, bits, input); break;
-                case 8: op_nested_fixed_width(data, input); break;
-                case 9:
+                case op_t::bit_slice: ::op_bit_slice(data, bits, input); break;
+                case op_t::slice_range: ::op_slice_range(data, bits, input); break;
+                case op_t::slice_width: ::op_slice_width(data, bits, input); break;
+                case op_t::assign_scalar: ::op_assign_scalar(data, bits, input); break;
+                case op_t::assign_slice: ::op_assign_slice(data, bits, input); break;
+                case op_t::dump: ::op_dump(data, bits, input); break;
+                case op_t::slice_format: ::op_slice_format(data, bits, input); break;
+                case op_t::compare: ::op_compare(data, bits, input); break;
+                case op_t::nested_fixed_width: ::op_nested_fixed_width(data, input); break;
+                case op_t::shift_register:
                     // 移位寄存器只支持格式包装器的数据类型
-                    if constexpr(::verilator_utils::is_format_wrapper_data_type<type>) { op_shift_register<type>(input); }
+                    if constexpr(::verilator_utils::is_format_wrapper_data_type<type>) { ::op_shift_register<type>(input); }
                     break;
-                default: op_monostate_format(data, input); break;
+                case op_t::monostate_format: ::op_monostate_format(data, input); break;
+                case op_t::total_ops: ::std::unreachable();  // 取模映射不会产生该取值
             }
         }
     }
@@ -621,16 +778,17 @@ namespace
         ::fuzz::check(sizeof(::VlWide<1>) == 4zu && sizeof(::VlWide<2>) == 8zu && sizeof(::VlWide<4>) == 16zu);
 
         ::fuzz::reader input{data, size};
-        switch(input.u8() % 8u)
+        switch(::fuzz::read_opcode<type_op_t>(input))
         {
-            case 0: fuzz_type<::CData>(input); break;
-            case 1: fuzz_type<::SData>(input); break;
-            case 2: fuzz_type<::IData>(input); break;
-            case 3: fuzz_type<::QData>(input); break;
-            case 4: fuzz_type<::VlWide<1>>(input); break;
-            case 5: fuzz_type<::VlWide<2>>(input); break;
-            case 6: fuzz_type<::VlWide<3>>(input); break;
-            default: fuzz_type<::VlWide<4>>(input); break;
+            case type_op_t::cdata: ::fuzz_type<::CData>(input); break;
+            case type_op_t::sdata: ::fuzz_type<::SData>(input); break;
+            case type_op_t::idata: ::fuzz_type<::IData>(input); break;
+            case type_op_t::qdata: ::fuzz_type<::QData>(input); break;
+            case type_op_t::vlwide1: ::fuzz_type<::VlWide<1>>(input); break;
+            case type_op_t::vlwide2: ::fuzz_type<::VlWide<2>>(input); break;
+            case type_op_t::vlwide3: ::fuzz_type<::VlWide<3>>(input); break;
+            case type_op_t::vlwide4: ::fuzz_type<::VlWide<4>>(input); break;
+            case type_op_t::total_ops: ::std::unreachable();  // 取模映射不会产生该取值
         }
         return 0;
     }
