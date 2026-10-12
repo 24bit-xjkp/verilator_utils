@@ -34,7 +34,7 @@ end
 
 --- 判断是否启用fuzz系列目标
 function enable_fuzz()
-    return get_config("enable_fuzz")
+    return get_config("enable fuzz")
 end
 
 --- 判断是否启用覆盖率支持
