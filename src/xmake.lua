@@ -16,7 +16,7 @@ local function register_target(kind, enable)
         add_packages("cpptrace", { public = true })
         add_files("*.cppm", { public = true, install = true })
         add_includedirs(".", { public = true })
-        add_headerfiles("verilator_*.hpp")
+        add_headerfiles("*.hpp")
         common_settings()
     end)
 
