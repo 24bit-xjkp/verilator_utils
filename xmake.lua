@@ -1,6 +1,6 @@
 set_project("verilator_utils")
--- 3.1.1引入addon支持
-set_xmakever("3.1.1")
+-- 3.1.2引入Reduced BMI支持
+set_xmakever("3.1.2")
 set_version("0.1.0")
 set_languages("c++latest")
 set_warnings("allextra", "pedantic")
@@ -15,6 +15,7 @@ add_packages("verilator")
 add_requireconfs("cpptrace", { configs = { shared = get_config("use_sanitizer") } })
 set_exceptions("cxx")
 set_policy("build.c++.modules.hide_dependencies", true)
+set_policy("build.c++.modules.clang.precompile_reduced_bmi", true)
 set_defaultmode("release")
 
 add_options("use_std_harden")
