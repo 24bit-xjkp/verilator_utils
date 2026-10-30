@@ -23,6 +23,9 @@ namespace
     /// 不使用波形记录的DUT上下文类型
     using stats_context = ::verilator_utils::dut_context<stats_dut, void>;
 
+    /// 不使用波形记录、且未启用覆盖率支持的DUT上下文类型
+    using no_coverage_context = ::verilator_utils::dut_context<stats_dut, void, false>;
+
     /// 速度字符串中单位后缀相对秒的十进制指数
     constexpr ::std::array speed_unit_table{
         ::std::tuple{"s"sv,  0  },
@@ -119,13 +122,15 @@ namespace
      * @brief 统计功能测试夹具
      *
      * 只驱动任务队列而不结束仿真，因此同一个夹具可以多次推进仿真时间
+     * @tparam context_t 被测的DUT上下文类型
      */
-    struct stats_fixture
+    template <typename context_t>
+    struct basic_stats_fixture
     {
-        stats_context ctx;
+        context_t ctx;
         bool started{};
 
-        explicit stats_fixture(::verilator_utils::dut_context_option option = {}) : ctx{option} {}
+        explicit basic_stats_fixture(::verilator_utils::dut_context_option option = {}) : ctx{option} {}
 
         /**
          * @brief 推进仿真指定时长，返回推进结束时的统计信息
@@ -147,6 +152,9 @@ namespace
             return ctx.stats();
         }
     };
+
+    /// 启用覆盖率支持的统计功能测试夹具
+    using stats_fixture = basic_stats_fixture<stats_context>;
 
     using namespace ::verilator_utils::verilator;
 }  // namespace
@@ -400,6 +408,44 @@ TEST_SUITE("verilator_utils/context")
             static_cast<void>(fixture.advance(1_ns));
             // 析构前关闭记录，覆盖率文件不应写出
             fixture.ctx.set_coverage(false);
+            CHECK_FALSE(fixture.ctx.coverage());
+        }
+
+        CHECK_FALSE(::std::filesystem::exists(coverage_file));
+    }
+
+    // --- 可选覆盖率支持 (coverage_support) ---
+
+    TEST_CASE("coverage support is exposed as a compile-time constant")
+    {
+        static_assert(stats_context::with_coverage_support);
+        static_assert(!no_coverage_context::with_coverage_support);
+
+        // 只有支持覆盖率时set_coverage才满足约束，可以正常引用
+        // 反例（引用no_coverage_context::set_coverage）是编译期错误，无法在通过的用例中断言
+        static_assert(requires(stats_context& ctx) { ctx.set_coverage(true); });
+    }
+
+    TEST_CASE("enabling coverage without coverage support is rejected")
+    {
+        CHECK_THROWS_WITH_AS((no_coverage_context{{.coverage = true}}),
+                             ::doctest::Contains{"未启用覆盖率支持"},
+                             ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("context without coverage support reports coverage as disabled and writes no coverage file")
+    {
+        const auto coverage_file{::std::filesystem::temp_directory_path() / "verilator_utils_context_no_coverage_support.dat"};
+        ::std::filesystem::remove(coverage_file);
+        const auto base_name{(coverage_file.parent_path() / coverage_file.stem()).native()};
+
+        {
+            basic_stats_fixture<no_coverage_context> fixture{{.base_name = base_name}};
+            CHECK_FALSE(fixture.ctx.coverage());
+            const auto stats{fixture.advance(1_ns)};
+            // 确认仿真已经进入评估循环，否则析构时本来就不会写出覆盖率文件
+            CHECK_EQ(stats.simtime_str, "1ns"sv);
+            CHECK_NE(fixture.ctx.scheduler().eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin);
             CHECK_FALSE(fixture.ctx.coverage());
         }
 
