@@ -1,5 +1,5 @@
 export module verilator_utils:scheduler;
-import :wrapper;
+import :utils;
 
 namespace
 {

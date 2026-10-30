@@ -2,6 +2,7 @@ module;
 #include <doctest_macros.hpp>
 export module verilator_utils:task;
 import :scheduler;
+import :wrapper;
 
 namespace
 {
