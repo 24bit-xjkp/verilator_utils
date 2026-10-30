@@ -27,9 +27,8 @@ local function register_target(kind, enable)
         add_files("sanitizer_option.cpp")
         common_settings()
 
-        after_load(function (target)
-            -- 在未安装verilator的环境下首次config时避免访问空表
-            local verilator_root = (target:pkgenvs() or {})["VERILATOR_ROOT"]
+        on_config(function (target)
+            local verilator_root = target:pkgenvs()["VERILATOR_ROOT"]
             if verilator_root then
                 for _, runtime in ipairs({ "verilated.cpp", "verilated_threads.cpp", "verilated_cov.cpp" }) do
                     target:add("files", path.join(verilator_root, "include", runtime), { warnings = "none" })

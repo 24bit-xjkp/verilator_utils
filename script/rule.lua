@@ -1,7 +1,6 @@
 rule("verilator_include", function ()
-    after_load(function (target)
-        -- 在未安装verilator的环境下首次config时避免访问空表
-        local verilator_root = (target:pkgenvs() or {})["VERILATOR_ROOT"]
+    on_config(function (target)
+        local verilator_root = target:pkgenvs()["VERILATOR_ROOT"]
         if verilator_root then
             target:add("includedirs", path.join(verilator_root, "include"), { public = true })
         end
