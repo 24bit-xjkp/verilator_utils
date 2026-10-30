@@ -20,9 +20,6 @@ export namespace verilator_utils
     template <typename type>
     concept is_verilator_tracer = ::verilator_utils::same_as_any<type, ::VerilatedVcdC, ::VerilatedFstC, ::VerilatedSaifC, void>;
 
-    template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
-    struct dut_context;
-
     namespace detail
     {
         /**
@@ -78,7 +75,7 @@ export namespace verilator_utils
      */
     struct dut_context_option
     {
-        /// 是否启用覆盖率记录
+        /// 是否启用覆盖率记录，只有在DUT上下文启用覆盖率支持时生效
         bool coverage{};
         /// 时间单位，默认值为ns，会覆盖dut内设置
         ::verilator_utils::verilator_time_unit time_unit{::verilator_utils::verilator_time_unit::ns};
@@ -125,8 +122,11 @@ export namespace verilator_utils
      *
      * @tparam dut_t DUT类型，必须是VerilatedModel的派生类
      * @tparam tracer_t 波形记录器类型
+     * @tparam coverage_support Verilator是否开启覆盖率支持
      */
-    template <::std::derived_from<::VerilatedModel> dut_t, ::verilator_utils::is_verilator_tracer tracer_t>
+    template <::std::derived_from<::VerilatedModel> dut_t,
+              ::verilator_utils::is_verilator_tracer tracer_t,
+              bool coverage_support = true>
     struct dut_context
     {
     private:
@@ -160,6 +160,9 @@ export namespace verilator_utils
         ::std::optional<::doctest::detail::ContextScope<log_random_seed>> random_seed_logger{};
 
     public:
+        /// 是否启用覆盖率支持
+        constexpr static bool with_coverage_support{coverage_support};
+
         /**
          * @brief 构造一个DUT上下文对象
          *
@@ -188,6 +191,11 @@ export namespace verilator_utils
                 tracer_.init();
                 dut_->trace(tracer_.get(), option.trace_level);
             }
+
+            if constexpr(!coverage_support)
+            {
+                ::verilator_utils::check{}(!coverage_, "未启用覆盖率支持，设置coverage_support以启用该功能"sv);
+            }
             // NOLINTEND(cppcoreguidelines-prefer-member-initializer)
         }
 
@@ -200,10 +208,13 @@ export namespace verilator_utils
         ~dut_context() noexcept
         {
             dut_->final();
-            if(coverage_ && scheduler_->eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
+            if constexpr(coverage_support)
             {
-                context_->coverageFilename(::std::format("{}.dat"sv, base_name_));
-                context_->coveragep()->write();
+                if(coverage_ && scheduler_->eval_stage() != ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin)
+                {
+                    context_->coverageFilename(::std::format("{}.dat"sv, base_name_));
+                    context_->coveragep()->write();
+                }
             }
         }
 
@@ -310,14 +321,20 @@ export namespace verilator_utils
          *
          * @return 覆盖率记录是否启用
          */
-        [[nodiscard]] bool coverage() const noexcept { return coverage_; }
+        [[nodiscard]] bool coverage() const noexcept
+        {
+            if constexpr(coverage_support) { return coverage_; }
+            return false;
+        }
 
         /**
          * @brief 设置覆盖率记录是否启用
          *
          * @param enable_coverage 覆盖率记录是否启用
          */
-        void set_coverage(bool enable_coverage) noexcept { coverage_ = enable_coverage; }
+        void set_coverage(bool enable_coverage) noexcept
+            requires (coverage_support)
+        { coverage_ = enable_coverage; }
 
         /**
          * @brief 执行初始化循环，然后执行调度器循环直到调度器队列为空或者仿真结束，如果启用波形记录器，则记录波形
