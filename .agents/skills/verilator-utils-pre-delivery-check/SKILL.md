@@ -75,7 +75,7 @@ git status --short
 - `xmake format` 会**就地改写**文件。确认这些改动属于纯格式化，没有引入语义变化；如果有非格式化的意外改动，需要逐一说明。
 - 只应留下本次任务相关的文件改动。
 - 报告验证结果时写明实际使用的目标与配置，不要凭单一配置断言广泛的移植性或完整回归覆盖。
-- 运行测试时按 `verilator-utils-unit-testing` skill 的测试顺序：**存在 tysan 组时，先跑常规组，常规组全绿后再跑 tysan 组**。
+- 运行测试时按 `verilator-utils-unit-testing` skill 的测试顺序：**存在 tysan 组时，先跑常规组，常规组全绿后再跑 tysan 组**；两组都追加 `--output-on-failure`，失败用例的输出会在测试结束后打印。
 
 ## 第三方库告警的处理约定
 

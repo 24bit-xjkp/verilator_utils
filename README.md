@@ -50,9 +50,10 @@
 uv sync --extra build-verilator --extra complete # 创建/更新虚拟环境 .venv
 source .venv/bin/activate                        # 推荐：先激活虚拟环境
 xmake                                            # 默认 release 构建（只编译 C++，不依赖 Python）
-xmake test                                       # 运行测试（需要 Python 环境）
+xmake test --output-on-failure                  # 运行测试（需要 Python 环境）
 ```
 
+- `xmake test --output-on-failure` 会在测试结束后打印未通过用例的输出，便于定位失败原因；需要逐条实时查看输出时改用 `xmake test -v`
 - `build-verilator` 可选包组提供从源码构建 Verilator 所需的 pip / setuptools / wheel，`complete` 可选包组提供命令行补全（argcomplete）
 - 系统中没有 verilator 包时，`xmake config` 会从源码编译 Verilator，此时也需要 Python 环境：系统已有 python 可直接构建，否则请使用本项目的虚拟环境（需安装 `build-verilator` 可选包组）
 - `xmake build` 只涉及 C++ 代码，无需 Python 环境；建议在运行 xmake 命令前先激活虚拟环境，这样无需判断某条命令是否依赖 Python
@@ -86,10 +87,10 @@ TypeSanitizer（`-fsanitize=type`）会检测类型混淆与违反严格别名�
 常规的 asan + ubsan 目标组则完全不受影响，两组目标可以在同一次配置中共存。
 
 ```bash
-xmake f --use_type_sanitizer=y          # 工具链支持时创建该组目标，不支持时给出告警并忽略
-xmake test -g tysan_unit_test           # 框架单元测试（仅 type sanitizer）
-xmake test -g tysan_unit_test_rtl       # RTL 集成测试（仅 type sanitizer）
-xmake test -g "tysan_unit_test*"        # 两组测试都会运行
+xmake f --use_type_sanitizer=y                           # 工具链支持时创建该组目标，不支持时给出告警并忽略
+xmake test --output-on-failure -g tysan_unit_test        # 框架单元测试（仅 type sanitizer）
+xmake test --output-on-failure -g tysan_unit_test_rtl    # RTL 集成测试（仅 type sanitizer）
+xmake test --output-on-failure -g "tysan_unit_test*"     # 两组测试都会运行
 ```
 
 - 目标命名沿用常规组，仅追加 `_tysan` 后缀
@@ -101,7 +102,7 @@ xmake test -g "tysan_unit_test*"        # 两组测试都会运行
 
 ```bash
 xmake f --fuzz_time=120 --fuzz_parallel=2       # 配置模糊测试的最大运行时间和并行度
-xmake test -g fuzz_test                         # 模糊测试
+xmake test --output-on-failure -g fuzz_test     # 模糊测试
 xmake update-corpus                             # 精简语料并更新语料库
 ```
 

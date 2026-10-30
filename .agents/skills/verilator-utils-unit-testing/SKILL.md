@@ -250,7 +250,8 @@ CHECK_THROWS_WITH_AS_MESSAGE((::verilator_utils::approx<::std::int64_t>{-1z, 0.5
 
 - 用例的运行参数与环境由 `test/xmake.lua` 的 `add_tests` 注册：框架单元测试带 doctest 套件过滤 `-ts=verilator_utils/<basename>` 与 `LLVM_PROFILE_FILE`，RTL 测试带 `+verilator+rand+reset+2`。直接执行产物会丢掉这些声明，跑出来的不是项目约定的那次运行，结果不能作为验证证据。
 - 入口同时负责构建目标、准备包库路径与 rpath、按需生成 RTL 源文件与激励数据，因此它也是运行环境的唯一出处。
-- 需要看单个用例的详细输出时用 `xmake test -v`（它按 `add_tests` 的声明配置好运行参数与环境）。确需手工驱动某个用例时用 `xmake run <target> <参数>`，并显式补上该用例在 `add_tests` 中声明的参数——`xmake run` 只应用目标级声明，不应用用例级声明。目标名与选项写法见 `xmake-commands`、`xmake-tests` skill。
+- 运行测试时统一追加 `--output-on-failure`（即 `xmake test --output-on-failure ...`）：测试结束后会打印未通过用例的输出，失败详情不必再单独重跑。默认的 `xmake test` 不打印用例输出，只有结果摘要。
+- 需要逐条实时查看输出时用 `xmake test -v`（它按 `add_tests` 的声明配置好运行参数与环境）。确需手工驱动某个用例时用 `xmake run <target> <参数>`，并显式补上该用例在 `add_tests` 中声明的参数——`xmake run` 只应用目标级声明，不应用用例级声明。目标名与选项写法见 `xmake-commands`、`xmake-tests` skill。
 - 同类场景同理：只要工具链提供了运行/测试入口，就用入口而不是产物路径；确实需要裸执行时在报告中写明原因与命令。
 
 ## 运行测试的顺序：先常规组，后 tysan 组
@@ -266,10 +267,10 @@ TypeSanitizer 会大幅拖慢测试运行速度，而它只能发现类型混淆
 
 ```bash
 # 第一步：常规组，必须全绿后才继续
-xmake test -g "unit_test*"
+xmake test --output-on-failure -g "unit_test*"
 
 # 第二步：常规组通过后，再跑 tysan 组
-xmake test -g "tysan_unit_test*"
+xmake test --output-on-failure -g "tysan_unit_test*"
 ```
 
 ### tysan 组的前置条件

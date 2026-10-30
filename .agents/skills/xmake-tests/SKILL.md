@@ -22,15 +22,17 @@ target("app_test")
 Running:
 
 ```bash
-xmake test                         # run all tests
-xmake test app_test/default        # run one case
-xmake test -v app_test/default     # show output of the given cases
-xmake test -jN                     # parallel
+xmake test --output-on-failure               # run all tests, print output of unexpected cases afterwards
+xmake test --output-on-failure app_test/default   # run one case
+xmake test -v app_test/default               # show output of the given cases
+xmake test -jN                               # parallel
 ```
 
-Test names are positional arguments, so they must come last: write `xmake test -v app_test/default`, never `xmake test app_test/default -v` — trailing arguments after the test names are forwarded to the test binary instead.
+`--output-on-failure` makes xmake print the captured stdout/stderr of every test that did not behave as expected (failed, timed out, or a negative test that unexpectedly passed) once the run finishes. Prefer it for everyday runs and CI: the per-case output stays quiet on success, and on failure you get the details in the same run. Use `-v` only when you want the output of specific cases shown live.
 
-Do **not** launch the built binary path. `xmake test` is the test entry point: it builds the target and applies each case's `add_tests` declarations (`runargs`, `runenvs`, `rundir`). `xmake run <target> [arguments]` is the *run* entry point and applies only **target-level** `runargs`/`runenvs`, package library paths and rpath — it does not know a case's `add_tests` options, so driving one case by hand means passing that case's flags explicitly (e.g. `xmake run app_test --quick`). Launching the artifact directly, or running it through `xmake run` without the case's flags, produces a run the project never defined. Fall back to the raw binary only when no entry point can express what you need (attaching an external debugger, reproducing a bare run) — then record why and the exact command. `xmake test` swallows the test output, so `xmake run` and `xmake test -v tests` are the way to see a failing case in detail.
+Test names are positional arguments, so they must come last: write `xmake test --output-on-failure app_test/default`, never `xmake test app_test/default --output-on-failure` — trailing arguments after the test names are forwarded to the test binary instead.
+
+Do **not** launch the built binary path. `xmake test` is the test entry point: it builds the target and applies each case's `add_tests` declarations (`runargs`, `runenvs`, `rundir`). `xmake run <target> [arguments]` is the *run* entry point and applies only **target-level** `runargs`/`runenvs`, package library paths and rpath — it does not know a case's `add_tests` options, so driving one case by hand means passing that case's flags explicitly (e.g. `xmake run app_test --quick`). Launching the artifact directly, or running it through `xmake run` without the case's flags, produces a run the project never defined. Fall back to the raw binary only when no entry point can express what you need (attaching an external debugger, reproducing a bare run) — then record why and the exact command. Plain `xmake test` swallows the test output; `--output-on-failure` (end-of-run detail for failing cases), `xmake test -v` (live output) and `xmake run` are the ways to see it.
 
 Options per case:
 
@@ -89,7 +91,7 @@ end
 ```bash
 xmake f -m release --yes
 xmake build
-xmake test -v
+xmake test --output-on-failure
 ```
 
 `--yes` auto-accepts package prompts.
