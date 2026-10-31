@@ -1136,7 +1136,12 @@ namespace
     /// 共享的同步对象与激励信号
     struct sync_objects
     {
-        ::std::array<::verilator_utils::event, 4> events{};
+        ::std::array<::verilator_utils::event, 4> events{
+            ::verilator_utils::event{},
+            ::verilator_utils::event{},
+            ::verilator_utils::event{},
+            ::verilator_utils::event{},
+        };
         ::std::array<::verilator_utils::semaphore, 2> semaphores{::verilator_utils::semaphore{0},
                                                                  ::verilator_utils::semaphore{2}};
         ::std::array<::verilator_utils::mailbox<::std::uint64_t>, 2> mailboxes{::verilator_utils::mailbox<::std::uint64_t>{0},
@@ -1196,6 +1201,18 @@ namespace
             // 根协程抛出的非取消异常：检查协程异常的报告与原始异常访问路径
             ::check_coroutine_exception(error);
             ++coroutine_errors;
+            scheduler.finish();
+        }
+        catch(const ::verilator_utils::eval_timeout_exception&)
+        {
+            // 仿真超时异常按原样传播：超时任务已结束仿真并标记错误
+            ++timeouts;
+            scheduler.finish();
+        }
+        catch(const ::std::runtime_error& error)
+        {
+            // 调度器退出时仍有挂起条目：检查死锁诊断后结束仿真
+            ::fuzz::check(::std::string_view{error.what()}.contains("检测到死锁"));
             scheduler.finish();
         }
         // 无论是否经由异常退出，看门狗都保证仿真已经结束

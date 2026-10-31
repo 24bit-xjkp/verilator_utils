@@ -1512,8 +1512,8 @@ TEST_SUITE("verilator_utils/task")
             scheduler.add_task(waiter());
             scheduler.add_task(finish());
 
-            // 仿真通过eval_finish结束，结束异常由框架内部消化，循环正常返回
-            scheduler.loop_until_finish();
+            // 仿真通过eval_finish结束，但信号量等待者仍挂起：死锁诊断抛出runtime_error
+            CHECK_THROWS_AS(scheduler.loop_until_finish(), ::std::runtime_error);
             CHECK_EQ(destroyed, 1zu);
         }
         // 调度器析构时回收仍挂起在信号量上的等待者
@@ -1543,7 +1543,8 @@ TEST_SUITE("verilator_utils/task")
                 scheduler.add_task(waiter());
                 scheduler.add_task(finish());
 
-                scheduler.loop_until_finish();
+                // 仿真通过eval_finish结束，但信号量等待者仍挂起：死锁诊断抛出runtime_error
+                CHECK_THROWS_AS(scheduler.loop_until_finish(), ::std::runtime_error);
                 CHECK_EQ(destroyed, 1zu);
             }
             // 调度器析构时回收仍挂起在信号量上的等待者
@@ -2494,7 +2495,8 @@ TEST_SUITE("verilator_utils/task")
                 // 先让两个异步子协程挂起到event上，再结束父协程
                 co_await ::verilator_utils::wait_time(1_ps);
             }());
-            scheduler.loop_until_finish();
+            // 两个异步子协程挂起在永不触发的事件上：死锁诊断抛出runtime_error
+            CHECK_THROWS_AS(scheduler.loop_until_finish(), ::std::runtime_error);
             scheduler.finish();
         }
         CHECK_EQ(destroyed, 2zu);

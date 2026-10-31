@@ -30,6 +30,26 @@ namespace
     {
     };
 
+    /// 未实现dump的同步体，用于验证with_suspend_queue的默认dump实现
+    // 该对象只在栈上析构，不通过基类指针删除，与with_suspend_queue的设计一致
+    // NOLINTNEXTLINE(cppcoreguidelines-virtual-class-destructor)
+    struct opaque_suspend_queue : ::verilator_utils::with_suspend_queue
+    {
+        constexpr explicit opaque_suspend_queue(::std::source_location location = ::std::source_location::current()) noexcept :
+            ::verilator_utils::with_suspend_queue{location}
+        {
+        }
+
+        bool released{};
+        /// 模拟挂起队列是否为空
+        bool queue_empty{};
+
+        [[nodiscard]] bool dump_empty() const noexcept override { return queue_empty; }
+
+    protected:
+        void release() noexcept override { released = true; }
+    };
+
     /// 抛出异常的子协程：记录自身协程柄后抛出异常
     ::verilator_utils::task<void> throwing_child(::verilator_utils::task<void>::handle_t& self_handle)
     {
@@ -1238,13 +1258,236 @@ TEST_SUITE("verilator_utils/scheduler")
                 co_await event;
             }};
             scheduler.add_task(waiter_lambda());
-            // 事件永远不会被通知，协程挂起在调度器外；仅剩挂起协程时循环应正常终止
-            scheduler.loop_until_finish();
+            // 事件永远不会被通知，协程挂起在调度器外：队列已空但仍有挂起条目，死锁诊断抛出异常
+            CHECK_THROWS_AS(scheduler.loop_until_finish(), ::std::runtime_error);
             CHECK(scheduler.empty());
             scheduler.finish();
         }
         // 调度器析构时应通过挂起队列回收该协程帧，否则帧随事件一起泄漏
         CHECK_EQ(destroyed, 1zu);
+    }
+
+    TEST_CASE("event dump returns the currently suspended pairs")
+    {
+        static_assert(::std::same_as<decltype(::std::declval<::verilator_utils::event&>().dump()),
+                                     ::verilator_utils::with_suspend_queue::dump_t>);
+        const auto event_site{::std::source_location::current()};
+        ::verilator_utils::event event{};
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+
+        const auto make_waiter{[&] -> ::verilator_utils::task<void> { co_await event; }};
+        auto first{make_waiter()};
+        auto second{make_waiter()};
+        const ::verilator_utils::detail::coroutine_pair first_pair{first.handle()};
+        const ::verilator_utils::detail::coroutine_pair second_pair{second.handle()};
+
+        scheduler.add_task(::std::move(first));
+        scheduler.add_task(::std::move(second));
+        scheduler.initial_eval();
+        CHECK_EQ(scheduler.suspend_entry_count(), 1u);
+        CHECK_FALSE(event.dump_empty());
+
+        const auto all_pairs{event.dump()};
+        CHECK_EQ(all_pairs.type, "verilator_utils::event@verilator_utils"sv);
+        CHECK_EQ(event.dump_type(), all_pairs.type);
+        CHECK(::std::string_view{all_pairs.location.file_name()}.ends_with("test/scheduler.cpp"sv));
+        CHECK_EQ(all_pairs.location.line(), event_site.line() + 1u);
+        CHECK_FALSE(::std::string_view{all_pairs.location.function_name()}.empty());
+        REQUIRE_EQ(all_pairs.entries.size(), 2u);
+        CHECK(all_pairs.entries[0] == first_pair);
+        CHECK(all_pairs.entries[1] == second_pair);
+        CHECK_EQ(event.dump_entries().size(), all_pairs.entries.size());
+
+        // 已被通知但尚未从挂起队列中回收的协程不再计入dump结果
+        event.notify_one();
+        CHECK_EQ(scheduler.suspend_entry_count(), 1u);
+        CHECK_FALSE(event.dump_empty());
+        const auto remaining_pairs{event.dump()};
+        REQUIRE_EQ(remaining_pairs.entries.size(), 1u);
+        CHECK(remaining_pairs.entries.front() == second_pair);
+
+        event.notify_all();
+        CHECK(event.dump_empty());
+        CHECK_EQ(scheduler.suspend_entry_count(), 0u);
+        scheduler.loop_until_finish();
+    }
+
+    TEST_CASE("empty suspend entries are not counted as deadlock")
+    {
+        opaque_suspend_queue empty{};
+        empty.queue_empty = true;
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            scheduler.register_suspend_entry(empty);
+            CHECK_EQ(scheduler.suspend_entry_count(), 0u);
+            CHECK_NOTHROW(scheduler.loop_until_finish());
+        }
+        CHECK(empty.released);
+    }
+
+    TEST_CASE("deadlock report ignores empty suspend entries")
+    {
+        opaque_suspend_queue empty{};
+        empty.queue_empty = true;
+        opaque_suspend_queue nonempty{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            scheduler.register_suspend_entry(empty);
+            scheduler.register_suspend_entry(nonempty);
+            CHECK_EQ(scheduler.suspend_entry_count(), 1u);
+
+            const auto empty_address{
+                ::std::format("{}", static_cast<const void*>(static_cast<const ::verilator_utils::with_suspend_queue*>(&empty)))};
+            const auto nonempty_address{
+                ::std::format("{}",
+                              static_cast<const void*>(static_cast<const ::verilator_utils::with_suspend_queue*>(&nonempty)))};
+            try
+            {
+                scheduler.loop_until_finish();
+                CHECK(false);
+            }
+            catch(const ::std::runtime_error& error)
+            {
+                const ::std::string report{error.what()};
+                CHECK_MESSAGE(report.contains("仍有1个挂起条目"sv), report);
+                CHECK_MESSAGE(report.contains(nonempty_address), report);
+                CHECK_EQ(report.find(empty_address), ::std::string::npos);
+            }
+        }
+        CHECK(empty.released);
+        CHECK(nonempty.released);
+    }
+
+#ifndef __cpp_rtti
+    TEST_CASE("event provides a fixed dump type without RTTI")
+    {
+        ::verilator_utils::event event{};
+        CHECK_EQ(event.dump_type(), "verilator_utils::event@verilator_utils"sv);
+    }
+
+    TEST_CASE("suspend queue dump type is empty without RTTI")
+    {
+        opaque_suspend_queue opaque{};
+        CHECK(opaque.dump_type().empty());
+    }
+#endif
+
+    TEST_CASE("loop_until_finish reports deadlocked event waiters with coroutine stack traces")
+    {
+        ::verilator_utils::event event{};
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+
+        const auto waiter{[&] -> ::verilator_utils::task<void> { co_await event; }};
+        scheduler.add_task(waiter());
+        scheduler.initial_eval();
+        REQUIRE_EQ(scheduler.suspend_entry_count(), 1u);
+
+        const auto expected_address{
+            ::std::format("{}", static_cast<const void*>(static_cast<const ::verilator_utils::with_suspend_queue*>(&event)))};
+        const auto expected_scheduler_address{::std::format("{}", static_cast<const void*>(&scheduler))};
+        try
+        {
+            scheduler.loop_until_finish();
+            CHECK(false);
+        }
+        catch(const ::std::runtime_error& error)
+        {
+            const ::std::string report{error.what()};
+            CHECK_MESSAGE(report.contains("检测到死锁"sv), report);
+            CHECK_MESSAGE(report.contains(expected_scheduler_address), report);
+            CHECK_MESSAGE(report.contains(expected_address), report);
+            CHECK_MESSAGE(report.contains(::std::format("verilator_utils::event@verilator_utils {}", expected_address)), report);
+            CHECK_MESSAGE(report.contains("挂起条目"sv), report);
+            CHECK_MESSAGE(report.contains("At "sv), report);
+            CHECK_MESSAGE(report.contains("test/scheduler.cpp"sv), report);
+            CHECK_MESSAGE(report.contains("协程1"sv), report);
+            CHECK_MESSAGE(report.contains("Coroutine stack trace"sv), report);
+            CHECK_MESSAGE(report.contains("Stack trace"sv), report);
+        }
+    }
+
+    TEST_CASE("deadlock report colorizes the suspend queue construction location")
+    {
+        const auto backup{::verilator_utils::assertion_config()};
+        ::verilator_utils::set_assertion_config({.force_colors = true, .no_colors = false});
+        {
+            ::verilator_utils::event event{};
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+
+            const auto waiter{[&] -> ::verilator_utils::task<void> { co_await event; }};
+            scheduler.add_task(waiter());
+            scheduler.initial_eval();
+            REQUIRE_EQ(scheduler.suspend_entry_count(), 1u);
+
+            try
+            {
+                scheduler.loop_until_finish();
+                CHECK(false);
+            }
+            catch(const ::std::runtime_error& error)
+            {
+                const ::std::string report{error.what()};
+                const auto location_position{report.find("At "sv)};
+                CHECK_NE(location_position, ::std::string::npos);
+                if(location_position != ::std::string::npos)
+                {
+                    const auto location_end{report.find('\n', location_position)};
+                    CHECK_NE(location_end, ::std::string::npos);
+                    if(location_end != ::std::string::npos)
+                    {
+                        const auto location_line{report.substr(location_position, location_end - location_position)};
+                        // 文件名为绿色，函数名为黄色，与assertion_error的着色一致
+                        CHECK_MESSAGE(location_line.contains("\033[32m"sv), location_line);
+                        CHECK_MESSAGE(location_line.contains("\033[33m"sv), location_line);
+                    }
+                }
+            }
+            scheduler.finish();
+        }
+        ::verilator_utils::set_assertion_config(backup);
+    }
+
+    TEST_CASE("loop_until_finish reports suspended entries without dump support")
+    {
+        const auto opaque_site{::std::source_location::current()};
+        opaque_suspend_queue opaque{};
+        {
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            const auto dump{opaque.dump()};
+            CHECK(dump.type.contains("opaque_suspend_queue"sv));
+            CHECK(opaque.dump_type().contains("opaque_suspend_queue"sv));
+            CHECK_EQ(dump.location.line(), opaque_site.line() + 1u);
+            CHECK(dump.entries.empty());
+            CHECK(opaque.dump_entries().empty());
+            scheduler.register_suspend_entry(opaque);
+            CHECK_EQ(scheduler.suspend_entry_count(), 1u);
+
+            const auto expected_address{
+                ::std::format("{}",
+                              static_cast<const void*>(static_cast<const ::verilator_utils::with_suspend_queue*>(&opaque)))};
+            try
+            {
+                scheduler.loop_until_finish();
+                CHECK(false);
+            }
+            catch(const ::std::runtime_error& error)
+            {
+                const ::std::string report{error.what()};
+                CHECK_MESSAGE(report.contains("检测到死锁"sv), report);
+                CHECK_MESSAGE(report.contains(expected_address), report);
+                CHECK_MESSAGE(report.contains("opaque_suspend_queue"sv), report);
+                CHECK_MESSAGE(report.contains("At "sv), report);
+                CHECK_MESSAGE(report.contains("dump功能不可用"sv), report);
+            }
+        }
+        // 调度器析构时通过纯虚函数release回收挂起条目
+        CHECK(opaque.released);
     }
 
     TEST_CASE("scheduler reclaims an event-suspended chain without double-destroying external subtasks")
