@@ -742,6 +742,9 @@ TEST_SUITE("verilator_utils/task")
 
         CHECK_EQ(::std::format("{}"sv, bounded_mailbox), "[10, 20]"sv);
         CHECK_EQ(::std::format("{:#}"sv, bounded_mailbox), "{max_count: 3, value: [10, 20]}"sv);
+        // 嵌套参数动态选择是否输出详细信息
+        CHECK_EQ(::std::format("{:{}}"sv, bounded_mailbox, false), "[10, 20]"sv);
+        CHECK_EQ(::std::format("{:{}}"sv, bounded_mailbox, true), "{max_count: 3, value: [10, 20]}"sv);
         CHECK_EQ(::doctest::StringMaker<mailbox_t>::convert(bounded_mailbox), "{max_count: 3, value: [10, 20]}");
 
         mailbox_t empty_mailbox{};
@@ -766,6 +769,14 @@ TEST_SUITE("verilator_utils/task")
         CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(mailbox))), ::std::format_error);
         // 未闭合的替换字段：解析在到达格式串末尾时仍未遇到'}'
         CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:#"sv, ::std::make_format_args(mailbox))), ::std::format_error);
+        // 未闭合的嵌套参数
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:{}"sv, ::std::make_format_args(mailbox))), ::std::format_error);
+        // 嵌套参数只支持自动编号的{}，其它写法在解析阶段被拒绝
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:{x}}"sv, ::std::make_format_args(mailbox))), ::std::format_error);
+        // 嵌套参数不是bool时被拒绝
+        const int non_bool_flag{1};
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:{}}"sv, ::std::make_format_args(mailbox, non_bool_flag))),
+                        ::std::format_error);
     }
 
     TEST_CASE("shift_register delays values by the configured depth")
@@ -991,6 +1002,9 @@ TEST_SUITE("verilator_utils/task")
 
         CHECK_EQ(::std::format("{}"sv, delay_line), "[1, 2, 3]"sv);
         CHECK_EQ(::std::format("{:#}"sv, delay_line), "{depth: 3, reg: [1, 2, 3]}"sv);
+        // 嵌套参数动态选择是否输出详细信息
+        CHECK_EQ(::std::format("{:{}}"sv, delay_line, false), "[1, 2, 3]"sv);
+        CHECK_EQ(::std::format("{:{}}"sv, delay_line, true), "{depth: 3, reg: [1, 2, 3]}"sv);
         CHECK_EQ(::doctest::StringMaker<shift_register_t>::convert(delay_line), "{depth: 3, reg: [1, 2, 3]}");
     }
 
@@ -1000,6 +1014,10 @@ TEST_SUITE("verilator_utils/task")
         ::verilator_utils::shift_register<::std::uint64_t> delay_line{1, 8, ::verilator_utils::data_format::hex};
 
         CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(delay_line))), ::std::format_error);
+        // 嵌套参数不是bool时被拒绝
+        const int non_bool_flag{1};
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:{}}"sv, ::std::make_format_args(delay_line, non_bool_flag))),
+                        ::std::format_error);
     }
 
     TEST_CASE("stacktrace_frame formatter renders coroutine role, function and location")
@@ -1017,6 +1035,9 @@ TEST_SUITE("verilator_utils/task")
         CHECK(plain.ends_with(::std::format(":{}:{}"sv, location.line(), location.column())));
 
         const auto colored{::std::format("{:#}"sv, frame)};
+        // 嵌套参数动态选择是否输出ANSI颜色
+        CHECK_EQ(::std::format("{:{}}"sv, frame, false), plain);
+        CHECK_EQ(::std::format("{:{}}"sv, frame, true), colored);
         using namespace ::verilator_utils::detail::assertion_color;
         // 各字段的着色与Stack trace一致：指针和行列号为蓝色，函数名为黄色，文件路径为绿色
         const auto pointer_text{::std::format("{:#0{}x}"sv, 0zu, 2 * sizeof(void*) + 2)};
@@ -1272,6 +1293,9 @@ TEST_SUITE("verilator_utils/task")
         CHECK_FALSE(rendered.contains("\033["sv));
 
         const auto colored{::std::format("{:#}"sv, *captured)};
+        // 嵌套参数动态选择是否输出ANSI颜色
+        CHECK_EQ(::std::format("{:{}}"sv, *captured, false), rendered);
+        CHECK_EQ(::std::format("{:{}}"sv, *captured, true), colored);
         using namespace ::verilator_utils::detail::assertion_color;
         // 着色与Stack trace一致：指针为蓝色，函数名为黄色，文件路径为绿色
         CHECK(colored.contains(blue));

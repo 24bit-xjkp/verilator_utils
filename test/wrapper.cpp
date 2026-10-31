@@ -539,6 +539,9 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(unsigned_comparison.rtol, 0.25);
         CHECK_EQ(::std::format("{}"sv, unsigned_comparison), "10"sv);
         CHECK_EQ(::std::format("{:#}"sv, unsigned_comparison), "{value: 10, atol: 4, rtol: 0.25}"sv);
+        // 嵌套参数动态选择是否输出详细信息
+        CHECK_EQ(::std::format("{:{}}"sv, unsigned_comparison, false), "10"sv);
+        CHECK_EQ(::std::format("{:{}}"sv, unsigned_comparison, true), "{value: 10, atol: 4, rtol: 0.25}"sv);
         CHECK_EQ(::doctest::StringMaker<decltype(unsigned_comparison)>::convert(unsigned_comparison), "10");
 
         ::verilator_utils::approx<::std::int64_t> signed_tolerance{4z, 0.5};
@@ -561,6 +564,13 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(unsigned_tolerance))),
                         ::std::format_error);
         CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:x}"sv, ::std::make_format_args(unsigned_comparison))),
+                        ::std::format_error);
+        // 嵌套参数不是bool时被拒绝
+        const int non_bool_flag{1};
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:{}}"sv, ::std::make_format_args(unsigned_comparison, non_bool_flag))),
+                        ::std::format_error);
+        // 嵌套参数只支持自动编号的{}，其它写法在解析阶段被拒绝
+        CHECK_THROWS_AS(static_cast<void>(::std::vformat("{:{x}}"sv, ::std::make_format_args(unsigned_comparison))),
                         ::std::format_error);
     }
 
