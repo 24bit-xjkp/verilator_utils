@@ -1931,14 +1931,32 @@ namespace verilator_utils
          * @brief 向等待队列中注册等待时间
          *
          * @note 不支持delta延迟，等待时间不能为0
+         * @note 等待时间不是时间精度的整数倍时按roundToEven向时间精度舍入，并通过warn报告
          * @param time_to_wait 等待时间，单位为飞秒，不能为0
          * @param pair 协程状态对
          */
         void register_wait(::verilator_utils::femtosecond_t time_to_wait, ::verilator_utils::detail::coroutine_pair pair)
         {
             ::verilator_utils::check{}(time_to_wait != 0_fs, "不支持delta延迟，等待时间不能为0"sv);
-            const auto time_to_wait_in_time_precision{time_to_wait.rep / time_precision_fs_};
-            ::verilator_utils::check{}(time_to_wait_in_time_precision != 0, "等待时长小于时间精度，被截断为0"sv);
+            const auto precision_fs{time_precision_fs_};
+            const auto quotient{time_to_wait.rep / precision_fs};
+            const auto remainder{time_to_wait.rep % precision_fs};
+            auto time_to_wait_in_time_precision{quotient};
+            if(remainder != 0)
+            {
+                // roundToEven：余数大于半个时间精度时进位，等于半个时间精度时向偶数舍入
+                const auto doubled_remainder{remainder * 2};
+                if(doubled_remainder > precision_fs || (doubled_remainder == precision_fs && quotient % 2 != 0))
+                {
+                    ++time_to_wait_in_time_precision;
+                }
+                ::verilator_utils::warn{}(false,
+                                          "等待时长{}fs不是时间精度{}fs的整数倍，已按roundToEven舍入为{}个时间精度"sv,
+                                          time_to_wait.rep,
+                                          precision_fs,
+                                          time_to_wait_in_time_precision);
+            }
+            ::verilator_utils::check{}(time_to_wait_in_time_precision != 0, "等待时长过小，舍入为0"sv);
             const auto current_time{dut_.contextp()->time()};
             const auto target_time{time_to_wait_in_time_precision + current_time};
             ::verilator_utils::check{}(target_time > current_time, "Verilator仿真计时器溢出"sv);
