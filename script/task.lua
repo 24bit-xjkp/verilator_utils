@@ -232,34 +232,11 @@ task("update-corpus", function ()
         import("async.jobgraph")
         import("async.runjobs")
         import("core.base.option")
-        import("core.project.project")
-        import("core.project.config")
-        import("core.base.task")
         import("utils.archive")
         import("utils.progress")
-        config.load()
 
         -- 获取所有模糊测试目标
-        local fuzz_test_targets = {}
-        for name, target in pairs(project.targets()) do
-            if target:get("group") == "fuzz_test" then
-                fuzz_test_targets[name] = target
-            end
-        end
-        -- 获取要处理的目标
-        ---@type any
-        local targets_to_process = {}
-        local targets = option.get("targets")
-        if targets == nil then
-            targets_to_process = table.values(fuzz_test_targets)
-        else
-            for _, target_name in ipairs(targets) do
-                ---@type table?
-                local target = fuzz_test_targets[target_name]
-                assert(target, [[目标"%s"不在fuzz_test组中]], target_name)
-                table.append(targets_to_process, target)
-            end
-        end
+        local targets_to_process = import("utils").check_target_in_group(option.get("targets"), "fuzz_test")
         -- 获取输出目录
         local default_output_dir = path.join(os.scriptdir(), "..", "test", "fuzz", "corpus")
         local output_dir = option.get("output") or default_output_dir
@@ -292,5 +269,26 @@ task("update-corpus", function ()
             end
         end)
         runjobs("update-corpus", jobs, { comax = option.get("jobs") })
+    end)
+end)
+
+task("clean-fuzz-profraw", function ()
+    set_category("plugin")
+    set_menu {
+        usage = "xmake clean-fuzz-profraw [option]",
+        description = "清理模糊测试生成的原始覆盖率文件",
+        options = {
+            { nil, "targets", "vs", nil, "设置目标，默认为fuzz_test组的全部目标" }
+        }
+    }
+
+    on_run(function ()
+        import("core.base.option")
+
+        -- 获取所有模糊测试目标
+        local targets_to_process = import("utils").check_target_in_group(option.get("targets"), "fuzz_test")
+        for _, target in ipairs(targets_to_process) do
+            os.tryrm(path.join(target:targetdir(), string.format("%s.*.profraw", target:name())))
+        end
     end)
 end)
