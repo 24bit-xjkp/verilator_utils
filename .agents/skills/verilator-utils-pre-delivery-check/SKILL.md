@@ -6,7 +6,7 @@ argument-hint: 'No arguments needed；如为第三方库告警，请给出告警
 
 # verilator_utils 交付前检查
 
-改动 `src/*.cppm` 或 `test/*.cpp` 后，**在报告完成之前**必须执行本流程。这里是指定命令与判据的唯一出处，其他 skill 只引用本 skill，不重复命令细节。
+改动 `src/*.cppm` 或 `test/**.cpp*` 后，**在报告完成之前**必须执行本流程。这里是指定命令与判据的唯一出处，其他 skill 只引用本 skill，不重复命令细节。
 
 ## 1. 先激活 Python 环境
 
@@ -34,8 +34,8 @@ xmake project -k compile_commands --lsp=clangd .vscode
 ## 3. 运行两条指定命令
 
 ```bash
-xmake check clang.tidy --compdb=.vscode --configfile=.clang-tidy --quiet -f "src/*.cpp*:test/*.cpp"
-xmake format -af "src/*.cpp*:test/*.cpp"
+xmake check clang.tidy --compdb=.vscode --configfile=.clang-tidy --quiet -f "src/*.cpp*:test/**.cpp*"
+xmake format -af "src/*.cpp*:test/**.cpp*"
 ```
 
 顺序：先 clang-tidy 后 format（format 会改写文件；若先 format，已分析的源码就不是最终内容）。
@@ -44,7 +44,7 @@ xmake format -af "src/*.cpp*:test/*.cpp"
 
 `-f` / `-af` 的取值是一组文件模式：
 
-- **`:` 分隔多个模式**（xmake 用环境变量式的路径分隔符切分，Linux 上即 `:`）。上面两条等价于"`src/*.cpp*` 一批 + `test/*.cpp` 一批"。
+- **`:` 分隔多个模式**（xmake 用环境变量式的路径分隔符切分，Linux 上即 `:`）。上面两条等价于"`src/*.cpp*` 一批 + `test/**.cpp*` 一批"。
 - **`|` 表示从该模式中排除**，不是"或"。排除项按"去掉匹配目录前缀后的相对路径"匹配，通常是文件名级模式：
 
   ```bash
