@@ -91,7 +91,7 @@ rule("coverage", function ()
             target:add("shflags", options, { force = true })
             target:set("policy", "build.ccache", is_gcc)
             if not is_gcc then
-                target:add("runenvs", "LLVM_PROFILE_FILE", target:name() .. ".profraw")
+                target:set("runenv", "LLVM_PROFILE_FILE", target:name() .. ".profraw")
             end
         end
     end)

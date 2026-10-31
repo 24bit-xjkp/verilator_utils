@@ -1,9 +1,13 @@
 local default_fuzz_args = {
     -- 单个输入的运行时间上限：调度器目标的部分输入需要较长时间，这里给足余量
-    "-timeout=5",
+    "-timeout=10",
     format("-max_total_time=%d", get_config("fuzz_time") or 120),
     format("-fork=%d", get_config("fuzz_parallel") or 2),
-    "-use_value_profile=1"
+    "-use_value_profile=1",
+    "-artifact_prefix=artifacts/",
+    -- 种子语料与语料目录并列，libFuzzer只向作为第一个参数的语料目录写入新输入
+    "corpus",
+    "seed"
 }
 local function common_settings()
     add_rules("enable_sanitizer", "fuzzer")
@@ -27,19 +31,16 @@ for _, file in ipairs(os.files("*.cpp")) do
         add_files(file)
         set_group("fuzz_test")
         common_settings()
+        set_runargs(default_fuzz_args)
 
         on_load(function (target)
             -- 测试进程的工作目录与项目根目录不同，因此语料目录必须使用绝对路径
             local target_dir = path.join(target:targetdir(), target_name)
             target:set("targetdir", target_dir)
-            -- 种子语料与语料目录并列，libFuzzer只向作为第一个参数的语料目录写入新输入
-            local fuzz_args = table.join(default_fuzz_args, "-artifact_prefix=artifacts/", "corpus", "seed")
-            target:add("tests", "fuzz", {
-                runargs = fuzz_args,
-                -- libFuzzer的fork模式会启动多个进程，文件名包含进程号避免覆盖率数据互相覆盖
-                runenvs = { LLVM_PROFILE_FILE = string.format("%s.%%p.profraw", target_name) }
-            })
-            target:set("runargs", fuzz_args)
+            -- libFuzzer的fork模式会启动多个进程，文件名包含进程号避免覆盖率数据互相覆盖
+            local profile_name = string.format("%s.%%p.profraw", target_name)
+            target:add("tests", "fuzz", { runargs = default_fuzz_args, runenvs = { LLVM_PROFILE_FILE = profile_name } })
+            target:set("runenv", "LLVM_PROFILE_FILE", profile_name)
         end)
 
         local function extract_corpus(target)
