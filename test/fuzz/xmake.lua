@@ -34,7 +34,11 @@ for _, file in ipairs(os.files("*.cpp")) do
             target:set("targetdir", target_dir)
             -- 种子语料与语料目录并列，libFuzzer只向作为第一个参数的语料目录写入新输入
             local fuzz_args = table.join(default_fuzz_args, "-artifact_prefix=artifacts/", "corpus", "seed")
-            target:add("tests", "fuzz", { runargs = fuzz_args })
+            target:add("tests", "fuzz", {
+                runargs = fuzz_args,
+                -- libFuzzer的fork模式会启动多个进程，文件名包含进程号避免覆盖率数据互相覆盖
+                runenvs = { LLVM_PROFILE_FILE = string.format("%s.%%p.profraw", target_name) }
+            })
             target:set("runargs", fuzz_args)
         end)
 

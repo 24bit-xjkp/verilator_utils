@@ -178,6 +178,10 @@ namespace
         unawaitable_stage,
         /// 用真实的协程栈回溯构造协程异常
         coroutine_exception,
+        /// 等待时长按roundToEven舍入到时间精度
+        wait_rounding,
+        /// 开启栈回溯后触发断言
+        assertion_stacktrace,
         /// 操作码总数
         total_ops,
     };
@@ -453,6 +457,9 @@ namespace
         // nothrow重载：条件成立时只经过报告路径，不终止进程
         ::verilator_utils::check{}(::std::nothrow, true);
         ::verilator_utils::check{}(::std::nothrow, true, "条件成立时的断言{}"sv, detail);
+
+        // 警告不抛出异常，只经过报告路径
+        ::verilator_utils::warn{}(false);
     }
 
     /// 消费生成器开头的若干个输出，返回按输出顺序拼接的位
@@ -509,6 +516,82 @@ namespace
                 auto reference{::verilator_utils::fibonacci_lfsr_generator(width, feedback_mask, initial_value)};
                 ::fuzz::check(::consume_generator(generator, 32zu) == ::consume_generator(reference, 32zu));
             }
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            ::inspect_assertion_error(error);
+        }
+    }
+
+    /// 在作用域结束时恢复断言配置
+    class assertion_config_scope
+    {
+    public:
+        explicit assertion_config_scope(bool stacktrace) noexcept : previous_{::verilator_utils::assertion_config()}
+        {
+            auto config{previous_};
+            config.stacktrace = stacktrace;
+            ::verilator_utils::set_assertion_config(config);
+        }
+
+        ~assertion_config_scope() noexcept { ::verilator_utils::set_assertion_config(previous_); }
+
+        assertion_config_scope(const assertion_config_scope&) = delete;
+        assertion_config_scope& operator= (const assertion_config_scope&) = delete;
+        assertion_config_scope(assertion_config_scope&&) = delete;
+        assertion_config_scope& operator= (assertion_config_scope&&) = delete;
+
+    private:
+        ::verilator_utils::assertion_config_t previous_;
+    };
+
+    /**
+     * @brief 检查等待时长按roundToEven舍入后的实际等待时间
+     *
+     * @param ctx 共享上下文
+     * @param selector 选择舍入方向
+     */
+    ::verilator_utils::task<void> check_wait_rounding(const ::context& ctx, ::std::uint64_t selector)
+    {
+        const auto precision{ctx.precision_fs};
+        const auto half{precision / 2zu};
+        ::std::uint64_t duration{};
+        ::std::uint64_t expected{};
+        switch(selector % 4u)
+        {
+            case 0u:
+                // 1.5个时间精度：商为奇数，五成双进位
+                duration = 3zu * half;
+                expected = 2zu;
+                break;
+            case 1u:
+                // 2.5个时间精度：商为偶数，五成双舍去
+                duration = 5zu * half;
+                expected = 2zu;
+                break;
+            case 2u:
+                // 余数大于半个时间精度：进位
+                duration = precision + 3zu * precision / 4zu;
+                expected = 2zu;
+                break;
+            default:
+                // 余数小于半个时间精度：舍去
+                duration = precision + precision / 4zu;
+                expected = 1zu;
+                break;
+        }
+
+        const auto before{static_cast<::std::uint64_t>(ctx.scheduler->time_in_time_precision())};
+        co_await ::verilator_utils::wait_time(::verilator_utils::femtosecond_t{duration});
+        const auto after{static_cast<::std::uint64_t>(ctx.scheduler->time_in_time_precision())};
+        ::fuzz::check(after >= before, after);
+        ::fuzz::check(after - before == expected, after - before);
+
+        // 小于半个时间精度且商为偶数时舍入为0，必须被拒绝
+        try
+        {
+            co_await ::verilator_utils::wait_time(::verilator_utils::femtosecond_t{half});
+            ::fuzz::fail("wait duration rounded to zero was accepted");
         }
         catch(const ::verilator_utils::assertion_error& error)
         {
@@ -934,7 +1017,7 @@ namespace
                                     const ::verilator_utils::detail::coroutine_pair right_pair{right.handle()};
                                     const ::verilator_utils::detail::coroutine_pair empty_pair{};
                                     ::fuzz::check(left_pair != right_pair);
-                                    ::fuzz::check((left_pair <=> right_pair) != 0);
+                                    ::fuzz::check((left_pair <=> right_pair) != ::std::strong_ordering::equal);
                                     ::fuzz::check(!(left_pair == nullptr));
                                     ::fuzz::check(!(right_pair == nullptr));
                                     ::fuzz::check(empty_pair == nullptr);
@@ -1031,6 +1114,23 @@ namespace
                                         trace};
                                     ::fuzz::check(!error.stacktrace().empty());
                                     ::fuzz::check(::std::string{error.what()}.contains("Coroutine stack trace"));
+                                    break;
+                                }
+                                case misc_op_t::wait_rounding: co_await ::check_wait_rounding(ctx, current.a); break;
+                                case misc_op_t::assertion_stacktrace:
+                                {
+                                    // 模糊测试默认关闭栈回溯以提升吞吐，这里临时开启以覆盖断言栈回溯路径
+                                    const ::assertion_config_scope scope{true};
+                                    try
+                                    {
+                                        ::verilator_utils::check{}(false, "模糊测试栈回溯断言{}"sv, current.a);
+                                        ::fuzz::fail("framework check did not fail");
+                                    }
+                                    catch(const ::verilator_utils::assertion_error& error)
+                                    {
+                                        ::fuzz::check(!error.message().empty());
+                                        ::fuzz::check(!::std::string_view{error.what()}.empty());
+                                    }
                                     break;
                                 }
                                 case misc_op_t::total_ops: ::std::unreachable();  // 取模映射不会产生该取值

@@ -367,7 +367,7 @@ namespace
                     (void)::rejected([&] {
                         const ::verilator_utils::format_wrapper<type> other{other_value, width, format};
                         const auto other_order{wrapper <=> other};
-                        ::fuzz::check(other_order != 0);
+                        ::fuzz::check(other_order != ::std::partial_ordering::equivalent);
                         if constexpr(::std::same_as<type, ::std::uint64_t>)
                         {
                             ::fuzz::check(other_order == (wrapper.value() <=> other.value()));
