@@ -1027,6 +1027,7 @@ export namespace verilator_utils
          *
          * @note 异步任务绑定调度器引用，其生命周期不应长于调度器
          * @note 任务必须处于initial_suspend状态，且不能有父任务
+         * @note 任务绑定的调度器必须为空或与父协程的调度器相同
          * @param pair 父协程状态对
          * @param task 同步任务对象
          */
@@ -1037,9 +1038,13 @@ export namespace verilator_utils
             ::verilator_utils::check{}(promise.parent == nullptr, "该任务已经绑定到父任务，不能转化为异步任务"sv);
             ::verilator_utils::check{}(promise.status == ::verilator_utils::task<void>::status_enum::initial_suspend,
                                        "该任务已开始执行，不能转化为异步任务"sv);
+            auto* scheduler{pair.promise->check_scheduler()};
+            ::verilator_utils::check{}(promise.scheduler == nullptr || promise.scheduler == scheduler,
+                                       "任务的调度器({})与父任务的调度器({})不同"sv,
+                                       static_cast<const void*>(promise.scheduler),
+                                       static_cast<const void*>(scheduler));
             promise.is_async = true;
             promise.parent = pair;
-            auto* scheduler{pair.promise->check_scheduler()};
             promise.scheduler = scheduler;
             scheduler->add_task(::std::move(task));
         }
