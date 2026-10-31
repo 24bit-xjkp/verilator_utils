@@ -1482,10 +1482,7 @@ namespace verilator_utils
             /// 电路评估后
             after_dut_eval,
             /// 一轮评估完成，该阶段不进行协程调度，不可等待
-            eval_end,
-
-            /// 非法状态，可用于默认参数等场合
-            invalid
+            eval_end
         };
 
     private:

@@ -721,18 +721,13 @@ export namespace verilator_utils
         wait_stimulate(const ::verilator_utils::bit_slice<::CData>& clk,
                        ::std::size_t edge_to_wait = 1,
                        ::verilator_utils::edge_enum edge = ::verilator_utils::edge_enum::falling,
-                       ::verilator_utils::eval_scheduler::eval_stage_enum eval_stage =
-                           ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
+                       ::std::optional<::verilator_utils::eval_scheduler::eval_stage_enum> eval_stage = ::std::nullopt)
     {
         ::verilator_utils::check{}(edge != ::verilator_utils::edge_enum::both, "不支持等待双边沿"sv);
-
-        if(eval_stage == ::verilator_utils::eval_scheduler::eval_stage_enum::invalid)
-        {
-            eval_stage = edge == ::verilator_utils::edge_enum::rising
-                             ? ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval
-                             : ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval;
-        }
-        return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, edge, eval_stage);
+        const auto default_stage{edge == ::verilator_utils::edge_enum::rising
+                                     ? ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval
+                                     : ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval};
+        return ::verilator_utils::detail::wait_edge_and_eval_stage(clk, edge_to_wait, edge, eval_stage.value_or(default_stage));
     }
 
     /**
