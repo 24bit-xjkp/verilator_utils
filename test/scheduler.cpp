@@ -355,6 +355,28 @@ TEST_SUITE("verilator_utils/scheduler")
                              ::verilator_utils::assertion_error);
     }
 
+    TEST_CASE("add_task rejects a task bound to a different scheduler")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        scheduler_fixture other_fixture{};
+        auto other_scheduler{other_fixture.make_scheduler()};
+
+        auto bound_task{[] -> ::verilator_utils::task<void> { co_return; }()};
+        bound_task.promise().scheduler = ::std::addressof(other_scheduler);
+        CHECK_THROWS_WITH_AS(scheduler.add_task(::std::move(bound_task)),
+                             ::doctest::Contains{"调度器"},
+                             ::verilator_utils::assertion_error);
+
+        // 未绑定调度器或已绑定到当前调度器的任务可以正常添加
+        auto unbound_task{[] -> ::verilator_utils::task<void> { co_return; }()};
+        auto same_task{[] -> ::verilator_utils::task<void> { co_return; }()};
+        same_task.promise().scheduler = ::std::addressof(scheduler);
+        CHECK_NOTHROW(scheduler.add_task(::std::move(unbound_task)));
+        CHECK_NOTHROW(scheduler.add_task(::std::move(same_task)));
+        scheduler.loop_until_finish();
+    }
+
     TEST_CASE("task records regular exceptions and ignores finish exceptions when rethrowing")
     {
         scheduler_fixture fixture{};
