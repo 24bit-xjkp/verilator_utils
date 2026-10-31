@@ -2271,6 +2271,39 @@ TEST_SUITE("verilator_utils/task")
         CHECK(await_checked);
     }
 
+    TEST_CASE("async_task rejects a task bound to a different scheduler")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        scheduler_fixture other_fixture{};
+        auto other_scheduler{other_fixture.make_scheduler()};
+
+        const auto parent{[] -> ::verilator_utils::task<void> { co_return; }()};
+        parent.promise().scheduler = ::std::addressof(scheduler);
+        auto child{[] -> ::verilator_utils::task<void> { co_return; }()};
+        child.promise().scheduler = ::std::addressof(other_scheduler);
+
+        CHECK_THROWS_WITH_AS((::verilator_utils::async_task{parent.promise(), ::std::move(child)}),
+                             ::doctest::Contains{"调度器"},
+                             ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("async_task accepts a task with no scheduler or the parent scheduler")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+
+        const auto parent{[] -> ::verilator_utils::task<void> { co_return; }()};
+        parent.promise().scheduler = ::std::addressof(scheduler);
+        auto unbound_child{[] -> ::verilator_utils::task<void> { co_return; }()};
+        auto bound_child{[] -> ::verilator_utils::task<void> { co_return; }()};
+        bound_child.promise().scheduler = ::std::addressof(scheduler);
+
+        CHECK_NOTHROW((::verilator_utils::async_task{parent.promise(), ::std::move(unbound_child)}));
+        CHECK_NOTHROW((::verilator_utils::async_task{parent.promise(), ::std::move(bound_child)}));
+        scheduler.loop_until_finish();
+    }
+
     TEST_CASE("canceling an async task before it starts skips its coroutine body")
     {
         scheduler_fixture fixture{};
