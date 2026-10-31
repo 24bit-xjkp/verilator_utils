@@ -1996,11 +1996,17 @@ namespace verilator_utils
          * @brief 向调度器中添加任务
          *
          * @param task 要添加的任务
+         * @note 任务绑定的调度器必须为空或与当前调度器相同
          */
         void add_task(::verilator_utils::task<void> task)
         {
-            // 向task中添加调度器
-            task.promise().scheduler = this;
+            auto& promise{task.promise()};
+            // 任务要么尚未绑定调度器，要么已经绑定到当前调度器
+            ::verilator_utils::check{}(promise.scheduler == nullptr || promise.scheduler == this,
+                                       "任务的调度器({})与目标调度器({})不同"sv,
+                                       static_cast<const void*>(promise.scheduler),
+                                       static_cast<const void*>(this));
+            promise.scheduler = this;
             register_ready(task.detach());
         }
     };
