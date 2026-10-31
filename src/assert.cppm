@@ -103,7 +103,7 @@ namespace verilator_utils::detail
                     "verilator_utils::detail::generate_assertion_trace"sv,
                     "verilator_utils::detail::check"sv,
                 };
-                const auto erase_begin{::std::ranges::find_if(trace.frames, [](const ::cpptrace::stacktrace_frame& frame) {
+                const auto erase_begin{::std::ranges::find_if(trace.frames, [](const ::cpptrace::stacktrace_frame& frame) static {
                     return ::std::ranges::none_of(internal_names,
                                                   [&frame](::std::string_view name) { return frame.symbol.contains(name); });
                 })};
@@ -116,6 +116,58 @@ namespace verilator_utils::detail
             }
         }
         return ::cpptrace::stacktrace{};
+    }
+
+    /**
+     * @brief 获取类型名称
+     *
+     * 对typeid返回的名称做反修饰，保留模块名等完整信息，失败时退回原始名称
+     * @param type 类型信息
+     * @return 类型名称
+     */
+    export [[nodiscard]] ::std::string demangle_type_name(const ::std::type_info& type)
+    {
+        try
+        {
+            return ::cpptrace::demangle(type.name());
+        }
+        catch(...)
+        {
+            return type.name();
+        }
+    }
+
+    /**
+     * @brief 格式化源代码位置
+     *
+     * 输出与assertion_error一致的“At 文件:行:列: 函数:”格式
+     * @param location 源代码位置
+     * @param use_color 是否使用彩色输出
+     * @return 格式化后的位置字符串，格式化失败时返回空字符串
+     */
+    export [[nodiscard]] ::std::string format_source_location(::std::source_location location, bool use_color)
+    {
+        using namespace ::verilator_utils::detail::assertion_color;
+        try
+        {
+            return ::std::format("{}At {}{}:{}{}{}:{}{}{}: {}{}{}:"sv,
+                                 use_color ? reset : none,
+                                 use_color ? green : none,
+                                 location.file_name(),
+                                 use_color ? blue : none,
+                                 location.line(),
+                                 use_color ? reset : none,
+                                 use_color ? blue : none,
+                                 location.column(),
+                                 use_color ? reset : none,
+                                 use_color ? yellow : none,
+                                 location.function_name(),
+                                 use_color ? reset : none);
+        }
+        catch(...)
+        {
+            return {};
+        }
     }
 }  // namespace verilator_utils::detail
 
@@ -195,19 +247,8 @@ export namespace verilator_utils
             using namespace ::verilator_utils::detail::assertion_color;
             try
             {
-                return ::std::format("{}At {}{}:{}{}{}:{}{}{}: {}{}{}: {}{}{}\n{}"sv,
-                                     use_color ? reset : none,
-                                     use_color ? green : none,
-                                     location_.file_name(),
-                                     use_color ? blue : none,
-                                     location_.line(),
-                                     use_color ? reset : none,
-                                     use_color ? blue : none,
-                                     location_.column(),
-                                     use_color ? reset : none,
-                                     use_color ? yellow : none,
-                                     location_.function_name(),
-                                     use_color ? reset : none,
+                return ::std::format("{} {}{}{}\n{}"sv,
+                                     ::verilator_utils::detail::format_source_location(location_, use_color),
                                      use_color ? red : none,
                                      message_,
                                      use_color ? reset : none,
@@ -226,8 +267,8 @@ export namespace verilator_utils
          * @param message 断言失败消息
          * @param location 断言失败的源代码位置
          */
-        assertion_error(::std::string message, ::std::source_location location) :
-            message_{::std::move(message)}, location_{location}, trace_{::verilator_utils::detail::generate_assertion_trace()}
+        assertion_error(::std::string_view message, ::std::source_location location) :
+            message_{message}, location_{location}, trace_{::verilator_utils::detail::generate_assertion_trace()}
         {
         }
 
@@ -278,17 +319,18 @@ export namespace verilator_utils
 namespace verilator_utils::detail
 {
     /**
-     * @brief 断言失败处理函数，无自定义消息
+     * @brief 断言失败处理函数
      *
      * @param location 断言失败的源代码位置
+     * @param message 断言消息
      */
-    [[noreturn]] constexpr void assert_fail(::std::source_location location)
+    [[noreturn]] constexpr void assert_fail(::std::source_location location, ::std::string_view message)
     {
         // NOLINTNEXTLINE(bugprone-std-exception-baseclass)
         if consteval { throw ::verilator_utils::constexpr_assertion_error{}; }
         else
         {
-            throw ::verilator_utils::assertion_error{::std::string{"断言失败"sv}, location};
+            throw ::verilator_utils::assertion_error{message, location};
         }
     }
 
@@ -339,11 +381,12 @@ namespace verilator_utils
              * 检查条件是否成立，不成立时抛出携带源代码位置的verilator_utils::assertion_error异常
              * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
              * @param condition 断言条件
+             * @param message 断言消息
              */
-            constexpr void operator() (bool condition) const
+            constexpr void operator() (bool condition, ::std::string_view message = "断言失败"sv) const
             {
                 if(condition) [[likely]] { return; }
-                ::verilator_utils::detail::assert_fail(location_);
+                ::verilator_utils::detail::assert_fail(location_, message);
             }
 
             /**
@@ -369,14 +412,15 @@ namespace verilator_utils
              * 检查条件是否成立，不成立时通知测试框架然后终止程序。这是与单元测试框架的集成点。
              * @note 支持在常量求值语境中使用，条件不成立时使常量求值失败并产生编译错误
              * @param condition 断言条件
+             * @param message 断言消息
              */
-            constexpr void operator() (::std::nothrow_t, bool condition) const noexcept
+            constexpr void operator() (::std::nothrow_t, bool condition, ::std::string_view message = "断言失败"sv) const noexcept
             {
                 if consteval
                 {
                     try
                     {
-                        (*this)(condition);
+                        (*this)(condition, message);
                     }
                     catch(...)
                     {
@@ -386,7 +430,7 @@ namespace verilator_utils
                 else
                 {
                     // 通知单元测试框架
-                    CHECK_NOTHROW((*this)(condition));
+                    CHECK_NOTHROW((*this)(condition, message));
                     // 终止程序避免进入不确定状态
                     if(!condition) [[unlikely]] { ::std::terminate(); }
                 }
@@ -430,8 +474,63 @@ namespace verilator_utils
         private:
             ::std::source_location location_;
         };
+
+        /**
+         * @brief verilator_utils框架的警告器
+         *
+         * 条件不成立时通过doctest框架报告警告，不抛出异常。
+         * 在常量求值语境中不会报告警告，也不会使常量求值失败。
+         */
+        struct warn
+        {
+            /**
+             * @brief 构造警告器对象
+             *
+             * @param location 警告调用处的源代码位置
+             */
+            explicit constexpr warn(::std::source_location location = ::std::source_location::current()) noexcept :
+                location_{location}
+            {
+            }
+
+            /**
+             * @brief 警告检查函数
+             *
+             * 条件不成立时向doctest框架报告警告，然后继续执行
+             * @param condition 警告条件
+             * @param message 警告消息
+             */
+            constexpr void operator() (bool condition, ::std::string_view message = "警告"sv) const noexcept
+            {
+                if(condition) [[likely]] { return; }
+                if !consteval { ADD_MESSAGE_AT(location_.file_name(), location_.line(), message); }
+            }
+
+            /**
+             * @brief 警告检查函数，携带格式化消息
+             *
+             * 条件不成立时向doctest框架报告携带格式化消息的警告，然后继续执行
+             * @tparam args_t 格式化参数类型
+             * @param condition 警告条件
+             * @param fmt 格式化字符串
+             * @param args 格式化参数
+             */
+            template <typename... args_t>
+            constexpr void operator() (bool condition, ::std::format_string<args_t...> fmt, args_t&&... args) const noexcept
+            {
+                if(condition) [[likely]] { return; }
+                if !consteval
+                {
+                    ADD_MESSAGE_AT(location_.file_name(), location_.line(), ::std::format(fmt, ::std::forward<args_t>(args)...));
+                }
+            }
+
+        private:
+            ::std::source_location location_;
+        };
     }  // namespace detail
 
     // 引入verilator_utils命名空间以简化模块内使用
     using ::verilator_utils::detail::check;  // NOLINT(misc-unused-using-decls)
+    using ::verilator_utils::detail::warn;   // NOLINT(misc-unused-using-decls)
 }  // namespace verilator_utils
