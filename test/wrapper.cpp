@@ -131,6 +131,23 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(boolean_value.to_string(), "false");
     }
 
+    TEST_CASE("format wrapper renders hexadecimal floats and positive sign magnitude values")
+    {
+        // 浮点格式可以选择以十六进制浮点形式输出
+        const ::verilator_utils::format_wrapper<float> hex_float{1.5F, 32, ::verilator_utils::data_format::real_float(true)};
+        const ::verilator_utils::format_wrapper<double> hex_double{1.5, 64, ::verilator_utils::data_format::real_double(true)};
+        CHECK_EQ(hex_float.to_string(), ::std::format("{:a}"sv, 1.5F));
+        CHECK_EQ(hex_double.to_string(), ::std::format("{:a}"sv, 1.5));
+
+        // 符号幅值定点数的正数与负数走不同的还原路径
+        const ::verilator_utils::format_wrapper<double> positive_sign_magnitude_value{
+            2.5,
+            4,
+            ::verilator_utils::data_format::sign_mag_fixed_point(2, 1)};
+        CHECK_EQ(positive_sign_magnitude_value.to_verilator(), 0b0101u);
+        CHECK_EQ(positive_sign_magnitude_value.to_string(), "2.5");
+    }
+
     TEST_CASE("format wrapper supports wide values and vector slice comparisons")
     {
         ::VlWide<2> wide_data{0x89ab'cdefu, 0x0000'0123u};
@@ -1137,6 +1154,57 @@ TEST_SUITE("verilator_utils/wrapper")
         CHECK_EQ(destination_byte, source_byte);
     }
 
+    TEST_CASE("vector slice and unpacked array handle self assignment")
+    {
+        ::IData data{0xffff'0000u};
+        ::IData source_data{0xabu};
+        ::verilator_utils::vector_slice<::IData> slice{data, 15, 8};
+        const ::verilator_utils::vector_slice<::IData> source{source_data, 7, 0};
+
+        // 同类型切片之间的复制赋值走非模板重载
+        slice = source;
+        CHECK_EQ(data, 0xffff'ab00u);
+
+        // 通过别名绕过编译器的自赋值警告，验证运行期的自赋值保护
+        const auto& slice_alias{slice};
+        slice = slice_alias;
+        CHECK_EQ(data, 0xffff'ab00u);
+        CHECK_EQ(slice, 0xabzu);
+
+        ::VlUnpacked<::CData, 2> array_data{};
+        array_data[0] = 0x10u;
+        array_data[1] = 0x20u;
+        ::verilator_utils::unpacked_array<::CData, 2> array{array_data, 8};
+        const auto& array_alias{array};
+        array = array_alias;
+        CHECK_EQ(array_data[0], 0x10u);
+        CHECK_EQ(array_data[1], 0x20u);
+        CHECK_EQ(array.span().size(), 2u);
+        CHECK_EQ(static_cast<::std::uint64_t>(array[0]), 0x10u);
+        CHECK_EQ(static_cast<::std::uint64_t>(array[1]), 0x20u);
+    }
+
+    TEST_CASE("wide vector slice assigns a narrow value at a non word aligned position")
+    {
+        ::VlWide<2> data{0u, 0xffff'ffffu};
+        ::verilator_utils::vector_slice<::VlWide<2>> slice{data, 11, 8};
+
+        // 写入位置非字对齐但不足一个字宽，只应修改第一个字中的目标位段
+        slice = 0x0fu;
+
+        CHECK_EQ(data.at(0), 0x0000'0f00u);
+        CHECK_EQ(data.at(1), 0xffff'ffffu);
+        CHECK_EQ(static_cast<::VlWide<2>>(slice).at(0), 0x0fu);
+
+        // 64位满宽赋值需要同时写入两个存储字
+        ::VlWide<2> full_data{};
+        ::verilator_utils::vector_slice<::VlWide<2>> full_slice{full_data, 64};
+        full_slice = ::std::numeric_limits<::std::uint64_t>::max();
+        CHECK_EQ(full_data.at(0), 0xffff'ffffu);
+        CHECK_EQ(full_data.at(1), 0xffff'ffffu);
+        CHECK(full_slice == ::std::numeric_limits<::std::uint64_t>::max());
+    }
+
     TEST_CASE("vector slice assigns scalar slice into wide slice")
     {
         ::VlWide<2> destination{0xffff'ffffu, 0xffff'ffffu};
@@ -1444,6 +1512,12 @@ TEST_SUITE("verilator_utils/wrapper")
                                                                 4,
                                                                 ::verilator_utils::data_format::unsigned_fixed_point(2, 2)};
         CHECK_EQ(matched.to_verilator(), 0b0110u);
+
+        // 超过格式允许的最大宽度时在格式检查阶段被拒绝
+        CHECK_THROWS_WITH_AS(
+            (::verilator_utils::format_wrapper<double>{1.0, 55, ::verilator_utils::data_format::signed_fixed_point(1, 52)}),
+            ::doctest::Contains{"数据宽度55超出格式允许范围[2, 54]"},
+            ::verilator_utils::assertion_error);
     }
 
     TEST_CASE("fixed point formats reject values that cannot be stored exactly")
@@ -1454,6 +1528,11 @@ TEST_SUITE("verilator_utils/wrapper")
             ::verilator_utils::assertion_error);
         CHECK_THROWS_AS(
             (::verilator_utils::format_wrapper<double>{1e300, 5, ::verilator_utils::data_format::signed_fixed_point(1, 3)}),
+            ::verilator_utils::assertion_error);
+        // 低于int64下限的负值经定标后饱和到最小值，同样被往返检查拒绝
+        CHECK_THROWS_WITH_AS(
+            (::verilator_utils::format_wrapper<double>{-1e300, 54, ::verilator_utils::data_format::signed_fixed_point(1, 52)}),
+            ::doctest::Contains{"不能无修改的保存给定数据"},
             ::verilator_utils::assertion_error);
         CHECK_THROWS_AS(
             (::verilator_utils::format_wrapper<double>{1e300, 5, ::verilator_utils::data_format::sign_mag_fixed_point(1, 3)}),

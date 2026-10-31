@@ -100,6 +100,24 @@ TEST_SUITE("verilator_utils/assert")
         }
     }
 
+    TEST_CASE("assertion_error omits the stack trace when it is disabled")
+    {
+        const auto backup{::verilator_utils::assertion_config()};
+        ::verilator_utils::set_assertion_config({.stacktrace = false});
+        try
+        {
+            ::verilator_utils::check{}(false, "禁用调用栈"sv);
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            // 关闭栈回溯后异常仍携带消息与位置，但调用栈为空
+            CHECK(error.trace().empty());
+            CHECK(::std::string_view{error.what()}.contains("禁用调用栈"sv));
+            CHECK(::std::string_view{error.what()}.contains("test/assert.cpp"sv));
+        }
+        ::verilator_utils::set_assertion_config(backup);
+    }
+
     TEST_CASE("assertion_error message colorization follows color configuration")
     {
         const auto backup{::verilator_utils::assertion_config()};

@@ -360,6 +360,18 @@ TEST_SUITE("verilator_utils/context")
         CHECK(::std::string_view{logged.back().c_str()}.starts_with("random_seed := "sv));
     }
 
+    TEST_CASE("random seed accessor reuses the logged context scope")
+    {
+        stats_context ctx{};
+
+        // 首次访问注册记录随机种子的上下文作用域，后续访问直接复用
+        const auto first{ctx.seed()};
+        const auto second{ctx.seed()};
+
+        CHECK_EQ(first, second);
+        CHECK_EQ(first, static_cast<::std::size_t>(ctx.context().randSeed()));
+    }
+
     TEST_CASE("coverage data file is written when the simulation has started")
     {
         const auto coverage_file{::std::filesystem::temp_directory_path() / "verilator_utils_context_coverage.dat"};
@@ -390,6 +402,24 @@ TEST_SUITE("verilator_utils/context")
             stats_fixture fixture{{.base_name = base_name}};
             CHECK_FALSE(fixture.ctx.coverage());
             static_cast<void>(fixture.advance(1_ns));
+        }
+
+        CHECK_FALSE(::std::filesystem::exists(coverage_file));
+    }
+
+    TEST_CASE("coverage data file is not written when the simulation never starts")
+    {
+        const auto coverage_file{::std::filesystem::temp_directory_path() / "verilator_utils_context_not_started.dat"};
+        ::std::filesystem::remove(coverage_file);
+        const auto base_name{(coverage_file.parent_path() / coverage_file.stem()).native()};
+
+        {
+            stats_fixture fixture{
+                {.coverage = true, .base_name = base_name}
+            };
+            CHECK(fixture.ctx.coverage());
+            // 未进入评估循环就析构，此时覆盖率数据尚未开始记录，不应写出文件
+            CHECK_EQ(fixture.ctx.scheduler().eval_stage(), ::verilator_utils::eval_scheduler::eval_stage_enum::not_begin);
         }
 
         CHECK_FALSE(::std::filesystem::exists(coverage_file));

@@ -127,6 +127,16 @@ TEST_SUITE("verilator_utils/utils")
         CHECK_THROWS_AS(1_fs * -0.5, ::verilator_utils::assertion_error);
     }
 
+    TEST_CASE("femtosecond multiplication accepts a zero left operand")
+    {
+        constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
+
+        // 左操作数为0时乘积必然为0，不能因右操作数过大而触发上溢检查
+        CHECK_EQ(static_cast<::std::uint64_t>(0_fs * max), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(0_fs * 1e300), 0u);
+        CHECK_EQ(static_cast<::std::uint64_t>(0_fs * 0.0), 0u);
+    }
+
     TEST_CASE("femtosecond division rejects invalid divisors and overflow")
     {
         constexpr static auto max{::std::numeric_limits<::std::uint64_t>::max()};
@@ -356,6 +366,9 @@ TEST_SUITE("verilator_utils/utils")
         CHECK_THROWS_WITH_AS(::verilator_utils::width_cast(1, 1zu),
                              ::doctest::Contains{"有符号数宽度至少为2"},
                              ::verilator_utils::assertion_error);
+        CHECK_THROWS_WITH_AS(::verilator_utils::width_cast(0u, 65zu),
+                             ::doctest::Contains{"宽度65超出范围[1, 64]"},
+                             ::verilator_utils::assertion_error);
     }
 
     TEST_CASE("fixed point formats report their total width")
@@ -375,5 +388,30 @@ TEST_SUITE("verilator_utils/utils")
         CHECK_EQ(::std::get<unsigned_t>(unsigned_format).width(), 8zu);
         CHECK_EQ(::std::get<signed_t>(signed_format).width(), 9zu);
         CHECK_EQ(::std::get<sign_mag_t>(sign_mag_format).width(), 9zu);
+    }
+
+    TEST_CASE("fsm enum reports the width required by its state count")
+    {
+        using enum_t = ::verilator_utils::data_format::fsm_enum_t;
+        const enum_t empty{};
+        const enum_t single_state{{"idle"}};
+        const enum_t two_states{
+            {"idle", "run"}
+        };
+        const enum_t three_states{
+            {"idle", "run", "stop"}
+        };
+        const enum_t five_states{
+            {"s0", "s1", "s2", "s3", "s4"}
+        };
+
+        // 空列表与单状态列表只需要一位
+        CHECK_EQ(empty.min_width(), 1zu);
+        CHECK_EQ(single_state.min_width(), 1zu);
+        // 两个状态仍能用一个二进制位编码
+        CHECK_EQ(two_states.min_width(), 1zu);
+        // 状态数超过2的幂时必须增加位数
+        CHECK_EQ(three_states.min_width(), 2zu);
+        CHECK_EQ(five_states.min_width(), 3zu);
     }
 }

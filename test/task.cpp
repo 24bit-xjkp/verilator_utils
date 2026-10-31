@@ -242,6 +242,16 @@ TEST_SUITE("verilator_utils/task")
         CHECK_THROWS_WITH_AS(static_cast<void>(zero_initial_value.begin()),
                              ::doctest::Contains{"初始值为0时LFSR输出恒为0"},
                              ::verilator_utils::assertion_error);
+
+        // 宽度上界同样受检查，0同样不满足下界
+        const auto width_too_large{::verilator_utils::galois_lfsr_generator(65)};
+        CHECK_THROWS_WITH_AS(static_cast<void>(width_too_large.begin()),
+                             ::doctest::Contains{"LFSR宽度65超出范围[3, 64]"},
+                             ::verilator_utils::assertion_error);
+        const auto width_zero{::verilator_utils::fibonacci_lfsr_generator(0)};
+        CHECK_THROWS_WITH_AS(static_cast<void>(width_zero.begin()),
+                             ::doctest::Contains{"LFSR宽度0超出范围[3, 64]"},
+                             ::verilator_utils::assertion_error);
     }
 
     TEST_CASE("edge_detector reports rising falling and both edges")
@@ -342,6 +352,63 @@ TEST_SUITE("verilator_utils/task")
         clk = 0;  // NOLINT(clang-analyzer-deadcode.DeadStores)
         scheduler.loop_once();
         CHECK_EQ(falling_stage, ::verilator_utils::eval_scheduler::eval_stage_enum::before_dut_eval);
+    }
+
+    TEST_CASE("wait_stimulate honors an explicitly requested evaluation stage")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::CData clk{};
+        ::verilator_utils::bit_slice clk_ref{clk};
+        ::verilator_utils::eval_scheduler::eval_stage_enum observed_stage{};
+
+        const auto task{
+            [&] -> ::verilator_utils::task<void> {
+                // 下降沿默认在评估前返回，这里显式要求在评估完成后返回
+                co_await ::verilator_utils::wait_stimulate(clk_ref,
+                                                           1,
+                                                           ::verilator_utils::edge_enum::falling,
+                                                           ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
+                observed_stage = scheduler.eval_stage();
+            },
+        };
+        scheduler.add_task(task());
+
+        scheduler.loop_once();
+        clk = 1;  // NOLINT(clang-analyzer-deadcode.DeadStores)
+        scheduler.loop_once();
+        clk = 0;  // NOLINT(clang-analyzer-deadcode.DeadStores)
+        scheduler.loop_once();
+
+        CHECK_EQ(observed_stage, ::verilator_utils::eval_scheduler::eval_stage_enum::after_dut_eval);
+    }
+
+    TEST_CASE("wait_stimulate rejects waiting for both clock edges")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        ::CData clk{};
+        ::verilator_utils::bit_slice clk_ref{clk};
+
+        const auto task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_stimulate(clk_ref, 1, ::verilator_utils::edge_enum::both);
+            },
+        };
+        scheduler.add_task(task());
+
+        bool rejected{};
+        try
+        {
+            scheduler.loop_until_finish();
+        }
+        catch(const ::verilator_utils::coroutine_exception& exception)
+        {
+            const auto* const original{exception.as<::verilator_utils::assertion_error>()};
+            REQUIRE_NE(original, nullptr);
+            rejected = ::std::string_view{original->message()}.contains("不支持等待双边沿"sv);
+        }
+        CHECK(rejected);
     }
 
     TEST_CASE("posedge negedge and alledge count edges")
@@ -480,6 +547,33 @@ TEST_SUITE("verilator_utils/task")
 
         scheduler.finish();
         scheduler.loop_once();
+    }
+
+    TEST_CASE("clock generation rejects an invalid duty ratio")
+    {
+        // 占空比必须严格位于(0, 1)之间，端点与越界值都应被拒绝
+        for(const auto duty_ratio: {0.0, 1.0, -0.1, 1.1})
+        {
+            CAPTURE(duty_ratio);
+            scheduler_fixture fixture{};
+            auto scheduler{fixture.make_scheduler()};
+            ::CData clk{};
+            ::verilator_utils::bit_slice clk_ref{clk};
+            scheduler.add_task(::verilator_utils::generate_clock(clk_ref, 4_ps, 0_fs, duty_ratio));
+
+            bool rejected{};
+            try
+            {
+                scheduler.loop_until_finish();
+            }
+            catch(const ::verilator_utils::coroutine_exception& exception)
+            {
+                const auto* const original{exception.as<::verilator_utils::assertion_error>()};
+                REQUIRE_NE(original, nullptr);
+                rejected = ::std::string_view{original->message()}.contains("时钟占空比"sv);
+            }
+            CHECK(rejected);
+        }
     }
 
     TEST_CASE("asynchronous reset asserts immediately and releases after its duration")
