@@ -2075,6 +2075,10 @@ namespace verilator_utils
             {
                 // 已经加入协程栈回溯信息，不进行处理
             }
+            catch(const ::verilator_utils::eval_timeout_exception&)  // NOLINT(bugprone-empty-catch)
+            {
+                // 仿真超时异常按原样传播到调度器外，不附加协程栈回溯信息
+            }
             catch(...)
             {
                 // 栈回溯条目缺失或与当前异常不对应，在当前协程重新捕获
