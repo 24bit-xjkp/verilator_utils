@@ -7,6 +7,7 @@ export namespace verilator_utils
 {
     // 简化单元测试内使用
     using ::verilator_utils::detail::check;
+    using ::verilator_utils::detail::warn;
 }  // namespace verilator_utils
 
 export {

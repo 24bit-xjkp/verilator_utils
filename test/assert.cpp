@@ -36,6 +36,37 @@ TEST_SUITE("verilator_utils/assert")
         }
     }
 
+    TEST_CASE("check accepts plain and default assertion messages")
+    {
+        try
+        {
+            ::verilator_utils::check{}(false);
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "断言失败"sv);
+        }
+
+        try
+        {
+            ::verilator_utils::check{}(false, "纯文本消息"sv);
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "纯文本消息"sv);
+            CHECK(::std::string_view{error.what()}.contains("纯文本消息"sv));
+        }
+
+        try
+        {
+            ::verilator_utils::check{}(false, "字面量消息");
+        }
+        catch(const ::verilator_utils::assertion_error& error)
+        {
+            CHECK_EQ(error.message(), "字面量消息"sv);
+        }
+    }
+
     TEST_CASE("assertion_error carries source location")
     {
         try
@@ -128,5 +159,26 @@ TEST_SUITE("verilator_utils/assert")
             return true;
         }()};
         static_assert(evaluated);
+    }
+
+    TEST_CASE("warn reports warnings through the test framework without throwing")
+    {
+        static_assert(noexcept(::verilator_utils::warn{}(false)));
+
+        ::verilator_utils::warn{}(true);
+        ::verilator_utils::warn{}(true, "不报告警告{}"sv, 1);
+
+        // 常量求值语境下不报告警告，也不影响常量求值
+        constexpr auto evaluated{[] {
+            ::verilator_utils::warn{}(true);
+            ::verilator_utils::warn{}(true, "常量求值不报告警告{}"sv, 2);
+            return true;
+        }()};
+        static_assert(evaluated);
+
+        // 条件不成立时只向doctest报告警告，不抛出异常
+        CHECK_NOTHROW(::verilator_utils::warn{}(false));
+        CHECK_NOTHROW(::verilator_utils::warn{}(false, "纯文本警告"sv));
+        CHECK_NOTHROW(::verilator_utils::warn{}(false, "测试警告{}"sv, 42));
     }
 }
