@@ -413,9 +413,8 @@ export namespace std
     {
         constexpr static auto parse(::std::format_parse_context& ctx)
         {
-            return ::verilator_utils::detail::parse_format_string_without_flags(
-                ctx,
-                "无效的verilator_utils::dut_context_stats格式符"sv);
+            return ::verilator_utils::detail::format_string::parse_no_flags(ctx,
+                                                                            "无效的verilator_utils::dut_context_stats格式符"sv);
         }
 
         template <typename iter_t>

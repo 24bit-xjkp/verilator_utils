@@ -2233,25 +2233,28 @@ export namespace std
      *
      * 支持的格式符：
      * - #: 输出详细信息
+     * - {}: 由嵌套参数动态选择是否输出详细信息，参数类型须为bool
      * @tparam type 元素类型
      */
     template <::std::move_constructible type>
     struct formatter<::verilator_utils::mailbox<type>>
     {
         bool with_detail{};
+        ::std::size_t detail_argument_id{::verilator_utils::detail::format_string::npos};
 
         constexpr auto parse(::std::format_parse_context& ctx)
         {
-            return ::verilator_utils::detail::parse_format_string_with_detail_flag(ctx,
-                                                                                   "无效的verilator_utils::mailbox格式符"sv,
-                                                                                   with_detail);
+            return ::verilator_utils::detail::format_string::parse_detail_flag(ctx,
+                                                                               "无效的verilator_utils::mailbox格式符"sv,
+                                                                               with_detail,
+                                                                               detail_argument_id);
         }
 
         template <typename iter_t>
         auto format(const ::verilator_utils::mailbox<type>& value, ::std::basic_format_context<iter_t, char>& ctx) const
         {
             constexpr static auto transform{::std::views::transform([](const auto& ref) static noexcept { return ref.value(); })};
-            if(with_detail)
+            if(::verilator_utils::detail::format_string::resolve_detail_flag(ctx, with_detail, detail_argument_id))
             {
                 if(value.infty_capicity())
                 {
@@ -2279,25 +2282,30 @@ export namespace std
      *
      * 支持的格式符：
      * - #: 输出详细信息
+     * - {}: 由嵌套参数动态选择是否输出详细信息，参数类型须为bool
      * @tparam type 元素类型
      */
     template <::verilator_utils::is_format_wrapper_data_type type>
     struct formatter<::verilator_utils::shift_register<type>>
     {
         bool with_detail{};
+        ::std::size_t detail_argument_id{::verilator_utils::detail::format_string::npos};
 
         constexpr auto parse(::std::format_parse_context& ctx)
         {
-            return ::verilator_utils::detail::parse_format_string_with_detail_flag(
-                ctx,
-                "无效的verilator_utils::shift_register格式符"sv,
-                with_detail);
+            return ::verilator_utils::detail::format_string::parse_detail_flag(ctx,
+                                                                               "无效的verilator_utils::shift_register格式符"sv,
+                                                                               with_detail,
+                                                                               detail_argument_id);
         }
 
         template <typename iter_t>
         auto format(const ::verilator_utils::shift_register<type>& value, ::std::basic_format_context<iter_t, char>& ctx) const
         {
-            if(with_detail) { return ::std::format_to(ctx.out(), "{{depth: {}, reg: {}}}"sv, value.depth, value.reg); }
+            if(::verilator_utils::detail::format_string::resolve_detail_flag(ctx, with_detail, detail_argument_id))
+            {
+                return ::std::format_to(ctx.out(), "{{depth: {}, reg: {}}}"sv, value.depth, value.reg);
+            }
             return ::std::format_to(ctx.out(), "{}"sv, value.reg);
         }
     };

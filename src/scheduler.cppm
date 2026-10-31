@@ -923,7 +923,7 @@ export namespace std
     {
         constexpr static auto parse(::std::format_parse_context& ctx)
         {
-            return ::verilator_utils::detail::parse_format_string_without_flags(
+            return ::verilator_utils::detail::format_string::parse_no_flags(
                 ctx,
                 "无效的verilator_utils::detail::promise_base::coroutine_type_enum格式符"sv);
         }
@@ -942,18 +942,21 @@ export namespace std
      * 各字段的着色也与Stack trace一致：指针和行列号为蓝色，函数名为黄色，文件路径为绿色
      * 支持的格式符：
      * - #: 输出带ANSI颜色的协程栈帧，颜色使用方式与断言消息一致
+     * - {}: 由嵌套参数动态选择是否输出ANSI颜色，参数类型须为bool
      */
     template <>
     struct formatter<::verilator_utils::coroutine_stacktrace::frame>
     {
         bool with_color{};
+        ::std::size_t color_argument_id{::verilator_utils::detail::format_string::npos};
 
         constexpr auto parse(::std::format_parse_context& ctx)
         {
-            return ::verilator_utils::detail::parse_format_string_with_detail_flag(
+            return ::verilator_utils::detail::format_string::parse_detail_flag(
                 ctx,
                 "无效的verilator_utils::coroutine_stacktrace::stacktrace_frame格式符"sv,
-                with_color);
+                with_color,
+                color_argument_id);
         }
 
         template <typename iter_t>
@@ -961,31 +964,33 @@ export namespace std
                     ::std::basic_format_context<iter_t, char>& ctx) const
         {
             using namespace ::verilator_utils::detail::assertion_color;
+            const auto use_color{
+                ::verilator_utils::detail::format_string::resolve_detail_flag(ctx, with_color, color_argument_id)};
             constexpr auto type_field_width{::verilator_utils::detail::coroutine_type_field_width()};
             const auto type_name{::verilator_utils::detail::coroutine_type_name(value.type)};
             const auto out{::std::format_to(ctx.out(),
                                             "{}{:#0{}x}{} ({}){:{}}"sv,
-                                            with_color ? blue : none,
+                                            use_color ? blue : none,
                                             ::std::bit_cast<::std::uintptr_t>(value.coroutine_frame_ptr),
                                             ::verilator_utils::detail::coroutine_frame_pointer_width,
-                                            with_color ? reset : none,
+                                            use_color ? reset : none,
                                             type_name,
                                             ""sv,
                                             type_field_width - (type_name.size() + 2))};
             return ::std::format_to(out,
                                     " in {}{}{} at {}{}{}:{}{}{}:{}{}{}"sv,
-                                    with_color ? yellow : none,
+                                    use_color ? yellow : none,
                                     value.location.function_name(),
-                                    with_color ? reset : none,
-                                    with_color ? green : none,
+                                    use_color ? reset : none,
+                                    use_color ? green : none,
                                     value.location.file_name(),
-                                    with_color ? reset : none,
-                                    with_color ? blue : none,
+                                    use_color ? reset : none,
+                                    use_color ? blue : none,
                                     value.location.line(),
-                                    with_color ? reset : none,
-                                    with_color ? blue : none,
+                                    use_color ? reset : none,
+                                    use_color ? blue : none,
                                     value.location.column(),
-                                    with_color ? reset : none);
+                                    use_color ? reset : none);
         }
     };
 
@@ -994,32 +999,36 @@ export namespace std
      *
      * 支持的格式符：
      * - #: 输出带ANSI颜色的协程栈回溯，颜色使用方式与断言消息一致
+     * - {}: 由嵌套参数动态选择是否输出ANSI颜色，参数类型须为bool
      */
     template <>
     struct formatter<::verilator_utils::coroutine_stacktrace>
     {
         bool with_color{};
+        ::std::size_t color_argument_id{::verilator_utils::detail::format_string::npos};
 
         constexpr auto parse(::std::format_parse_context& ctx)
         {
-            return ::verilator_utils::detail::parse_format_string_with_detail_flag(
+            return ::verilator_utils::detail::format_string::parse_detail_flag(
                 ctx,
                 "无效的verilator_utils::coroutine_stacktrace格式符"sv,
-                with_color);
+                with_color,
+                color_argument_id);
         }
 
         template <typename iter_t>
         auto format(const ::verilator_utils::coroutine_stacktrace& value, ::std::basic_format_context<iter_t, char>& ctx) const
         {
+            const auto use_color{
+                ::verilator_utils::detail::format_string::resolve_detail_flag(ctx, with_color, color_argument_id)};
             auto out{::std::format_to(ctx.out(),
                                       "{}Coroutine stack trace (most recent call first):\n"sv,
-                                      with_color ? ::verilator_utils::detail::assertion_color::reset : ""sv)};
+                                      use_color ? ::verilator_utils::detail::assertion_color::reset : ""sv)};
             // 与Stack trace一致，帧编号按总条目数自适应宽度，使各帧的指针字段对齐
             const auto number_width{value.frames.empty() ? 1zu : ::std::to_string(value.frames.size() - 1).size()};
             for(auto&& [i, frame]: value.frames | ::std::views::enumerate)
             {
-                out = with_color ? ::std::format_to(out, "#{:<{}} {:#}\n"sv, i, number_width, frame)
-                                 : ::std::format_to(out, "#{:<{}} {}\n"sv, i, number_width, frame);
+                out = ::std::format_to(out, "#{:<{}} {:{}}\n"sv, i, number_width, frame, use_color);
             }
             return out;
         }
@@ -1058,8 +1067,7 @@ namespace verilator_utils
             }
             if(stacktrace_.empty()) { return ::std::format("{}\nCoroutine stack trace unavailable"sv, message); }
             const auto use_color{::verilator_utils::detail::should_colorize_assertion_message()};
-            if(use_color) { return ::std::format("{}\n{:#}"sv, message, stacktrace_); }
-            return ::std::format("{}\n{}"sv, message, stacktrace_);
+            return ::std::format("{}\n{:{}}"sv, message, stacktrace_, use_color);
         }
         catch(...)
         {
@@ -1074,20 +1082,14 @@ export namespace doctest
     struct StringMaker<::verilator_utils::coroutine_stacktrace::frame>
     {
         static ::doctest::String convert(const ::verilator_utils::coroutine_stacktrace::frame& value)
-        {
-            if(::verilator_utils::detail::should_colorize_assertion_message()) { return ::std::format("{:#}"sv, value); }
-            return ::std::format("{}"sv, value);
-        }
+        { return ::std::format("{:{}}"sv, value, ::verilator_utils::detail::should_colorize_assertion_message()); }
     };
 
     template <>
     struct StringMaker<::verilator_utils::coroutine_stacktrace>
     {
         static ::doctest::String convert(const ::verilator_utils::coroutine_stacktrace& value)
-        {
-            if(::verilator_utils::detail::should_colorize_assertion_message()) { return ::std::format("{:#}"sv, value); }
-            return ::std::format("{}"sv, value);
-        }
+        { return ::std::format("{:{}}"sv, value, ::verilator_utils::detail::should_colorize_assertion_message()); }
     };
 }  // namespace doctest
 
@@ -1660,8 +1662,7 @@ namespace verilator_utils
                                : ::std::views::enumerate(entries) | ::std::views::transform([use_color](const auto& tuple) {
                                      const auto& [i, pair]{tuple};
                                      const ::verilator_utils::coroutine_stacktrace trace{pair};
-                                     return use_color ? ::std::format("协程{}: {:#}\n"sv, i + 1, trace)
-                                                      : ::std::format("协程{}: {}\n"sv, i + 1, trace);
+                                     return ::std::format("协程{}: {:{}}\n"sv, i + 1, trace, use_color);
                                  }) | ::std::views::join |
                                      ::std::ranges::to<::std::string>();
             }

@@ -578,47 +578,100 @@ namespace verilator_utils
         }
 
         /**
-         * @brief 解析不带格式符的格式串
+         * @brief 格式串解析辅助
          *
-         * @param ctx 格式串上下文
-         * @param message 解析失败时的消息
-         * @return 解析后的迭代器
+         * 集中实现formatter共用的格式串解析逻辑，包括对不带格式符、带#和{}详细说明格式符的解析，
+         * 以及在格式化阶段解析嵌套参数中的详细说明标志
          */
-        constexpr auto parse_format_string_without_flags(::std::format_parse_context& ctx, ::std::string_view message)
+        struct format_string
         {
-            auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
-            if(iter != ctx.end() && *iter != '}') { throw ::std::format_error{::std::string{message}}; }
-            return iter;
-        }
+            /**
+             * @brief 嵌套参数编号的非法值
+             *
+             * 嵌套参数编号由next_arg_id()给出，合法编号总是小于参数个数，
+             * 因此std::size_t的最大值不可能成为合法编号，可用作未设置标记
+             */
+            constexpr static ::std::size_t npos{::std::numeric_limits<::std::size_t>::max()};
 
-        /**
-         * @brief 解析带详细说明格式符(#)的格式串
-         *
-         * @param ctx 格式串上下文
-         * @param message 解析失败时的消息
-         * @param with_detail 是否带有详细说明
-         * @return 解析后的迭代器
-         */
-        constexpr auto
-            parse_format_string_with_detail_flag(::std::format_parse_context& ctx, ::std::string_view message, bool& with_detail)
-        {
-            auto iter{ctx.begin()};  // NOLINT(readability-qualified-auto)
-            auto end{ctx.end()};     // NOLINT(readability-qualified-auto)
-
-            while(iter != end)
+            /**
+             * @brief 解析不带格式符的格式串
+             *
+             * @param ctx 格式串上下文
+             * @param message 解析失败时的消息
+             * @return 解析后的迭代器
+             */
+            constexpr static const char* parse_no_flags(::std::format_parse_context& ctx, ::std::string_view message)
             {
-                switch(*iter)
-                {
-                    case '#':
-                        ::std::advance(iter, 1);
-                        with_detail = true;
-                        break;
-                    case '}': return iter;
-                    default: throw ::std::format_error{::std::string{message}};
-                }
+                const char* iter{ctx.begin()};
+                if(iter != ctx.end() && *iter != '}') { throw ::std::format_error{::std::string{message}}; }
+                return iter;
             }
-            return iter;
-        }
+
+            /**
+             * @brief 解析带详细说明格式符的格式串
+             *
+             * 支持的格式符：
+             * - #：强制输出详细说明
+             * - {}：由嵌套参数动态选择是否输出详细说明，参数类型须为bool
+             *
+             * @param ctx 格式串上下文
+             * @param message 解析失败时的消息
+             * @param with_detail 是否带有详细说明
+             * @param detail_argument_id 嵌套参数编号，未使用嵌套参数时为npos
+             * @return 解析后的迭代器
+             */
+            constexpr static const char* parse_detail_flag(::std::format_parse_context& ctx,
+                                                           ::std::string_view message,
+                                                           bool& with_detail,
+                                                           ::std::size_t& detail_argument_id)
+            {
+                const char* iter{ctx.begin()};
+                const char* end{ctx.end()};
+
+                while(iter != end)
+                {
+                    switch(*iter)
+                    {
+                        case '#':
+                            ::std::advance(iter, 1);
+                            with_detail = true;
+                            break;
+                        case '{':
+                            // 嵌套参数只支持自动编号的{}，其编号在格式化阶段用于取回实际标志
+                            ::std::advance(iter, 1);
+                            if(iter == end || *iter != '}') { throw ::std::format_error{::std::string{message}}; }
+                            ::std::advance(iter, 1);
+                            detail_argument_id = ctx.next_arg_id();
+                            break;
+                        case '}': return iter;
+                        default: throw ::std::format_error{::std::string{message}};
+                    }
+                }
+                return iter;
+            }
+
+            /**
+             * @brief 解析嵌套参数中的详细说明标志
+             *
+             * @tparam context_t 格式化上下文类型
+             * @param ctx 格式化上下文
+             * @param with_detail 是否带有详细说明
+             * @param detail_argument_id 嵌套参数编号，未使用嵌套参数时为npos
+             * @return 是否输出详细说明
+             * @throws 嵌套参数不是bool时抛出format_error
+             */
+            template <typename context_t>
+            [[nodiscard]] static bool
+                resolve_detail_flag(const context_t& ctx, bool with_detail, ::std::size_t detail_argument_id)
+            {
+                if(detail_argument_id == npos) { return with_detail; }
+                const auto dynamic_detail{ctx.arg(detail_argument_id).visit([]<typename type>(const type& value) static -> bool {
+                    if constexpr(::std::same_as<type, bool>) { return value; }
+                    throw ::std::format_error{"详细说明标志必须是bool"};
+                })};
+                return with_detail || dynamic_detail;
+            }
+        };
     }  // namespace detail
 
     export namespace data_format
