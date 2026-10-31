@@ -1601,7 +1601,7 @@ export namespace verilator_utils
      * @brief 边沿触发的事件，用于协程间同步，类似SystemVerilog event
      *
      */
-    struct event : ::verilator_utils::with_suspend_queue
+    struct event : ::verilator_utils::with_suspend_queue  // NOLINT(cppcoreguidelines-virtual-class-destructor)
     {
     private:
         using pair_t = ::verilator_utils::detail::coroutine_pair;
@@ -1630,7 +1630,7 @@ export namespace verilator_utils
                 if(self.scheduler == nullptr)
                 {
                     self.scheduler = new_scheduler;
-                    self.scheduler->register_suspend_entry(self, &event::do_release);
+                    self.scheduler->register_suspend_entry(self);
                 }
                 else
                 {
@@ -1661,22 +1661,30 @@ export namespace verilator_utils
             head_index = 0;
         }
 
+        [[nodiscard]] bool empty() const noexcept { return suspend_queue.size() == head_index; }
+
+    protected:
         /**
          * @brief 调度器析构时回收挂起队列并解除与调度器的绑定
-         *
-         * @param ref 带有挂起队列的同步体
          */
-        void do_release(this ::verilator_utils::with_suspend_queue& ref) noexcept
+        void release() noexcept override
         {
-            // NOLINTNEXTLINE(cppcoreguidelines-pro-type-static-cast-downcast)
-            auto&& self{static_cast<event&>(ref)};
-            self.do_notify_all();
+            do_notify_all();
             // 调度器即将析构，同步体无需再向调度器注销挂起队列
-            self.scheduler = nullptr;
+            scheduler = nullptr;
         }
 
     public:
-        event() noexcept = default;
+        /**
+         * @brief 构造事件对象
+         *
+         * @param location 事件对象的构造点，默认取调用处的源代码位置
+         */
+        constexpr explicit event(::std::source_location location = ::std::source_location::current()) noexcept :
+            ::verilator_utils::with_suspend_queue{location}
+        {
+        }
+
         event(const event&) noexcept = delete;
         event& operator= (const event&) noexcept = delete;
         event(event&&) noexcept = delete;
@@ -1688,19 +1696,44 @@ export namespace verilator_utils
             {
                 scheduler->remove_suspend_entry(*this);
                 ::verilator_utils::check{}(::std::nothrow,
-                                           scheduler->is_finish() || suspend_queue.size() == head_index,
+                                           scheduler->is_finish() || empty(),
                                            "在存在挂起任务时析构同步体是未定义行为"sv);
                 // 对于仿真完成的情况，任务行为有良好的定义，一唤醒就会执行退出流程
                 if(scheduler->is_finish()) { do_notify_all(); }
             }
             else
             {
-                // 调度器先析构时会回收挂起队列并解除绑定，此时同步体上不应再有挂起的任务
-                ::verilator_utils::check{}(::std::nothrow,
-                                           suspend_queue.size() == head_index,
-                                           "在存在挂起任务时析构同步体是未定义行为"sv);
+                // 调度器先析构或挂起队列已注销时，同步体上不应再有挂起的任务
+                ::verilator_utils::check{}(::std::nothrow, empty(), "在存在挂起任务时析构同步体是未定义行为"sv);
             }
         }
+
+#ifndef __cpp_rtti
+        /**
+         * @brief 获取事件类型名称
+         *
+         * RTTI不可用时无法通过typeid获取动态类型，直接返回固定名称
+         * @return 类型名称
+         */
+        [[nodiscard]] ::std::string dump_type() const override
+        { return ::std::string{"verilator_utils::event@verilator_utils"sv}; }
+#endif
+
+        /**
+         * @brief 判断事件挂起队列是否为空
+         *
+         * @return 挂起队列是否为空
+         */
+        [[nodiscard]] bool dump_empty() const noexcept override { return empty(); }
+
+        /**
+         * @brief 获取所有挂起的协程状态对
+         *
+         * 已被通知但尚未从挂起队列中回收的协程不计入结果
+         * @return 挂起协程状态对数组
+         */
+        [[nodiscard]] ::std::vector<pair_t> dump_entries() const override
+        { return suspend_queue | ::std::views::drop(head_index) | ::std::ranges::to<::std::vector>(); }
 
         /**
          * @brief 唤醒所有等待此事件的协程

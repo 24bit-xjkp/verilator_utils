@@ -346,7 +346,7 @@ export namespace verilator_utils
         {
             if(max_eval_time != 0_fs) { add_task(::verilator_utils::max_eval_time(max_eval_time)); }
             initial_eval();
-            while(!scheduler_->empty() && !scheduler_->is_finish()) { loop_once(); }
+            scheduler_->loop_until_finish();
         }
 
         /**

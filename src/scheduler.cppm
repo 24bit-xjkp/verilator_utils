@@ -1313,8 +1313,84 @@ export namespace verilator_utils
      *       推荐让派生对象比调度器长寿，此时调度器析构时会回收全部挂起任务并解除绑定；
      *       若派生对象先于调度器析构，则析构前必须确保仿真已经结束
      */
-    struct with_suspend_queue
+    struct with_suspend_queue  // NOLINT(cppcoreguidelines-virtual-class-destructor)
     {
+        /**
+         * @brief 挂起队列的转储结果
+         *
+         */
+        struct dump_t
+        {
+            /// 挂起队列的类型名称，不可用时为空
+            ::std::string type{};
+            /// 挂起队列的构造点
+            ::std::source_location location{};
+            /// 挂起协程状态对数组
+            ::std::vector<::verilator_utils::detail::coroutine_pair> entries{};
+        };
+
+        /**
+         * @brief 构造带有挂起队列的设施
+         *
+         * @param location 挂起队列的构造点，默认取调用处的源代码位置
+         */
+        constexpr explicit with_suspend_queue(::std::source_location location = ::std::source_location::current()) noexcept :
+            location_{location}
+        {
+        }
+
+        /**
+         * @brief 获取挂起队列的类型名称
+         *
+         * RTTI可用时默认返回反修饰后的动态类型名称，并保留模块名；RTTI不可用时返回空字符串
+         * @return 类型名称
+         */
+        [[nodiscard]] virtual ::std::string dump_type() const
+        {
+#ifdef __cpp_rtti
+            return ::verilator_utils::detail::demangle_type_name(typeid(*this));
+#else
+            return {};
+#endif
+        }
+
+        /**
+         * @brief 判断挂起队列是否为空
+         *
+         * 挂起条目在队列为空时可能仍保留注册，调度器通过该函数避免把空队列当作死锁
+         * @return 挂起队列是否为空
+         */
+        [[nodiscard]] virtual bool dump_empty() const noexcept = 0;
+
+        /**
+         * @brief 获取所有挂起的协程状态对
+         *
+         * 默认实现返回空数组，表示该同步体不支持导出挂起协程状态
+         * @return 挂起协程状态对数组
+         */
+        [[nodiscard]] virtual ::std::vector<::verilator_utils::detail::coroutine_pair> dump_entries() const { return {}; }
+
+        /**
+         * @brief 转储挂起队列状态
+         *
+         * 组合挂起队列的构造点、类型名称和挂起协程状态
+         * @return 挂起队列的转储结果
+         */
+        [[nodiscard]] dump_t dump() const { return {.type = dump_type(), .location = location_, .entries = dump_entries()}; }
+
+    protected:
+        friend struct ::verilator_utils::eval_scheduler;
+
+        /**
+         * @brief 回收挂起队列中的任务并解除同步体与调度器的绑定
+         *
+         * 调度器析构时调用，此时仿真已经结束，被唤醒的协程会经由协作式取消正常退出
+         */
+        virtual void release() noexcept = 0;
+
+    private:
+        /// 挂起队列的构造点
+        ::std::source_location location_{};
     };
 }  // namespace verilator_utils
 
@@ -1364,24 +1440,8 @@ namespace verilator_utils::detail
     /// 就绪队列类型
     using ready_queue_t = ::std::vector<::verilator_utils::detail::coroutine_pair>;
 
-    /// 挂起项类型
-    struct suspend_entry
-    {
-        /// 事件指针
-        ::verilator_utils::with_suspend_queue* entry;
-        /// 回调函数类型
-        using callback_t = void (*)(::verilator_utils::with_suspend_queue&) noexcept;
-        /// 回收函数，用于在调度器析构时把挂起队列中的任务交回调度器，并解除同步体与调度器的绑定
-        callback_t release;
-
-        friend ::std::strong_ordering operator<=> (const suspend_entry& lhs, const suspend_entry& rhs) noexcept
-        { return lhs.entry <=> rhs.entry; }
-
-        void operator() () const noexcept { release(*entry); }
-    };
-
     /// 挂起项队列类型
-    using suspend_entry_queue_t = ::std::flat_set<suspend_entry>;
+    using suspend_entry_queue_t = ::std::flat_set<::verilator_utils::with_suspend_queue*>;
 
     constexpr ::std::array time_unit_table{
         ::std::tuple{0,   1'000'000'000'000'000zu, "s"sv },
@@ -1567,6 +1627,51 @@ namespace verilator_utils
             return any_coroutine_run;
         }
 
+        /**
+         * @brief 判断一个挂起条目是否非空
+         *
+         * @param suspend 挂起条目
+         * @return 条目是否非空
+         */
+        static bool suspend_entry_not_empty(const ::verilator_utils::with_suspend_queue* suspend) noexcept
+        { return !suspend->dump_empty(); }
+
+        /**
+         * @brief 报告调度器退出时仍存在的挂起条目
+         *
+         * 挂起条目非空说明存在无法被调度器推进的协程，即死锁。
+         * 对每个非空条目调用dump获取挂起队列类型、构造点和挂起协程状态对并输出协程栈回溯；
+         * dump的entries为空时说明该条目不支持导出挂起协程状态
+         */
+        void report_suspend_deadlock() const
+        {
+            const auto use_color{::verilator_utils::detail::should_colorize_assertion_message()};
+            using namespace ::verilator_utils::detail::assertion_color;
+            ::std::string message{::std::format("检测到死锁：调度器{}退出时仍有{}个挂起条目\n{}"sv,
+                                                static_cast<const void*>(this),
+                                                suspend_entry_count(),
+                                                use_color ? reset : none)};
+            for(const auto* suspend: suspend_entry_queue | ::std::views::filter(suspend_entry_not_empty))
+            {
+                const auto* const address{static_cast<const void*>(suspend)};
+                const auto&& [type, location, entries]{suspend->dump()};
+                message += ::std::format("挂起条目{}{}：\n"sv, type.empty() ? ""sv : type + ' ', address);
+                // 挂起队列在构造时默认捕获构造点，因此位置总是可用
+                message += ::verilator_utils::detail::format_source_location(location, use_color) + '\n';
+                message += entries.empty()
+                               ? "dump功能不可用\n"sv
+                               : ::std::views::enumerate(entries) | ::std::views::transform([use_color](const auto& tuple) {
+                                     const auto& [i, pair]{tuple};
+                                     const ::verilator_utils::coroutine_stacktrace trace{pair};
+                                     return use_color ? ::std::format("协程{}: {:#}\n"sv, i + 1, trace)
+                                                      : ::std::format("协程{}: {}\n"sv, i + 1, trace);
+                                 }) | ::std::views::join |
+                                     ::std::ranges::to<::std::string>();
+            }
+            message += ::verilator_utils::detail::generate_assertion_trace().to_string(use_color);
+            throw ::std::runtime_error{message};
+        }
+
     public:
         /**
          * @brief 构造调度器对象
@@ -1633,6 +1738,16 @@ namespace verilator_utils
          * @return 队列是否为空
          */
         [[nodiscard]] bool empty() const noexcept { return wait_queue.empty() && event_queue.empty() && ready_queue.empty(); }
+
+        /**
+         * @brief 获取挂起项队列中的非空挂起条目数
+         *
+         * 挂起条目由同步体在第一个协程挂起时注册，在调度器析构时移除；
+         * 队列为空的条目不计入结果，避免把未注销的空队列当作死锁
+         * @return 非空挂起条目数
+         */
+        [[nodiscard]] ::std::size_t suspend_entry_count() const noexcept
+        { return ::std::ranges::count_if(suspend_entry_queue, suspend_entry_not_empty); }
 
         /**
          * @brief 检查仿真是否结束
@@ -1732,7 +1847,7 @@ namespace verilator_utils
 
             // 在恢复协程执行前先清理挂起项队列
             // 回收后，同步体上不再存在挂起的任务，可以安全地析构同步体
-            for(const auto& entry: suspend_entry_queue) { entry(); }
+            for(auto* entry: suspend_entry_queue) { entry->release(); }
             suspend_entry_queue.clear();
 
             // 仿真已结束，被唤醒的协程都会经由协作式取消正常退出，异常不可能从析构函数中传播
@@ -1780,10 +1895,13 @@ namespace verilator_utils
         /**
          * @brief 循环直到调度器为空或仿真结束
          *
+         * 退出时若仍有挂起条目，说明存在无法被推进的协程，输出死锁诊断信息
          */
         void loop_until_finish()
         {
             while(!empty() && !is_finish()) { loop_once(); }
+            // 队列已空但仍有非空挂起条目时，调度器无法再推进任何协程，说明存在死锁
+            if(suspend_entry_count() != 0) { report_suspend_deadlock(); }
         }
 
         /**
@@ -1861,11 +1979,9 @@ namespace verilator_utils
          * @brief 向挂起项队列中注册协程
          *
          * @param entry 带有挂起队列的对象
-         * @param release 回调函数，用于在调度器析构时回收挂起队列中的任务并解除同步体与调度器的绑定
          */
-        void register_suspend_entry(::verilator_utils::with_suspend_queue& entry,
-                                    ::verilator_utils::detail::suspend_entry::callback_t release)
-        { suspend_entry_queue.emplace(::std::addressof(entry), release); }
+        void register_suspend_entry(::verilator_utils::with_suspend_queue& entry)
+        { suspend_entry_queue.emplace(::std::addressof(entry)); }
 
         /**
          * @brief 从挂起项队列中移除协程
@@ -1874,7 +1990,7 @@ namespace verilator_utils
          * @param entry 带有挂起队列的对象
          */
         void remove_suspend_entry(::verilator_utils::with_suspend_queue& entry) noexcept
-        { suspend_entry_queue.erase({::std::addressof(entry), nullptr}); }
+        { suspend_entry_queue.erase(::std::addressof(entry)); }
 
         /**
          * @brief 向调度器中添加任务
