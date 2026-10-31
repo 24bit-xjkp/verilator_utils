@@ -3478,6 +3478,38 @@ TEST_SUITE("verilator_utils/task")
         CHECK_EQ(time_in_string, "3ns"sv);
     }
 
+    TEST_CASE("wait durations round to the nearest time precision with ties to even")
+    {
+        // 时间精度为ps
+        scheduler_fixture fixture{-9, -12};
+        auto scheduler{fixture.make_scheduler()};
+        ::std::vector<::std::uint64_t> resumed_times{};
+
+        const auto&& task{
+            [&] -> ::verilator_utils::task<void> {
+                // 1.5ps按四舍六入五成双向偶数舍入为2ps
+                co_await ::verilator_utils::wait_time(1'500_fs);
+                resumed_times.push_back(scheduler.time_in_time_precision());
+                // 1.5ps从2ps继续，舍入为2ps
+                co_await ::verilator_utils::wait_time(1'500_fs);
+                resumed_times.push_back(scheduler.time_in_time_precision());
+                // 2.5ps位于两个偶数之间，向偶数舍入为2ps
+                co_await ::verilator_utils::wait_time(2'500_fs);
+                resumed_times.push_back(scheduler.time_in_time_precision());
+                // 1.4ps与1.6ps分别向更近的整数舍入
+                co_await ::verilator_utils::wait_time(1'400_fs);
+                resumed_times.push_back(scheduler.time_in_time_precision());
+                co_await ::verilator_utils::wait_time(1'600_fs);
+                resumed_times.push_back(scheduler.time_in_time_precision());
+            },
+        };
+
+        scheduler.add_task(task());
+        scheduler.loop_until_finish();
+
+        CHECK_EQ(resumed_times, (::std::vector<::std::uint64_t>{2u, 4u, 6u, 7u, 9u}));
+    }
+
     TEST_CASE("co_await add_task schedules another root task in the same evaluation round")
     {
         scheduler_fixture fixture{};
