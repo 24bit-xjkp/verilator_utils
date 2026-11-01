@@ -2013,10 +2013,16 @@ namespace verilator_utils
          *
          * @param task 要添加的任务
          * @note 任务绑定的调度器必须为空或与当前调度器相同
+         * @note 任务必须尚未开始执行
+         * @note 普通任务不能已绑定父任务；异步任务在注册前绑定父任务，属于合法的注册路径
          */
         void add_task(::verilator_utils::task<void> task)
         {
             auto& promise{task.promise()};
+            ::verilator_utils::check{}(promise.status == ::verilator_utils::task<void>::status_enum::initial_suspend,
+                                       "该任务已开始执行，不能添加到调度器"sv);
+            ::verilator_utils::check{}(promise.is_async || promise.parent == nullptr,
+                                       "该任务已经绑定到父任务，不能添加到调度器"sv);
             // 任务要么尚未绑定调度器，要么已经绑定到当前调度器
             ::verilator_utils::check{}(promise.scheduler == nullptr || promise.scheduler == this,
                                        "任务的调度器({})与目标调度器({})不同"sv,
