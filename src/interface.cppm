@@ -1,7 +1,10 @@
 export module verilator_utils;
 export import :assert;
+export import :async_task;
 export import :context;
+export import :lfsr;
 export import :scheduler;
+export import :sync;
 export import :task;
 export import :utils;
 export import :verilator;
