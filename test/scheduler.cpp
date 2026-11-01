@@ -377,6 +377,76 @@ TEST_SUITE("verilator_utils/scheduler")
         scheduler.loop_until_finish();
     }
 
+    TEST_CASE("add_task rejects a task that already started executing")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+
+        // 手动绑定调度器并驱动到完成：任务一旦离开initial_suspend，就不能再交给调度器接管
+        auto finished_task{[] -> ::verilator_utils::task<void> { co_return; }()};
+        finished_task.promise().scheduler = ::std::addressof(scheduler);
+        finished_task.resume();
+        REQUIRE(finished_task.done());
+        CHECK_EQ(finished_task.promise().status, ::verilator_utils::task<void>::status_enum::finished);
+        CHECK(finished_task.promise().parent == nullptr);
+        CHECK_THROWS_WITH_AS(scheduler.add_task(::std::move(finished_task)),
+                             ::doctest::Contains{"已开始执行"},
+                             ::verilator_utils::assertion_error);
+
+        // 取消请求同样让状态离开initial_suspend，已取消待执行的任务不接受注册
+        auto canceled_task{[] -> ::verilator_utils::task<void> { co_return; }()};
+        canceled_task.promise().scheduler = ::std::addressof(scheduler);
+        canceled_task.cancel();
+        CHECK_EQ(canceled_task.promise().status, ::verilator_utils::task<void>::status_enum::cancel_requested);
+        CHECK(canceled_task.promise().parent == nullptr);
+        CHECK_THROWS_WITH_AS(scheduler.add_task(::std::move(canceled_task)),
+                             ::doctest::Contains{"已开始执行"},
+                             ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("add_task rejects a non-async task already bound to a parent")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+
+        const auto parent_task{[] -> ::verilator_utils::task<void> { co_return; }()};
+        auto child_task{[] -> ::verilator_utils::task<void> { co_return; }()};
+        child_task.promise().parent = ::verilator_utils::detail::coroutine_pair{parent_task.handle()};
+
+        // 状态仍未开始，拒绝的原因只能是父任务绑定
+        CHECK_EQ(child_task.promise().status, ::verilator_utils::task<void>::status_enum::initial_suspend);
+        CHECK_FALSE(child_task.promise().is_async);
+        CHECK(child_task.promise().parent != nullptr);
+        CHECK_THROWS_WITH_AS(scheduler.add_task(::std::move(child_task)),
+                             ::doctest::Contains{"父任务"},
+                             ::verilator_utils::assertion_error);
+    }
+
+    TEST_CASE("add_task accepts an async task already bound to its parent")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        bool child_ran{};
+        bool joined{};
+
+        // spawn_pool在注册前先绑定父任务，add_task必须放行这条合法的异步注册路径
+        const auto parent{[&] -> ::verilator_utils::task<void> {
+            auto pool{co_await ::verilator_utils::spawn_pool()};
+            const auto child{[&] -> ::verilator_utils::task<void> {
+                child_ran = true;
+                co_return;
+            }};
+            pool.add_task(child());
+            co_await pool.join_all();
+            joined = true;
+        }};
+
+        CHECK_NOTHROW(scheduler.add_task(parent()));
+        scheduler.loop_until_finish();
+        CHECK(child_ran);
+        CHECK(joined);
+    }
+
     TEST_CASE("task records regular exceptions and ignores finish exceptions when rethrowing")
     {
         scheduler_fixture fixture{};
