@@ -159,6 +159,31 @@ export namespace verilator_utils
 
         ::std::optional<::doctest::detail::ContextScope<log_random_seed>> random_seed_logger{};
 
+        /**
+         * @brief 将波形记录到跟踪文件中
+         *
+         */
+        void do_trace()
+            requires (use_tracer)
+        { tracer_.dump(context_->time()); }
+
+        /**
+         * @brief 将do_trace包装成task以便放入调度器中
+         *
+         */
+        [[nodiscard]] ::verilator_utils::task<void> do_trace_task()
+            requires (use_tracer)
+        {
+            while(true)
+            {
+                using enum ::verilator_utils::eval_scheduler::eval_stage_enum;
+                // 通过两次等待避免在同一个调度周期内重复触发
+                co_await ::verilator_utils::wait_eval_stage(*scheduler_, after_dut_eval);
+                co_await ::verilator_utils::wait_eval_stage(*scheduler_, eval_end);
+                do_trace();
+            }
+        }
+
     public:
         /// 是否启用覆盖率支持
         constexpr static bool with_coverage_support{coverage_support};
@@ -222,11 +247,7 @@ export namespace verilator_utils
          * @brief 执行一次调度器循环，如果启用波形记录器，则记录波形
          *
          */
-        void loop_once()
-        {
-            scheduler_->loop_once();
-            if constexpr(use_tracer) { tracer_.dump(context_->time()); }
-        }
+        void loop_once() { scheduler_->loop_once(); }
 
         /**
          * @brief 执行调度器的初始化循环，如果启用波形记录器，则记录波形
@@ -239,7 +260,8 @@ export namespace verilator_utils
             if constexpr(use_tracer)
             {
                 tracer_.open(base_name_);
-                tracer_.dump(context_->time());
+                do_trace();
+                scheduler_->add_task(do_trace_task());
             }
         }
 

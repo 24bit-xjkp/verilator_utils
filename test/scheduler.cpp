@@ -1025,6 +1025,131 @@ TEST_SUITE("verilator_utils/scheduler")
         CHECK(seen_after_eval);
     }
 
+    TEST_CASE("unschedulable eval stages are rejected as wait targets")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        using enum ::verilator_utils::eval_scheduler::eval_stage_enum;
+
+        constexpr ::std::array unschedulable_stages{not_begin, after_initial_eval, on_dut_eval};
+        for(const auto stage: unschedulable_stages)
+        {
+            CHECK_THROWS_WITH_AS((void)::verilator_utils::wait_eval_stage(scheduler, stage),
+                                 ::doctest::Contains{"不可等待"},
+                                 ::verilator_utils::assertion_error);
+        }
+
+        // eval_end在每轮评估结束时可调度，属于合法的等待目标
+        CHECK_NOTHROW((void)::verilator_utils::wait_eval_stage(scheduler, eval_end));
+    }
+
+    TEST_CASE("waiting for an earlier stage defers to the next evaluation")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        using enum ::verilator_utils::eval_scheduler::eval_stage_enum;
+        ::std::size_t after_dut_eval_count{};
+        ::std::size_t before_dut_eval_count{};
+
+        const auto&& task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_eval_stage(scheduler, after_dut_eval);
+                ++after_dut_eval_count;
+                // before_dut_eval在本轮已经过去，不能立即恢复
+                co_await ::verilator_utils::wait_eval_stage(scheduler, before_dut_eval);
+                ++before_dut_eval_count;
+            },
+        };
+
+        scheduler.add_task(task());
+        scheduler.loop_once();
+        CHECK_EQ(after_dut_eval_count, 1u);
+        CHECK_EQ(before_dut_eval_count, 0u);
+        scheduler.loop_once();
+        CHECK_EQ(after_dut_eval_count, 1u);
+        CHECK_EQ(before_dut_eval_count, 1u);
+        CHECK(scheduler.empty());
+    }
+
+    TEST_CASE("eval_end waits resume once per evaluation")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        using enum ::verilator_utils::eval_scheduler::eval_stage_enum;
+        ::std::size_t end_count{};
+
+        // 每个评估周期只在eval_end恢复一次，不能在同一周期内重复恢复
+        const auto&& task{
+            [&] -> ::verilator_utils::task<void> {
+                while(end_count != 3zu)
+                {
+                    co_await ::verilator_utils::wait_eval_stage(scheduler, after_dut_eval);
+                    co_await ::verilator_utils::wait_eval_stage(scheduler, eval_end);
+                    CHECK_EQ(scheduler.eval_stage(), eval_end);
+                    ++end_count;
+                }
+            },
+        };
+
+        scheduler.add_task(task());
+        scheduler.loop_once();
+        CHECK_EQ(end_count, 1u);
+        scheduler.loop_once();
+        CHECK_EQ(end_count, 2u);
+        scheduler.loop_once();
+        CHECK_EQ(end_count, 3u);
+        CHECK(scheduler.empty());
+    }
+
+    TEST_CASE("eval stages resume in order within one evaluation")
+    {
+        scheduler_fixture fixture{};
+        auto scheduler{fixture.make_scheduler()};
+        using enum ::verilator_utils::eval_scheduler::eval_stage_enum;
+        ::std::vector<::std::string_view> order{};
+
+        const auto&& after_task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_eval_stage(scheduler, after_dut_eval);
+                order.emplace_back("after_dut_eval"sv);
+            },
+        };
+        const auto&& end_task{
+            [&] -> ::verilator_utils::task<void> {
+                co_await ::verilator_utils::wait_eval_stage(scheduler, eval_end);
+                order.emplace_back("eval_end"sv);
+            },
+        };
+
+        scheduler.add_task(after_task());
+        scheduler.add_task(end_task());
+        scheduler.loop_once();
+
+        REQUIRE_EQ(order.size(), 2u);
+        CHECK_EQ(order[0], "after_dut_eval"sv);
+        CHECK_EQ(order[1], "eval_end"sv);
+    }
+
+    TEST_CASE("eval stage formatter names every stage")
+    {
+        using enum ::verilator_utils::eval_scheduler::eval_stage_enum;
+        constexpr ::std::array
+            stages{not_begin, after_initial_eval, eval_ready_task, before_dut_eval, on_dut_eval, after_dut_eval, eval_end};
+        constexpr ::std::array names{"not_begin"sv,
+                                     "after_initial_eval"sv,
+                                     "eval_ready_task"sv,
+                                     "before_dut_eval"sv,
+                                     "on_dut_eval"sv,
+                                     "after_dut_eval"sv,
+                                     "eval_end"sv};
+        static_assert(stages.size() == names.size());
+
+        for(auto i{0zu}; i != stages.size(); ++i) { CHECK_EQ(::std::format("{}", stages[i]), names[i]); }
+
+        auto stage{not_begin};
+        CHECK_THROWS_AS((void)::std::vformat("{:x}", ::std::make_format_args(stage)), ::std::format_error);
+    }
+
     TEST_CASE("on_dut_eval is observable from dut eval without scheduling")
     {
         scheduler_fixture fixture{};

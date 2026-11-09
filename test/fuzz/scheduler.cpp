@@ -174,7 +174,7 @@ namespace
         time_config,
         /// 协程栈回溯的格式化
         stacktrace_format,
-        /// 不可等待的评估阶段
+        /// 评估阶段的等待契约
         unawaitable_stage,
         /// 用真实的协程栈回溯构造协程异常
         coroutine_exception,
@@ -1090,18 +1090,26 @@ namespace
                                 }
                                 case misc_op_t::unawaitable_stage:
                                 {
+                                    using stage_t = ::verilator_utils::eval_scheduler::eval_stage_enum;
                                     // 不可等待的评估阶段必须被拒绝
-                                    try
+                                    constexpr ::std::array unschedulable_stages{stage_t::not_begin,
+                                                                                stage_t::after_initial_eval,
+                                                                                stage_t::on_dut_eval};
+                                    for(const auto stage: unschedulable_stages)
                                     {
-                                        co_await ::verilator_utils::wait_eval_stage(
-                                            *ctx.scheduler,
-                                            ::verilator_utils::eval_scheduler::eval_stage_enum::eval_end);
-                                        ::fuzz::fail("unawaitable eval stage was accepted");
+                                        try
+                                        {
+                                            co_await ::verilator_utils::wait_eval_stage(*ctx.scheduler, stage);
+                                            ::fuzz::fail("unschedulable eval stage was accepted");
+                                        }
+                                        catch(const ::verilator_utils::assertion_error& error)
+                                        {
+                                            ::inspect_assertion_error(error);
+                                        }
                                     }
-                                    catch(const ::verilator_utils::assertion_error& error)
-                                    {
-                                        ::inspect_assertion_error(error);
-                                    }
+                                    // eval_end在每轮评估结束时可调度，应当在本轮恢复
+                                    co_await ::verilator_utils::wait_eval_stage(*ctx.scheduler, stage_t::eval_end);
+                                    ::fuzz::check(ctx.scheduler->eval_stage() == stage_t::eval_end);
                                     break;
                                 }
                                 case misc_op_t::coroutine_exception:

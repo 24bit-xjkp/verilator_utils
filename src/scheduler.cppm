@@ -1453,39 +1453,58 @@ namespace verilator_utils::detail
         ::std::tuple{-12, 1'000zu,                 "ps"sv},
         ::std::tuple{-15, 1zu,                     "fs"sv},
     };
+
+    /**
+     * @brief 评估阶段枚举
+     *
+     */
+    enum class eval_stage_enum : ::std::uint8_t
+    {
+        // 未注明的阶段可进行等待
+        // --- 初始化阶段 ---
+
+        /// 尚未开始评估，该阶段不可作为等待目标
+        not_begin = 1zu << 0zu,
+        /// 初始评估后，该阶段不进行协程调度
+        after_initial_eval = 1zu << 1zu,
+
+        // --- 仿真循环阶段 ---
+
+        /// 评估已就绪任务
+        eval_ready_task = 1zu << 2zu,
+        /// 电路评估前
+        before_dut_eval = 1zu << 3zu,
+        /// 评估电路中，该阶段不进行协程调度
+        on_dut_eval = 1zu << 4zu,
+        /// 电路评估后
+        after_dut_eval = 1zu << 5zu,
+        /// 一轮评估完成，该阶段处理评估后回调
+        eval_end = 1zu << 6zu
+    };
+
+    constexpr ::verilator_utils::detail::eval_stage_enum operator| (::verilator_utils::detail::eval_stage_enum lhs,
+                                                                    ::verilator_utils::detail::eval_stage_enum rhs) noexcept
+    { return static_cast<::verilator_utils::detail::eval_stage_enum>(::std::to_underlying(lhs) | ::std::to_underlying(rhs)); }
+
+    constexpr ::std::size_t operator& (::verilator_utils::detail::eval_stage_enum lhs,
+                                       ::verilator_utils::detail::eval_stage_enum rhs) noexcept
+    { return ::std::to_underlying(lhs) & ::std::to_underlying(rhs); }
+
+    /// 不可调度阶段掩码：这些阶段无法作为wait_eval_stage的等待目标
+    constexpr auto unschedulable_stage_mask{::verilator_utils::detail::eval_stage_enum::not_begin |
+                                            ::verilator_utils::detail::eval_stage_enum::after_initial_eval |
+                                            ::verilator_utils::detail::eval_stage_enum::on_dut_eval};
 }  // namespace verilator_utils::detail
 
 namespace verilator_utils
 {
     export struct eval_scheduler
     {
-        /**
-         * @brief 评估阶段枚举
-         *
-         */
-        enum class eval_stage_enum : ::std::uint8_t
-        {
-            // 未注明的阶段可进行等待
-            // --- 初始化阶段 ---
+        /// 评估阶段枚举
+        using eval_stage_enum = ::verilator_utils::detail::eval_stage_enum;
 
-            /// 尚未开始评估
-            not_begin,
-            /// 初始评估后，该阶段不进行协程调度
-            after_initial_eval,
-
-            // --- 仿真循环阶段 ---
-
-            /// 评估已就绪任务
-            eval_ready_task,
-            /// 电路评估前
-            before_dut_eval,
-            /// 评估电路中，该阶段不进行协程调度
-            on_dut_eval,
-            /// 电路评估后
-            after_dut_eval,
-            /// 一轮评估完成，该阶段不进行协程调度，不可等待
-            eval_end
-        };
+        /// 不可调度阶段掩码
+        constexpr static auto unschedulable_stage_mask{::verilator_utils::detail::unschedulable_stage_mask};
 
     private:
         /// 指向VerilatedModel的指针，由dut类型擦除得到
@@ -1888,6 +1907,7 @@ namespace verilator_utils
 
             // 结束一轮评估
             eval_stage_ = eval_end;
+            while(event_queue_eval()) { ready_queue_eval(); }
         }
 
         /**
@@ -2148,3 +2168,30 @@ namespace verilator_utils
         return subhandle.promise().result();  // 处理finished
     }
 }  // namespace verilator_utils
+
+export namespace std
+{
+    template <>
+    struct formatter<::verilator_utils::eval_scheduler::eval_stage_enum>
+    {
+        constexpr static auto parse(::std::format_parse_context& ctx)
+        {
+            return ::verilator_utils::detail::format_string::parse_no_flags(
+                ctx,
+                "无效的verilator_utils::eval_scheduler::eval_stage_enum格式符"sv);
+        }
+
+        constexpr static ::std::array table{"not_begin"sv,
+                                            "after_initial_eval"sv,
+                                            "eval_ready_task"sv,
+                                            "before_dut_eval"sv,
+                                            "on_dut_eval"sv,
+                                            "after_dut_eval"sv,
+                                            "eval_end"sv};
+
+        template <typename iter_t>
+        static auto format(::verilator_utils::eval_scheduler::eval_stage_enum value,
+                           ::std::basic_format_context<iter_t, char>& ctx)
+        { return ::std::ranges::copy(table[::std::countr_zero(::std::to_underlying(value))], ctx.out()).out; }
+    };
+}  // namespace std

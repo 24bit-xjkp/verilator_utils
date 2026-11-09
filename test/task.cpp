@@ -167,8 +167,8 @@ TEST_SUITE("verilator_utils/task")
         auto scheduler{fixture.make_scheduler()};
         ::CData clk{};
         ::verilator_utils::bit_slice clk_ref{clk};
-        ::verilator_utils::eval_scheduler::eval_stage_enum falling_stage{};
-        ::verilator_utils::eval_scheduler::eval_stage_enum rising_stage{};
+        ::std::optional<::verilator_utils::eval_scheduler::eval_stage_enum> falling_stage{};
+        ::std::optional<::verilator_utils::eval_scheduler::eval_stage_enum> rising_stage{};
 
         const auto falling_task{
             [&] -> ::verilator_utils::task<void> {
@@ -200,7 +200,7 @@ TEST_SUITE("verilator_utils/task")
         auto scheduler{fixture.make_scheduler()};
         ::CData clk{};
         ::verilator_utils::bit_slice clk_ref{clk};
-        ::verilator_utils::eval_scheduler::eval_stage_enum observed_stage{};
+        ::std::optional<::verilator_utils::eval_scheduler::eval_stage_enum> observed_stage{};
 
         const auto task{
             [&] -> ::verilator_utils::task<void> {
@@ -997,7 +997,7 @@ TEST_SUITE("verilator_utils/task")
         ::std::size_t event_count{};
         ::std::size_t verify_count{};
         bool clock_high_during_verify{};
-        ::verilator_utils::eval_scheduler::eval_stage_enum verify_stage{};
+        ::std::optional<::verilator_utils::eval_scheduler::eval_stage_enum> verify_stage{};
 
         const auto&& task{
             [&] -> ::verilator_utils::task<void> {
@@ -1073,7 +1073,7 @@ TEST_SUITE("verilator_utils/task")
         signal_state clk{};
         ::verilator_utils::bit_slice<::CData> clk_ref{clk.value};
         ::std::size_t verify_count{};
-        ::verilator_utils::eval_scheduler::eval_stage_enum verify_stage{};
+        ::std::optional<::verilator_utils::eval_scheduler::eval_stage_enum> verify_stage{};
 
         const auto&& task{
             [&] -> ::verilator_utils::task<void> {

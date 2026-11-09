@@ -192,14 +192,18 @@ namespace verilator_utils::detail
          */
         explicit eval_stage_awaiter(scheduler_t& scheduler, scheduler_t::eval_stage_enum eval_stage) :
             scheduler{scheduler}, eval_stage{eval_stage}
-        { ::verilator_utils::check{}(eval_stage != scheduler_t::eval_stage_enum::eval_end, "该评估阶段不可等待"sv); }
+        {
+            ::verilator_utils::check{}((eval_stage & scheduler_t::unschedulable_stage_mask) == 0,
+                                       "评估阶段{}不可等待"sv,
+                                       eval_stage);
+        }
 
         /**
          * @brief 判断是否立即就绪
          *
          * @return 是否立即就绪
          */
-        [[nodiscard]] bool await_ready() const noexcept { return scheduler.eval_stage() >= eval_stage; }
+        [[nodiscard]] bool await_ready() const noexcept { return scheduler.eval_stage() == eval_stage; }
 
         /**
          * @brief 若未到目标阶段则挂起等待，将当前任务加入事件队列
@@ -490,7 +494,7 @@ export namespace verilator_utils
      * @param eval_stage 评估阶段
      * @return 可等待体
      * @note 目标评估阶段需要可等待，否则断言失败
-     * @note 若目标评估阶段可调度，则在目标阶段恢复执行，否则在目标阶段后最近的可调度阶段恢复执行
+     * @note 在目标阶段恢复执行；若本轮目标阶段已经过去，则等待下一轮评估
      * @code {.cpp}
      * task foo(eval_scheduler& scheduler)
      * {
